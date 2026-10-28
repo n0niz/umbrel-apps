@@ -1,0 +1,22 @@
+manifestVersion: 1
+id: n0niz-comfyui
+name: ComfyUI
+tagline: Node-based image generation (CPU)
+icon: https://svgur.com/i/mvA.svg
+category: ai
+version: "1.0.0"
+port: 8188
+description: >-
+  ComfyUI running on CPU for Stable Diffusion and SDXL image generation.
+developer: comfyanonymous
+website: https://github.com/comfyanonymous/ComfyUI
+submitter: n0niz
+submission: https://github.com/n0niz/umbrel-apps
+repo: https://github.com/comfyanonymous/ComfyUI
+support: https://github.com/comfyanonymous/ComfyUI/issues
+gallery: []
+releaseNotes: ""
+dependencies: []
+path: ""
+defaultUsername: ""
+defaultPassword: ""
