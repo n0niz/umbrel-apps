@@ -4,7 +4,7 @@ name: Card Capture
 tagline: Turn card payment notifications into Firefly III transactions
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-card-capture/icon.svg
 category: finance
-version: "1.0.0"
+version: "1.0.1"
 port: 4950
 description: >-
   Receives card payment notifications forwarded from an Android phone (for
@@ -19,7 +19,7 @@ submission: https://github.com/n0niz/umbrel-apps
 repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
-releaseNotes: ""
+releaseNotes: "Krak payment notifications mentioning cashback are booked as payments, not refunds."
 dependencies:
   - firefly-iii
 path: ""
