@@ -421,6 +421,7 @@
     const acc = spec.accounts && spec.accounts.length ? new Set(spec.accounts) : null;
     const vals = spec.fdim && spec.fvalues && spec.fvalues.length ? new Set(spec.fvalues) : null;
     return D.rows.filter((r) => r[7] === D.cur && r[9] >= range.from && r[9] <= range.to
+      && (spec.loans || !r[11])
       && (kind === "both" || r[1] === kind)
       && (!acc || acc.has(r[8]))
       && (!vals || keysOf(r, spec.fdim).some((k) => vals.has(k)))
@@ -624,8 +625,8 @@
     tag: { name: "Tags", desc: "Spending or income per tag.", dim: "tag", period: "12m", kind: "e", rows: true, kinds: true },
     payee: { name: "Payees", desc: "Who your money goes to, and who it comes from.", dim: "payee", period: "3m", kind: "e", rows: true, kinds: true },
     trend: { name: "Trend over time", desc: "Chosen categories, tags or payees month by month.", period: "24m", kind: "e", rows: true, kinds: true },
-    networth: { name: "Net worth", desc: "How the total across your accounts developed.", period: "24m", btc: true },
-    balances: { name: "Account balances", desc: "What each account holds right now.", btc: true },
+    networth: { name: "Net worth", desc: "Everything you own minus loans and debts, over time.", period: "24m", btc: true },
+    balances: { name: "Account balances", desc: "What each account holds, and what you still owe.", btc: true },
     recent: { name: "Latest transactions", desc: "The newest bookings, filtered the way you like.", period: "3m", kind: "both", rows: true, kinds: true },
   };
   const HOME_TYPES = {
@@ -795,7 +796,7 @@
     const months = Math.max(2, Math.min(180, monthKeys(range.from, TODAY).length));
     const [nw] = await Promise.all([loadNW(months), loadRows().catch(() => null)]);
     let accs = nw.accounts.filter((a) => a.currency === D.cur);
-    accs = spec.accounts && spec.accounts.length ? accs.filter((a) => spec.accounts.includes(a.name)) : accs.filter((a) => a.net);
+    accs = spec.accounts && spec.accounts.length ? accs.filter((a) => spec.accounts.includes(a.name)) : accs.filter((a) => a.net && (a.active || a.values.some((v) => Math.abs(v) > 0.005)));
     const labels = nw.dates, total = labels.map((_, i) => sum(accs.map((a) => a.values[i])));
     const series = [];
     let bv = null;
@@ -806,13 +807,15 @@
     const grand = bv ? total.map((v, i) => v + bv[i]) : total;
     series.push({ name: bv ? "Total incl. Bitcoin" : "Total", color: C.net, width: 2.5, values: grand, area: true });
     if (bv) { series.push({ name: "Accounts", color: "#a5d6ff", values: total, dash: true }); series.push({ name: "Bitcoin (Kraken)", color: C.btc, values: bv }); }
+    const debtAcc = accs.filter((a) => a.kind === "liability");
+    if (debtAcc.length && !spec.split) series.push({ name: "Debt", color: C.exp, values: labels.map((_, i) => sum(debtAcc.map((a) => a.values[i]))), dash: true });
     if (spec.split) accs.forEach((a, i) => series.push({ name: a.name, color: PAL[(i + 1) % PAL.length], values: a.values, width: 1.5, opacity: 0.85 }));
     const first = grand[0], last = grand[grand.length - 1];
-    host.innerHTML = `<div class="sumline">${stat("Now", eur(last))}${stat(`Since ${dayLabel(labels[0], true)}`, `${eur(last - first)} <span class="sub">${first ? pct((last - first) / Math.abs(first)) : ""}</span>`, last >= first ? "pos" : "neg")}${stat("Highest", eur(Math.max(...grand)))}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div>` : ""}`;
+    host.innerHTML = `<div class="sumline">${stat("Now", eur(last))}${stat(`Since ${dayLabel(labels[0], true)}`, `${eur(last - first)} <span class="sub">${first ? pct((last - first) / Math.abs(first)) : ""}</span>`, last >= first ? "pos" : "neg")}${debtAcc.length ? stat("Debt", eur(sum(debtAcc.map((a) => a.values[a.values.length - 1]))), "neg") : stat("Highest", eur(Math.max(...grand)))}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div>` : ""}`;
     lineChart(host.querySelector(".cb"), labels, series, { labelFmt: (d, long) => long ? dayLabel(d, true) : monthLabel(d.slice(0, 7)), zero: false, height: mode === "full" ? 320 : 220 });
     host.querySelector(".legend").innerHTML = legendHtml(series);
     if (mode !== "full") return;
-    const list = accs.map((a) => ({ name: a.name, a: a.values[0], b: a.values[a.values.length - 1] }));
+    const list = accs.map((a) => ({ name: a.name + (a.kind === "liability" ? " (debt)" : ""), a: a.values[0], b: a.values[a.values.length - 1] }));
     if (bv) list.push({ name: "Bitcoin (Kraken buys)", a: bv[0], b: bv[bv.length - 1] });
     host.querySelector(".tbl").innerHTML = `<div class="tablewrap"><table><thead><tr><th>Account</th><th>${dayLabel(labels[0], true)}</th><th>Now</th><th>Change</th></tr></thead><tbody>${list.sort((x, y) => y.b - x.b).map((r) =>
       `<tr><td>${esc(r.name)}</td><td>${eur2(r.a)}</td><td>${eur2(r.b)}</td><td class="${r.b - r.a >= 0 ? "pos" : "neg"}">${eur2(r.b - r.a)}</td></tr>`).join("")}<tr class="total"><td>Total</td><td>${eur2(first)}</td><td>${eur2(last)}</td><td>${eur2(last - first)}</td></tr></tbody></table></div>
@@ -823,12 +826,13 @@
     const [res] = await Promise.all([loadAccounts(), loadRows().catch(() => null)]);
     let accs = res.accounts.filter((a) => a.active && a.currency === D.cur);
     if (spec.accounts && spec.accounts.length) accs = accs.filter((a) => spec.accounts.includes(a.name));
-    const items = accs.map((a, i) => ({ name: a.name, value: a.balance, color: PAL[i % PAL.length] }));
+    const items = accs.map((a, i) => ({ name: a.name, value: a.balance, color: PAL[i % PAL.length], liab: a.kind === "liability" }));
     if (spec.btc) { const M = await btcModelSafe(); if (M && M.ok) items.push({ name: "Bitcoin (Kraken buys)", value: M.value, color: C.btc }); }
     items.sort((a, b) => b.value - a.value);
     items.forEach((it, i) => { if (it.color !== C.btc) it.color = PAL[i % PAL.length]; });
     const total = sum(items.map((i) => i.value));
-    host.innerHTML = `<div class="sumline">${stat("Total", eur(total), total >= 0 ? "" : "neg")}${stat("Accounts", items.length)}</div><div class="cb"></div>`;
+    const debt = sum(items.filter((i) => i.value < 0).map((i) => i.value));
+    host.innerHTML = `<div class="sumline">${stat("Net", eur(total), total >= 0 ? "" : "neg")}${debt ? stat("Owned", eur(total - debt)) + stat("Debt", eur(debt), "neg") : stat("Accounts", items.length)}</div><div class="cb"></div>`;
     hbars(host.querySelector(".cb"), items, { fmt: eur });
   }
 
@@ -1048,6 +1052,8 @@
       fs.value = spec.fdim || "";
       fs.addEventListener("change", () => { spec.fdim = fs.value || undefined; spec.fvalues = []; change(true); });
       if (spec.fdim) el.appendChild(msel({ category: "Categories", tag: "Tags", budget: "Budgets", payee: "Payees" }[spec.fdim], optionsFor(spec.fdim), spec.fvalues, (v) => { spec.fvalues = v; change(); }, "none picked"));
+      const lc = add(`<label class="chk"><input type="checkbox"> Count loan repayments as spending</label>`).querySelector("input");
+      lc.checked = !!spec.loans; lc.addEventListener("change", () => { spec.loans = lc.checked; change(); });
       const q = add(`<label class="f">Text contains<input type="search" placeholder="e.g. Bäcker, REWE, Netflix"></label>`).querySelector("input");
       q.value = spec.q || "";
       let qt; q.addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(() => { spec.q = q.value; change(); }, 300); });
@@ -1245,7 +1251,7 @@
   function tAggregate() {
     const byItem = new Map();
     for (const r of D.rows) {
-      if (r[1] !== T.type || r[7] !== D.cur) continue;
+      if (r[1] !== T.type || r[7] !== D.cur || r[11]) continue;
       const y = +r[0].slice(0, 4);
       if (y < T.from || y > T.to) continue;
       for (const k of keysOf(r, T.dim)) {

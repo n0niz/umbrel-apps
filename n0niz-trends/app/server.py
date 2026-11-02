@@ -102,7 +102,8 @@ def history_start(cfg):
 
 def fetch_rows(cfg, start, end):
     """Withdrawals and deposits as rows:
-    [month, e|i, amount, category, budget, tags, payee, currency, account, date, description]"""
+    [month, e|i, amount, category, budget, tags, payee, currency, account, date, description, loan]
+    loan = 1 when the money goes to (or comes from) a liability: a repayment or a payout, not spending."""
     rows, currencies = [], {}
     for kind in ("withdrawal", "deposit"):
         page = 1
@@ -128,6 +129,7 @@ def fetch_rows(cfg, start, end):
                         (t.get("source_name") if out else t.get("destination_name")) or "",
                         t["date"][:10],
                         (t.get("description") or "")[:120],
+                        1 if ((t.get("destination_type") if out else t.get("source_type")) or "").lower() in LIAB_TYPES else 0,
                     ])
             pages = res.get("meta", {}).get("pagination", {}).get("total_pages", 1)
             if page >= pages:
@@ -137,26 +139,44 @@ def fetch_rows(cfg, start, end):
             "fetched": int(time.time())}
 
 
+LIAB_TYPES = {"loan", "debt", "mortgage", "liabilities", "liability"}
+
+
 def fetch_accounts(cfg, on_date=None):
-    out, page = [], 1
-    while True:
-        params = {"type": "asset", "page": page, "limit": 200}
-        if on_date:
-            params["date"] = on_date
-        res = firefly_get(cfg, "/api/v1/accounts", params)
-        for a in res.get("data", []):
-            at = a.get("attributes", {})
-            out.append({
-                "id": a.get("id"), "name": at.get("name") or "?",
-                "role": at.get("account_role") or "",
-                "balance": round(float(at.get("current_balance") or 0), 2),
-                "currency": at.get("currency_code") or "EUR",
-                "active": bool(at.get("active", True)),
-                "net": at.get("include_net_worth", True) is not False,
-            })
-        if page >= res.get("meta", {}).get("pagination", {}).get("total_pages", 1):
-            break
-        page += 1
+    """Asset accounts and liabilities. Debts you owe come back as negative balances."""
+    out = []
+    for kind in ("asset", "liabilities"):
+        page = 1
+        while True:
+            params = {"type": kind, "page": page, "limit": 200}
+            if on_date:
+                params["date"] = on_date
+            try:
+                res = firefly_get(cfg, "/api/v1/accounts", params)
+            except urllib.error.HTTPError:
+                if kind == "asset":
+                    raise
+                break
+            for a in res.get("data", []):
+                at = a.get("attributes", {})
+                bal = float(at.get("current_balance") or 0)
+                is_liab = kind != "asset"
+                if is_liab:
+                    # "credit" = somebody owes you; anything else = you owe it
+                    bal = abs(bal) if at.get("liability_direction") == "credit" else -abs(bal)
+                out.append({
+                    "id": a.get("id"), "name": at.get("name") or "?",
+                    "role": at.get("account_role") or "",
+                    "kind": "liability" if is_liab else "asset",
+                    "ltype": at.get("liability_type") or "",
+                    "balance": round(bal, 2),
+                    "currency": at.get("currency_code") or "EUR",
+                    "active": bool(at.get("active", True)),
+                    "net": at.get("include_net_worth", True) is not False,
+                })
+            if page >= res.get("meta", {}).get("pagination", {}).get("total_pages", 1):
+                break
+            page += 1
     return out
 
 
@@ -191,7 +211,7 @@ def fetch_networth(cfg, months):
     names = {}
     for i, accs in enumerate(snaps):
         for a in accs:
-            row = names.setdefault(a["name"], {"name": a["name"], "currency": a["currency"],
+            row = names.setdefault(a["name"], {"name": a["name"], "currency": a["currency"], "kind": a["kind"],
                                                "net": a["net"], "active": a["active"],
                                                "values": [0.0] * len(dates)})
             row["values"][i] = a["balance"]
