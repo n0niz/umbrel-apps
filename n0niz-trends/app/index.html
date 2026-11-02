@@ -9,32 +9,152 @@
   :root {
     --bg: #0d1016; --panel: #151a22; --panel2: #1c222c; --line: #2a313d; --grid: #232a35;
     --text: #e9edf3; --muted: #93a0b2; --accent: #6ea8fe; --up: #ff7b72; --down: #3fb950;
+    --inc: #3fb950; --exp: #ff7b72; --btc: #f7931a;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
   body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif; }
   button, input, select { font: inherit; color: inherit; }
-  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 60px; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-  h1 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+  a { color: var(--accent); text-decoration: none; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 14px 16px 70px; }
+  header.top { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .brand { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; min-width: 0; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; white-space: nowrap; }
+  nav { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 3px; overflow-x: auto; max-width: 100%; }
+  nav a { color: var(--muted); padding: 6px 12px; border-radius: 7px; white-space: nowrap; }
+  nav a.on { background: var(--panel2); color: var(--text); }
   .sub { color: var(--muted); font-size: 12.5px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  select, input[type=search], input[type=text], input[type=password] {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none; }
-  select:focus, input:focus { border-color: var(--accent); }
-  .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  .spacer { flex: 1; }
+  select, input[type=search], input[type=text], input[type=password], input[type=date], input[type=number], textarea {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none; max-width: 100%; }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+  .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
   .btn:hover { background: var(--panel2); }
   .btn.primary { background: var(--accent); border-color: transparent; color: #0d1016; font-weight: 600; }
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  .seg button { background: var(--panel); border: 0; padding: 7px 12px; cursor: pointer; color: var(--muted); }
+  .btn.danger { color: #ffb3b3; }
+  .btn.sm { padding: 4px 9px; font-size: 12.5px; }
+  .iconbtn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; font-size: 14px; }
+  .iconbtn:hover { background: var(--panel2); color: var(--text); }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex-wrap: nowrap; }
+  .seg button { background: var(--panel); border: 0; padding: 6px 11px; cursor: pointer; color: var(--muted); white-space: nowrap; }
   .seg button + button { border-left: 1px solid var(--line); }
   .seg button.on { background: var(--panel2); color: var(--text); }
+  .seg.sm button { padding: 3px 8px; font-size: 12px; }
 
-  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
-  .layout > * { min-width: 0; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; }
   .card h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
   .card h2 .hint { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .layout { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .layout > * { min-width: 0; }
+  .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .grid2 > .full { grid-column: 1 / -1; }
+  .view { display: none; }
+  .view.on { display: block; }
+
+  /* home */
+  .homebar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .homebar h2 { margin: 0; font-size: 17px; }
+  .wgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; grid-auto-flow: row dense; }
+  .w { grid-column: span 3; display: flex; flex-direction: column; }
+  .w.w-s { grid-column: span 2; } .w.w-l { grid-column: 1 / -1; }
+  .w h2 .ttl { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .w h2 .ttl:hover { color: var(--accent); }
+  .w .tools { display: none; gap: 2px; align-items: center; }
+  .editing .w .tools { display: inline-flex; }
+  .editing .w { outline: 1px dashed #3d4a5e; outline-offset: 2px; cursor: grab; }
+  .editing .w.dragover { outline-color: var(--accent); }
+  .editing .w .wbody { pointer-events: none; opacity: .75; }
+  .addtile { border: 1px dashed var(--line); border-radius: 12px; display: grid; place-items: center; min-height: 120px; color: var(--muted); cursor: pointer; grid-column: span 2; background: none; }
+  .addtile:hover { color: var(--text); border-color: var(--accent); }
+
+  /* charts */
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; border-radius: 2px; background: var(--c); margin-right: 6px; vertical-align: middle; }
+  .legend span.dot::before { width: 8px; height: 8px; border-radius: 50%; }
+  .legend span.dash::before { background: repeating-linear-gradient(90deg, var(--c) 0 4px, transparent 4px 7px); }
+  .tip { position: absolute; pointer-events: none; background: #0b0e13f2; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; min-width: 160px; max-width: 280px; z-index: 5; display: none; box-shadow: 0 8px 24px #0008; }
+  .tip b { display: block; margin-bottom: 4px; }
+  .tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
+  .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  .donut { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .donut svg { width: 176px; height: 176px; flex: none; }
+  .donut circle { transition: stroke-width .15s; cursor: pointer; }
+  .dleg { flex: 1; min-width: 190px; display: grid; gap: 1px; }
+  .dleg .li, .hb { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 44px; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 6px; font-size: 13px; }
+  .dleg .li i { width: 10px; height: 10px; border-radius: 3px; }
+  .dleg .li .nm, .hb .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dleg .li .am, .hb .am { font-variant-numeric: tabular-nums; text-align: right; }
+  .dleg .li .sh { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .clickable .li, .clickable .hb { cursor: pointer; }
+  .clickable .li:hover, .clickable .hb:hover, .dleg .li.hl { background: var(--panel2); }
+  .hbars { display: grid; gap: 2px; }
+  .hb { grid-template-columns: minmax(80px, 32%) minmax(0, 1fr) auto; }
+  .hb .bar { height: 12px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+  .hb .bar i { display: block; height: 100%; border-radius: 4px; }
+
+  .sumline { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-bottom: 10px; }
+  .stat span { display: block; color: var(--muted); font-size: 12px; }
+  .stat b { font-size: 17px; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .pos { color: var(--down); } .neg { color: var(--up); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+  .tile { background: var(--panel2); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+  .tile span { display: block; color: var(--muted); font-size: 12px; }
+  .tile b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile small { color: var(--muted); font-size: 11.5px; display: block; }
+  .w .tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+
+  .empty { color: var(--muted); text-align: center; padding: 34px 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+  th, td { padding: 7px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  td.l, th.l { text-align: left; }
+  td.wr { white-space: normal; min-width: 140px; }
+  th { color: var(--muted); font-weight: 500; }
+  tr.total td { font-weight: 600; border-top: 1px solid var(--line); }
+  tbody tr.click { cursor: pointer; }
+  tbody tr.click:hover td { background: var(--panel2); }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .tablewrap { overflow-x: auto; margin-top: 8px; }
+  .drill:not(:empty) { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .notice { background: #3b2f12; border: 1px solid #6b5418; color: #f5d27a; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
+  .notice.error { background: #3a1616; border-color: #6b2323; color: #ffb3b3; }
+  .notice.ok { background: #13301d; border-color: #1f5a33; color: #a6e9b8; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--panel2); font-size: 12px; color: var(--muted); }
+  .pill.Buy { color: var(--inc); } .pill.Sell { color: var(--exp); } .pill.Reward { color: var(--btc); }
+
+  /* editor */
+  .ed { display: grid; gap: 12px; }
+  .ed label.f { display: grid; gap: 5px; color: var(--muted); font-size: 12.5px; }
+  .ed label.f > * { color: var(--text); }
+  .ed .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ed .chk { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+  .ed select, .ed input[type=text], .ed input[type=search], .ed input[type=date], .ed textarea { width: 100%; }
+  details.ms { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  details.ms summary { padding: 7px 10px; cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+  details.ms summary::after { content: "▾"; color: var(--muted); }
+  details.ms summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details.ms[open] summary { border-bottom: 1px solid var(--line); }
+  details.ms .in { padding: 8px; display: grid; gap: 6px; }
+  details.ms .list { max-height: 220px; overflow: auto; display: grid; }
+  details.ms .list label { display: flex; gap: 8px; align-items: center; padding: 4px 4px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  details.ms .list label:hover { background: var(--panel2); }
+  details.ms .list label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ed hr { border: 0; border-top: 1px solid var(--line); margin: 2px 0; width: 100%; }
+
+  /* reports list */
+  .rtypes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .rtype { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .rtype .mini { background: var(--panel2); border-radius: 8px; height: 86px; display: grid; place-items: center; }
+  .rtype h3 { margin: 0 0 4px; font-size: 14px; }
+  .rtype p { margin: 0 0 10px; color: var(--muted); font-size: 12.5px; }
+  .rphead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .rphead h2 { margin: 0; font-size: 17px; }
+
+  /* trends picker */
   .picker { position: sticky; top: 12px; }
   .picker .list { max-height: 60vh; overflow: auto; margin: 8px -6px 0; }
   .item { display: grid; grid-template-columns: 18px 10px 1fr auto; gap: 8px; align-items: center; padding: 6px; border-radius: 7px; cursor: pointer; user-select: none; }
@@ -45,109 +165,129 @@
   .item .am { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
   .picker .actions { display: flex; gap: 6px; margin-top: 8px; }
   .picker input[type=search] { width: 100%; }
-  .charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
-  .charts > .card { min-width: 0; }
-  .chart { position: relative; width: 100%; }
-  .chart svg { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
-  .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; border-radius: 2px; background: var(--c); margin-right: 6px; vertical-align: middle; }
-  .tip { position: absolute; pointer-events: none; background: #0b0e13ee; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; min-width: 150px; z-index: 5; display: none; box-shadow: 0 8px 24px #0008; }
-  .tip b { display: block; margin-bottom: 4px; }
-  .tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
-  .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
-  .empty { color: var(--muted); text-align: center; padding: 40px 10px; }
-  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
-  th, td { padding: 7px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
-  th:first-child, td:first-child { text-align: left; }
-  th { color: var(--muted); font-weight: 500; }
-  tr.total td { font-weight: 600; border-top: 1px solid var(--line); }
-  .up { color: var(--up); } .down { color: var(--down); }
-  .tablewrap { overflow-x: auto; }
-  .notice { background: #3b2f12; border: 1px solid #6b5418; color: #f5d27a; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
-  .error { background: #3a1616; border-color: #6b2323; color: #ffb3b3; }
-  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 20px; width: min(440px, calc(100% - 32px)); }
+
+  /* bitcoin */
+  .btchead { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; justify-content: space-between; margin-bottom: 12px; }
+  .btchead .big { font-size: 26px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+  .btchead .big small { font-size: 15px; color: var(--muted); font-weight: 500; }
+  .spot { display: flex; gap: 6px; align-items: center; }
+  .spot input { width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar2 { height: 14px; border-radius: 6px; background: var(--grid); overflow: hidden; display: flex; margin: 8px 0 10px; }
+  .bar2 i { display: block; height: 100%; }
+  .checks { display: grid; gap: 8px; }
+  .checks div { padding: 8px 10px; border-radius: 8px; background: var(--panel2); font-size: 13px; }
+  .checks div b { display: block; margin-bottom: 2px; }
+  .checks .warn b { color: #f5d27a; } .checks .ok b { color: var(--down); }
+
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 20px; width: min(480px, calc(100% - 24px)); max-height: calc(100% - 24px); }
   dialog::backdrop { background: #000a; }
-  dialog label { display: grid; gap: 5px; color: var(--muted); font-size: 12.5px; margin-top: 12px; }
-  dialog input { width: 100%; }
-  .loading { opacity: .5; pointer-events: none; }
-  @media (max-width: 860px) {
+  dialog .dl label { display: grid; gap: 5px; color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+  dialog .dl label input { width: 100%; color: var(--text); }
+  dialog h3 { margin: 18px 0 0; font-size: 14px; }
+  .catalog { display: grid; gap: 6px; margin-top: 12px; }
+  .catalog button { text-align: left; display: grid; grid-template-columns: 54px 1fr; gap: 12px; align-items: center; background: var(--panel2); border: 1px solid transparent; border-radius: 10px; padding: 8px; cursor: pointer; }
+  .catalog button:hover { border-color: var(--accent); }
+  .catalog .mini { height: 38px; display: grid; place-items: center; }
+  .catalog b { display: block; font-weight: 600; }
+  .catalog small { color: var(--muted); }
+  .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #22314a; border: 1px solid #34507a; padding: 9px 16px; border-radius: 10px; font-size: 13px; z-index: 50; display: none; }
+  .loading { opacity: .55; pointer-events: none; }
+
+  @media (max-width: 980px) {
     .layout { grid-template-columns: minmax(0, 1fr); }
     .picker { position: static; }
     .picker .list { max-height: 260px; }
+    .w.w-s { grid-column: span 3; }
+    .grid2 { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 680px) {
+    .wrap { padding: 10px 12px 60px; }
+    .w, .w.w-s, .addtile { grid-column: 1 / -1; }
+    .rtype { grid-template-columns: 84px minmax(0, 1fr); }
+    .rtype .mini { height: 64px; }
+    .donut svg { width: 150px; height: 150px; margin: 0 auto; }
+    .ed .two { grid-template-columns: 1fr; }
   }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div>
+  <header class="top">
+    <div class="brand">
       <h1>Spending Trends</h1>
-      <div class="sub" id="status">Loading…</div>
+      <nav id="nav">
+        <a href="#home" data-v="home">Home</a>
+        <a href="#reports" data-v="reports">Reports</a>
+        <a href="#trends" data-v="trends">Trends</a>
+        <a href="#bitcoin" data-v="bitcoin">Bitcoin</a>
+      </nav>
     </div>
     <div class="row">
-      <label class="sub">From <select id="fromYear"></select></label>
-      <label class="sub">to <select id="toYear"></select></label>
-      <button class="btn" id="refresh" title="Fetch fresh data from Firefly">Refresh</button>
+      <span class="sub" id="status"></span>
+      <button class="btn" id="refresh" title="Fetch fresh data">Refresh</button>
       <button class="btn" id="settingsBtn">Settings</button>
     </div>
   </header>
 
   <div id="notice"></div>
 
-  <div class="row" style="margin-bottom:14px">
-    <div class="seg" id="dimSeg">
-      <button data-dim="category" class="on">Categories</button>
-      <button data-dim="tag">Tags</button>
-      <button data-dim="budget">Budgets</button>
-      <button data-dim="payee">Payees</button>
-    </div>
-    <div class="seg" id="typeSeg">
-      <button data-type="e" class="on">Expenses</button>
-      <button data-type="i">Income</button>
-    </div>
-  </div>
+  <section class="view" id="v-home"></section>
+  <section class="view" id="v-reports"></section>
 
-  <div class="layout">
-    <aside class="card picker">
-      <h2>Select <span class="hint" id="pickHint"></span></h2>
-      <input type="search" id="search" placeholder="Search…" aria-label="Search">
-      <div class="actions">
-        <button class="btn" id="top5">Top 5</button>
-        <button class="btn" id="clear">Clear</button>
+  <section class="view" id="v-trends">
+    <div class="row" style="margin-bottom:14px">
+      <div class="seg" id="tDim">
+        <button data-v="category">Categories</button><button data-v="tag">Tags</button><button data-v="budget">Budgets</button><button data-v="payee">Payees</button>
       </div>
-      <div class="list" id="list"></div>
-    </aside>
+      <div class="seg" id="tType"><button data-v="e">Expenses</button><button data-v="i">Income</button></div>
+      <span class="spacer"></span>
+      <label class="sub">From <select id="tFrom"></select></label>
+      <label class="sub">to <select id="tTo"></select></label>
+    </div>
+    <div class="layout">
+      <aside class="card picker">
+        <h2>Select <span class="hint" id="tHint"></span></h2>
+        <input type="search" id="tSearch" placeholder="Search…" aria-label="Search">
+        <div class="actions"><button class="btn" id="tTop5">Top 5</button><button class="btn" id="tClear">Clear</button></div>
+        <div class="list" id="tList"></div>
+      </aside>
+      <section class="stack">
+        <div class="card">
+          <h2>Month by month <span class="seg sm" id="tTl"><button data-v="sep">Each</button><button data-v="sum">Combined</button></span></h2>
+          <div class="chart" id="tTimeline"></div>
+          <div class="legend" id="tTlLegend"></div>
+        </div>
+        <div class="card">
+          <h2>Year over year <span class="hint" id="tYoyHint"></span>
+            <span class="seg sm" id="tYoy"><button data-v="month">Per month</button><button data-v="cum">Cumulative</button></span></h2>
+          <div class="chart" id="tYoyChart"></div>
+          <div class="legend" id="tYoyLegend"></div>
+        </div>
+        <div class="card">
+          <h2>Totals per year <span class="hint">completed months only · current year compared with the same months last year</span></h2>
+          <div class="tablewrap" id="tTable"></div>
+        </div>
+      </section>
+    </div>
+  </section>
 
-    <section class="charts">
-      <div class="card">
-        <h2>Month by month
-          <span class="seg" id="tlSeg"><button data-m="sep" class="on">Each</button><button data-m="sum">Combined</button></span>
-        </h2>
-        <div class="chart" id="timeline"></div>
-        <div class="legend" id="tlLegend"></div>
-      </div>
-      <div class="card">
-        <h2>Year over year <span class="hint" id="yoyHint">selected items combined</span>
-          <span class="seg" id="yoySeg"><button data-m="month" class="on">Per month</button><button data-m="cum">Cumulative</button></span>
-        </h2>
-        <div class="chart" id="yoy"></div>
-        <div class="legend" id="yoyLegend"></div>
-      </div>
-      <div class="card">
-        <h2>Totals per year <span class="hint">completed months only · current year compared with the same months last year</span></h2>
-        <div class="tablewrap" id="table"></div>
-      </div>
-    </section>
-  </div>
+  <section class="view" id="v-bitcoin"></section>
 </div>
 
 <dialog id="settings">
-  <form method="dialog" id="settingsForm">
-    <h2 style="margin:0 0 4px;font-size:17px">Connection to Firefly III</h2>
-    <div class="sub">The token is stored on your server only.</div>
+  <form method="dialog" class="dl" id="settingsForm">
+    <h2 style="margin:0 0 4px;font-size:17px">Settings</h2>
+    <div class="sub">Tokens and keys are stored on your server only.</div>
+    <h3>Firefly III</h3>
     <label>Firefly III URL<input type="text" id="ffUrl" required></label>
-    <label>Personal access token <input type="password" id="ffToken" placeholder="leave empty to keep the current one"></label>
-    <div class="sub" id="settingsMsg" style="margin-top:10px"></div>
+    <label>Personal access token<input type="password" id="ffToken" autocomplete="off"></label>
+    <label>Load history from<input type="date" id="ffHist"></label>
+    <h3>Kraken (for the Bitcoin page)</h3>
+    <div class="sub" style="margin-top:4px">Use a read-only key with only <b>Query Funds</b> and <b>Query Ledger Entries</b>. The key from your Kraken importer works.</div>
+    <label>API key<input type="password" id="krKey" autocomplete="off"></label>
+    <label>Private key<input type="password" id="krSecret" autocomplete="off"></label>
+    <label class="sub" style="display:flex;gap:8px;align-items:center" id="krRemoveWrap"><input type="checkbox" id="krRemove" style="width:auto"> Remove the Kraken key</label>
+    <div class="sub" id="settingsMsg" style="margin-top:12px"></div>
     <div class="row" style="justify-content:flex-end;margin-top:16px">
       <button class="btn" value="cancel" formnovalidate>Cancel</button>
       <button class="btn primary" id="saveSettings" value="save">Save</button>
@@ -155,290 +295,1238 @@
   </form>
 </dialog>
 
+<dialog id="wdlg"><div id="wdlgBody"></div></dialog>
+<div class="toast" id="toast"></div>
+
 <script>
 (() => {
   "use strict";
+  /* ============================================================ helpers */
   const $ = (id) => document.getElementById(id);
-  const PALETTE = ["#6ea8fe", "#f0883e", "#3fb950", "#d2a8ff", "#ff7b72", "#e3b341", "#39c5cf", "#ff9bce", "#a5d6ff", "#7ee787"];
-  const YEAR_COLORS = ["#4c5566", "#6b7689", "#8b97ab", "#a8b4c7", "#e3b341", "#6ea8fe"];
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const NF = (o) => new Intl.NumberFormat("de-DE", o);
+  const eurF = NF({ style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+  const eur2F = NF({ style: "currency", currency: "EUR" });
+  const eurKF = NF({ style: "currency", currency: "EUR", notation: "compact", maximumFractionDigits: 1 });
+  const eur = (v) => eurF.format(v), eur2 = (v) => eur2F.format(v);
+  const eurK = (v) => Math.abs(v) >= 10000 ? eurKF.format(v) : eurF.format(v);
+  const btcF = (v) => NF({ minimumFractionDigits: 8, maximumFractionDigits: 8 }).format(v);
+  const btcS = (v) => NF({ maximumFractionDigits: 4 }).format(v);
+  const intF = (v) => NF({ maximumFractionDigits: 0 }).format(v);
+  const pct = (v, d = 1) => `${v > 0 ? "+" : ""}${NF({ maximumFractionDigits: d, minimumFractionDigits: d }).format(v * 100)}%`;
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  const uid = () => Math.random().toString(36).slice(2, 10);
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
-  const eur2 = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
-
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem("si:" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem("si:" + k, JSON.stringify(v)); } catch {} },
-  };
-
+  const PAL = ["#6ea8fe", "#f0883e", "#3fb950", "#d2a8ff", "#ff7b72", "#e3b341", "#39c5cf", "#ff9bce", "#a5d6ff", "#7ee787", "#ffa657", "#bc8cff"];
+  const OTHER = "#5b6475";
+  const C = { inc: "#3fb950", exp: "#ff7b72", net: "#6ea8fe", btc: "#f7931a", cost: "#3fb950", price: "#6ea8fe" };
   const now = new Date();
-  const state = {
-    rows: [], currency: "EUR",
-    dim: store.get("dim", "category"), type: store.get("type", "e"),
-    from: store.get("from", now.getFullYear() - 2), to: store.get("to", now.getFullYear()),
-    selected: store.get("selected", {}), tl: "sep", yoy: "month", search: "",
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const isoUTC = (sec) => new Date(sec * 1000).toISOString().slice(0, 10);
+  const TODAY = iso(now);
+  const monthLabel = (k, long) => { const [y, m] = k.split("-"); return long ? `${MONTHS[+m - 1]} ${y}` : (m === "01" ? y : MONTHS[+m - 1]); };
+  const dayLabel = (d, long) => { const [y, m, dd] = d.split("-"); return long ? `${+dd} ${MONTHS[+m - 1]} ${y}` : `${MONTHS[+m - 1]} ${y.slice(2)}`; };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("st:" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("st:" + k, JSON.stringify(v)); } catch {} },
   };
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), 2200); }
+  function frag(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstElementChild; }
 
-  /* ---------------- data ---------------- */
-  function keysOf(r) {
-    switch (state.dim) {
+  async function api(path, opt = {}) {
+    const r = await fetch(path, opt);
+    let d = {};
+    try { d = await r.json(); } catch {}
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+  }
+  const put = (path, body) => api(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  /* ============================================================ data */
+  const D = { rows: null, cur: "EUR", p: {}, fresh: new Set(), layout: null, reports: null, cfg: null, spot: null, btcModel: null };
+  function once(key, fn) {
+    if (!D.p[key]) D.p[key] = fn().catch((e) => { delete D.p[key]; throw e; });
+    return D.p[key];
+  }
+  const fresh = (k) => D.fresh.delete(k);
+  const loadCfg = () => once("cfg", async () => (D.cfg = await api("api/config")));
+  const loadRows = () => once("rows", async () => {
+    const d = await api("api/data" + (fresh("rows") ? "?refresh=1" : ""));
+    D.rows = d.rows;
+    const curs = Object.entries(d.currencies).sort((a, b) => b[1] - a[1]);
+    D.cur = curs.length ? curs[0][0] : "EUR";
+    D.otherCur = curs.slice(1);
+    $("status").textContent = `${d.rows.length} transactions · ${new Date(d.fetched * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    return d;
+  });
+  const loadAccounts = () => once("acc", () => api("api/accounts"));
+  const loadNW = (months) => once("nw" + months, () => api(`api/networth?months=${months}${fresh("nw" + months) ? "&refresh=1" : ""}`));
+  const loadBtc = () => once("btc", async () => {
+    const [d, pr] = await Promise.all([api("api/btc"), api("api/store/prefs").catch(() => ({}))]);
+    D.prefs = pr.value || {}; D.btcModel = null; return d;
+  });
+  const savePrefs = () => put("api/store/prefs", { value: D.prefs }).catch((e) => toast("Could not save: " + e.message));
+  async function loadReports() {
+    if (D.reports) return D.reports;
+    const r = await api("api/store/reports").catch(() => ({}));
+    return (D.reports = Array.isArray(r.value) ? r.value : []);
+  }
+  const saveReports = () => put("api/store/reports", { value: D.reports }).catch((e) => toast("Could not save: " + e.message));
+  const saveLayout = () => put("api/store/layout", { value: D.layout }).catch((e) => toast("Could not save: " + e.message));
+
+  function keysOf(r, dim) {
+    switch (dim) {
       case "category": return [r[3] || "(no category)"];
       case "budget": return [r[4] || "(no budget)"];
       case "tag": return r[5].length ? r[5] : ["(no tag)"];
+      case "account": return [r[8] || "(unknown)"];
       default: return [r[6] || "(unknown)"];
     }
   }
-  function monthsRange() {
+  function monthKeys(from, to) {
     const out = [];
-    for (let y = state.from; y <= state.to; y++) for (let m = 1; m <= 12; m++) {
-      const key = `${y}-${String(m).padStart(2, "0")}`;
-      if (y === now.getFullYear() && m > now.getMonth()) break;  // only completed months
-      out.push(key);
-    }
+    let [y, m] = from.split("-").map(Number);
+    const [ty, tm] = to.split("-").map(Number);
+    while (y < ty || (y === ty && m <= tm)) { out.push(`${y}-${String(m).padStart(2, "0")}`); if (++m > 12) { m = 1; y++; } }
     return out;
   }
-  function aggregate() {
+  const PERIODS = [["thismonth", "This month"], ["lastmonth", "Last month"], ["3m", "Last 3 months"], ["6m", "Last 6 months"],
+    ["12m", "Last 12 months"], ["24m", "Last 24 months"], ["36m", "Last 36 months"], ["ytd", "This year"], ["lastyear", "Last year"],
+    ["all", "All history"], ["custom", "Custom dates"]];
+  const PERIOD_NAME = Object.fromEntries(PERIODS);
+  function periodRange(spec) {
+    const y = now.getFullYear(), m = now.getMonth();
+    const first = (yy, mm) => iso(new Date(yy, mm, 1)), last = (yy, mm) => iso(new Date(yy, mm + 1, 0));
+    const N = (n) => ({ from: first(y, m - n), to: last(y, m - 1) });
+    switch (spec.period) {
+      case "thismonth": return { from: first(y, m), to: TODAY };
+      case "lastmonth": return { from: first(y, m - 1), to: last(y, m - 1) };
+      case "3m": return N(3); case "6m": return N(6); case "24m": return N(24); case "36m": return N(36);
+      case "ytd": return { from: `${y}-01-01`, to: TODAY };
+      case "lastyear": return { from: `${y - 1}-01-01`, to: `${y - 1}-12-31` };
+      case "all": return { from: (D.cfg && D.cfg.history_start) || `${y - 5}-01-01`, to: TODAY };
+      case "custom": return { from: spec.from || first(y, m - 12), to: spec.to || TODAY };
+      default: return N(12);
+    }
+  }
+  function periodText(spec) {
+    if (spec.period === "custom") { const r = periodRange(spec); return `${r.from} – ${r.to}`; }
+    return PERIOD_NAME[spec.period] || PERIOD_NAME["12m"];
+  }
+  function filterRows(spec, range, kind) {
+    range = range || periodRange(spec);
+    kind = kind || spec.kind || "both";
+    const q = (spec.q || "").toLowerCase().trim();
+    const acc = spec.accounts && spec.accounts.length ? new Set(spec.accounts) : null;
+    const vals = spec.fdim && spec.fvalues && spec.fvalues.length ? new Set(spec.fvalues) : null;
+    return D.rows.filter((r) => r[7] === D.cur && r[9] >= range.from && r[9] <= range.to
+      && (kind === "both" || r[1] === kind)
+      && (!acc || acc.has(r[8]))
+      && (!vals || keysOf(r, spec.fdim).some((k) => vals.has(k)))
+      && (!q || `${r[6]} ${r[10]} ${r[3]} ${r[4]} ${r[5].join(" ")}`.toLowerCase().includes(q)));
+  }
+  function groupBy(rows, dim) {
+    const m = new Map();
+    for (const r of rows) for (const k of keysOf(r, dim)) {
+      let g = m.get(k);
+      if (!g) m.set(k, (g = { name: k, total: 0, count: 0, rows: [] }));
+      g.total += r[1] === "e" ? r[2] : r[2]; g.count++; g.rows.push(r);
+    }
+    return [...m.values()].sort((a, b) => b.total - a.total);
+  }
+
+  /* ============================================================ charts */
+  const NS = "http://www.w3.org/2000/svg";
+  function S(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+  function niceNum(x, round) {
+    const e = Math.floor(Math.log10(x)), f = x / Math.pow(10, e);
+    const nf = round ? (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) : (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10);
+    return nf * Math.pow(10, e);
+  }
+  function scale(min, max, n = 4) {
+    if (!(max > min)) max = min + (Math.abs(min) || 1);
+    const step = niceNum(niceNum(max - min, false) / n, true);
+    return { lo: Math.floor(min / step + 1e-9) * step, hi: Math.ceil(max / step - 1e-9) * step, step };
+  }
+  function tipBox(host) { let t = host.querySelector(":scope > .tip"); if (!t) { t = document.createElement("div"); t.className = "tip"; host.appendChild(t); } return t; }
+  function placeTip(tip, host, px, html) {
+    tip.innerHTML = html; tip.style.display = "block";
+    const w = host.clientWidth;
+    tip.style.left = `${px + 14 + tip.offsetWidth > w ? Math.max(0, px - tip.offsetWidth - 14) : px + 14}px`;
+    tip.style.top = "8px";
+  }
+  const tipRow = (color, name, val) => `<div><span><i style="background:${color}"></i>${esc(name)}</span><span>${val}</span></div>`;
+  function emptyIn(host, msg) { host.innerHTML = `<div class="empty">${esc(msg)}</div>`; }
+
+  function lineChart(host, labels, series, o = {}) {
+    host.replaceChildren(); host.classList.add("chart");
+    const vals = series.flatMap((s) => s.values.filter((v) => v != null && isFinite(v)));
+    (o.marks || []).forEach((k) => vals.push(k.v));
+    if (!labels.length || !series.length || !vals.length) return emptyIn(host, o.empty || "No data for this selection.");
+    const W = Math.max(300, host.clientWidth || 600), H = o.height || 260;
+    const m = { l: o.ml || 60, r: 12, t: 10, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b, n = labels.length;
+    let mn = Math.min(...vals), mx = Math.max(...vals);
+    if (o.zero !== false) { mn = Math.min(0, mn); mx = Math.max(0, mx); } else { const pad = (mx - mn) * 0.06 || Math.abs(mx) * 0.05 || 1; mn -= pad; mx += pad; }
+    const sc = scale(mn, mx, 4);
+    const X = (i) => m.l + (n === 1 ? iw / 2 : (i * iw) / (n - 1));
+    const Y = (v) => m.t + ih - ((v - sc.lo) / (sc.hi - sc.lo)) * ih;
+    const yF = o.yFmt || eurK, tF = o.tipFmt || eur2, lF = o.labelFmt || ((l) => l);
+    const svg = S("svg", { viewBox: `0 0 ${W} ${H}` });
+    for (let v = sc.lo; v <= sc.hi + sc.step / 2; v += sc.step) {
+      S("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: Math.abs(v) < 1e-9 ? "var(--line)" : "var(--grid)" }, svg);
+      S("text", { x: m.l - 8, y: Y(v) + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11 }, svg).textContent = yF(v);
+    }
+    const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 64))));
+    for (let i = 0; i < n; i += step) S("text", { x: X(i), y: H - 8, "text-anchor": i === 0 && n > 1 ? "start" : "middle", fill: "var(--muted)", "font-size": 11 }, svg).textContent = lF(labels[i]);
+    const base = Y(Math.max(sc.lo, Math.min(0, sc.hi)));
+    for (const s of series) {
+      let d = "", pen = false, firstX = null, lastX = null, prevY = null;
+      s.values.forEach((v, i) => {
+        if (v == null || !isFinite(v)) { pen = false; return; }
+        const xx = X(i).toFixed(1), yy = Y(v).toFixed(1);
+        if (s.step && pen) d += `H${xx}V${yy}`; else d += `${pen ? "L" : "M"}${xx},${yy}`;
+        if (firstX === null) firstX = xx; lastX = xx; prevY = yy; pen = true;
+      });
+      if (s.area && firstX !== null) S("path", { d: `${d}L${lastX},${base}L${firstX},${base}Z`, fill: s.color, opacity: 0.12, stroke: "none" }, svg);
+      S("path", { d, fill: "none", stroke: s.color, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", "stroke-dasharray": s.dash ? "5 4" : "none", opacity: s.opacity || 1 }, svg);
+      if (n <= 26 && !s.noDots) s.values.forEach((v, i) => { if (v != null) S("circle", { cx: X(i), cy: Y(v), r: 2.5, fill: s.color }, svg); });
+    }
+    for (const k of o.marks || []) S("circle", { cx: X(k.i), cy: Y(k.v), r: k.r || 3, fill: k.color, "fill-opacity": 0.75, stroke: "#0d1016", "stroke-width": 0.8 }, svg);
+    const guide = S("line", { y1: m.t, y2: m.t + ih, stroke: "var(--muted)", "stroke-dasharray": "3 3", opacity: 0 }, svg);
+    host.appendChild(svg);
+    const tip = tipBox(host);
+    svg.addEventListener("pointermove", (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = ((ev.clientX - rect.left) / rect.width) * W;
+      const i = Math.max(0, Math.min(n - 1, Math.round(((px - m.l) / iw) * (n - 1))));
+      guide.setAttribute("x1", X(i)); guide.setAttribute("x2", X(i)); guide.setAttribute("opacity", 1);
+      const rows = series.filter((s) => s.values[i] != null && !s.noTip).map((s) => tipRow(s.color, s.name, (s.fmt || tF)(s.values[i]))).join("");
+      placeTip(tip, host, (X(i) / W) * rect.width, `<b>${esc(lF(labels[i], true))}</b>${rows}${o.tipExtra ? o.tipExtra(i) : ""}`);
+    });
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; guide.setAttribute("opacity", 0); });
+  }
+
+  function barChart(host, labels, groups, o = {}) {
+    host.replaceChildren(); host.classList.add("chart");
+    const line = o.line;
+    const vals = groups.flatMap((g) => g.values).concat(line ? line.values : []);
+    if (!labels.length || !groups.length) return emptyIn(host, "No data for this selection.");
+    const W = Math.max(300, host.clientWidth || 600), H = o.height || 260;
+    const m = { l: 60, r: 10, t: 10, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b, n = labels.length;
+    const sc = scale(Math.min(0, ...vals), Math.max(0, ...vals), 4);
+    const Y = (v) => m.t + ih - ((v - sc.lo) / (sc.hi - sc.lo)) * ih;
+    const bw = iw / n, inner = Math.min(bw * 0.78, 56), gw = inner / groups.length;
+    const X = (i) => m.l + bw * i + bw / 2;
+    const yF = o.yFmt || eurK, tF = o.tipFmt || eur2, lF = o.labelFmt || ((l) => l);
+    const svg = S("svg", { viewBox: `0 0 ${W} ${H}` });
+    for (let v = sc.lo; v <= sc.hi + sc.step / 2; v += sc.step) {
+      S("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: Math.abs(v) < 1e-9 ? "var(--line)" : "var(--grid)" }, svg);
+      S("text", { x: m.l - 8, y: Y(v) + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11 }, svg).textContent = yF(v);
+    }
+    const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 52))));
+    for (let i = 0; i < n; i += step) S("text", { x: X(i), y: H - 8, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11 }, svg).textContent = lF(labels[i]);
+    const hl = S("rect", { y: m.t, height: ih, width: bw, fill: "var(--panel2)", opacity: 0 }, svg);
+    groups.forEach((g, gi) => g.values.forEach((v, i) => {
+      if (!v) return;
+      const y0 = Y(Math.max(v, 0)), hh = Math.max(1, Math.abs(Y(v) - Y(0)));
+      S("rect", { x: X(i) - inner / 2 + gi * gw + 0.5, y: y0, width: Math.max(1, gw - 1), height: hh, rx: Math.min(3, gw / 3), fill: g.color }, svg);
+    }));
+    if (line) {
+      let d = "";
+      line.values.forEach((v, i) => { d += `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`; });
+      S("path", { d, fill: "none", stroke: line.color, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+      if (n <= 40) line.values.forEach((v, i) => S("circle", { cx: X(i), cy: Y(v), r: 2.5, fill: line.color }, svg));
+    }
+    host.appendChild(svg);
+    const tip = tipBox(host);
+    const idx = (ev) => { const rect = svg.getBoundingClientRect(); const px = ((ev.clientX - rect.left) / rect.width) * W; return [Math.max(0, Math.min(n - 1, Math.floor((px - m.l) / bw))), rect]; };
+    svg.addEventListener("pointermove", (ev) => {
+      const [i, rect] = idx(ev);
+      hl.setAttribute("x", m.l + bw * i); hl.setAttribute("opacity", 0.6);
+      const rows = groups.map((g) => tipRow(g.color, g.name, tF(g.values[i]))).join("") + (line ? tipRow(line.color, line.name, tF(line.values[i])) : "");
+      placeTip(tip, host, (X(i) / W) * rect.width, `<b>${esc(lF(labels[i], true))}</b>${rows}${o.tipExtra ? o.tipExtra(i) : ""}${o.onClick ? `<div class="sub" style="margin-top:4px">Click for the bookings</div>` : ""}`);
+    });
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; hl.setAttribute("opacity", 0); });
+    if (o.onClick) { svg.style.cursor = "pointer"; svg.addEventListener("click", (ev) => o.onClick(idx(ev)[0])); }
+  }
+
+  function donut(host, items, o = {}) {
+    host.replaceChildren();
+    const total = sum(items.map((i) => i.value));
+    if (!items.length || total <= 0) return emptyIn(host, "No bookings for this selection.");
+    const wrap = frag(`<div class="donut"></div>`);
+    const svg = S("svg", { viewBox: "0 0 200 200" });
+    const R = 74, Cc = 2 * Math.PI * R;
+    let off = 0;
+    const arcs = items.map((it) => {
+      const len = (it.value / total) * Cc;
+      const c = S("circle", { cx: 100, cy: 100, r: R, fill: "none", stroke: it.color, "stroke-width": 30,
+        "stroke-dasharray": `${Math.max(0, len - (items.length > 1 ? 1.2 : 0))} ${Cc}`, "stroke-dashoffset": -off, transform: "rotate(-90 100 100)" }, svg);
+      off += len; return c;
+    });
+    const t1 = S("text", { x: 100, y: 97, "text-anchor": "middle", fill: "var(--muted)", "font-size": 12 }, svg);
+    const t2 = S("text", { x: 100, y: 117, "text-anchor": "middle", fill: "var(--text)", "font-size": 17, "font-weight": 600 }, svg);
+    const center = (it) => { t1.textContent = it ? (it.name.length > 18 ? it.name.slice(0, 17) + "…" : it.name) : (o.label || "Total"); t2.textContent = eur(it ? it.value : total); };
+    center();
+    const leg = frag(`<div class="dleg${o.onClick ? " clickable" : ""}"></div>`);
+    items.forEach((it, i) => {
+      const li = frag(`<div class="li"><i style="background:${it.color}"></i><span class="nm" title="${esc(it.name)}">${esc(it.name)}</span><span class="am">${eur(it.value)}</span><span class="sh">${Math.round((it.value / total) * 100)}%</span></div>`);
+      const on = () => { arcs[i].setAttribute("stroke-width", 38); li.classList.add("hl"); center(it); };
+      const offf = () => { arcs[i].setAttribute("stroke-width", 30); li.classList.remove("hl"); center(); };
+      li.addEventListener("pointerenter", on); li.addEventListener("pointerleave", offf);
+      arcs[i].addEventListener("pointerenter", on); arcs[i].addEventListener("pointerleave", offf);
+      if (o.onClick) { li.addEventListener("click", () => o.onClick(it)); arcs[i].addEventListener("click", () => o.onClick(it)); }
+      leg.appendChild(li);
+    });
+    wrap.append(svg, leg); host.appendChild(wrap);
+  }
+
+  function hbars(host, items, o = {}) {
+    host.replaceChildren();
+    if (!items.length) return emptyIn(host, "Nothing to show.");
+    const max = Math.max(...items.map((i) => Math.abs(i.value)), 1);
+    const box = frag(`<div class="hbars${o.onClick ? " clickable" : ""}"></div>`);
+    for (const it of items) {
+      const color = it.value < 0 ? C.exp : it.color;
+      const row = frag(`<div class="hb" title="${esc(it.name)}"><span class="nm">${esc(it.name)}</span><span class="bar"><i style="width:${(Math.abs(it.value) / max) * 100}%;background:${color}"></i></span><span class="am${it.value < 0 ? " neg" : ""}">${(o.fmt || eur)(it.value)}</span></div>`);
+      if (o.onClick) row.addEventListener("click", () => o.onClick(it));
+      box.appendChild(row);
+    }
+    host.appendChild(box);
+  }
+  function legendHtml(series) { return series.map((s) => `<span class="${s.dash ? "dash" : s.dot ? "dot" : ""}" style="--c:${s.color}">${esc(s.name)}</span>`).join(""); }
+
+  function miniIcon(type, w = 96, h = 60) {
+    const box = (inner) => `<svg width="${w}" height="${h}" viewBox="0 0 96 60" aria-hidden="true">${inner}</svg>`;
+    switch (type) {
+      case "incexp": return box([8, 20, 32, 44, 56, 68, 80].map((x, i) => `<rect x="${x}" y="${18 + (i % 3) * 4}" width="5" height="${30 - (i % 3) * 4}" rx="1" fill="${C.inc}"/><rect x="${x + 5}" y="${26 + ((i + 1) % 3) * 3}" width="5" height="${22 - ((i + 1) % 3) * 3}" rx="1" fill="${C.exp}"/>`).join(""));
+      case "category": case "budget": case "tag": case "saved": {
+        const segs = [[0.38, PAL[0]], [0.22, PAL[1]], [0.16, PAL[2]], [0.14, PAL[3]], [0.1, PAL[4]]]; let off = 0; const Cc = 2 * Math.PI * 18;
+        return box(segs.map(([f, c]) => { const s = `<circle cx="30" cy="30" r="18" fill="none" stroke="${c}" stroke-width="9" stroke-dasharray="${f * Cc - 1} ${Cc}" stroke-dashoffset="${-off}" transform="rotate(-90 30 30)"/>`; off += f * Cc; return s; }).join("")
+          + [0, 1, 2, 3].map((i) => `<rect x="58" y="${14 + i * 9}" width="5" height="5" rx="1" fill="${PAL[i]}"/><rect x="66" y="${15 + i * 9}" width="${22 - i * 3}" height="3" rx="1" fill="#3a4352"/>`).join(""));
+      }
+      case "payee": case "balances": return box([0, 1, 2, 3, 4].map((i) => `<rect x="10" y="${8 + i * 10}" width="${74 - i * 13}" height="6" rx="2" fill="${PAL[i]}"/>`).join(""));
+      case "trend": return box(`<path d="M8 44 L24 36 L40 40 L56 24 L72 28 L88 14" fill="none" stroke="${PAL[0]}" stroke-width="2.5"/><path d="M8 50 L24 46 L40 30 L56 38 L72 34 L88 30" fill="none" stroke="${PAL[1]}" stroke-width="2.5"/>`);
+      case "networth": case "btcchart": return box(`<path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16 L88 54 L8 54Z" fill="${type === "btcchart" ? C.btc : PAL[0]}" opacity=".18"/><path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16" fill="none" stroke="${type === "btcchart" ? C.btc : PAL[0]}" stroke-width="2.5"/>`);
+      case "recent": return box([0, 1, 2, 3, 4].map((i) => `<rect x="10" y="${8 + i * 10}" width="40" height="4" rx="1" fill="#3a4352"/><rect x="${68 + (i % 2) * 6}" y="${8 + i * 10}" width="${18 - (i % 2) * 6}" height="4" rx="1" fill="${i % 3 ? C.exp : C.inc}"/>`).join(""));
+      case "kpi": return box([0, 1, 2].map((i) => `<rect x="${6 + i * 30}" y="14" width="26" height="32" rx="4" fill="#26303d"/><rect x="${10 + i * 30}" y="20" width="12" height="3" rx="1" fill="#5b6475"/><rect x="${10 + i * 30}" y="29" width="17" height="6" rx="1" fill="${[C.inc, C.exp, PAL[0]][i]}"/>`).join(""));
+      case "btc": return box(`<circle cx="30" cy="30" r="17" fill="${C.btc}"/><text x="30" y="37" text-anchor="middle" font-size="20" font-weight="700" fill="#0d1016">₿</text><rect x="56" y="18" width="30" height="5" rx="1" fill="#5b6475"/><rect x="56" y="28" width="22" height="8" rx="1" fill="${C.inc}"/>`);
+      default: return box("");
+    }
+  }
+
+  /* ============================================================ report types */
+  const TYPES = {
+    incexp: { name: "Income vs expenses", desc: "Monthly income, expenses and what was left over.", period: "12m", kind: "both", rows: true, kinds: true },
+    category: { name: "Categories", desc: "How spending or income splits across categories.", dim: "category", period: "lastmonth", kind: "e", rows: true, kinds: true },
+    budget: { name: "Budgets", desc: "How spending splits across your budgets.", dim: "budget", period: "lastmonth", kind: "e", rows: true, kinds: true },
+    tag: { name: "Tags", desc: "Spending or income per tag.", dim: "tag", period: "12m", kind: "e", rows: true, kinds: true },
+    payee: { name: "Payees", desc: "Who your money goes to, and who it comes from.", dim: "payee", period: "3m", kind: "e", rows: true, kinds: true },
+    trend: { name: "Trend over time", desc: "Chosen categories, tags or payees month by month.", period: "24m", kind: "e", rows: true, kinds: true },
+    networth: { name: "Net worth", desc: "How the total across your accounts developed.", period: "24m", btc: true },
+    balances: { name: "Account balances", desc: "What each account holds right now.", btc: true },
+    recent: { name: "Latest transactions", desc: "The newest bookings, filtered the way you like.", period: "3m", kind: "both", rows: true, kinds: true },
+  };
+  const HOME_TYPES = {
+    kpi: { name: "Month at a glance", desc: "This month's income and spending against last month and your average." },
+    btc: { name: "Bitcoin summary", desc: "Stack, value and result of your Kraken purchases." },
+    btcchart: { name: "Bitcoin value vs invested", desc: "The stack's value against the money you put in." },
+    saved: { name: "Saved report", desc: "Show one of your saved reports." },
+  };
+  const ALLTYPES = { ...TYPES, ...HOME_TYPES };
+  function newSpec(type) {
+    const t = ALLTYPES[type] || {};
+    const s = { type };
+    if (t.period) s.period = t.period;
+    if (t.kind) s.kind = t.kind;
+    if (type === "networth" || type === "balances") s.btc = true;
+    if (type === "trend") { s.tdim = "category"; s.tvalues = []; }
+    if (type === "btcchart") s.range = "365";
+    return s;
+  }
+  function specTitle(s) {
+    if (s.title) return s.title;
+    if (s.type === "saved") { const r = (D.reports || []).find((x) => x.id === s.ref); return r ? r.name : "Saved report"; }
+    const t = ALLTYPES[s.type] || { name: s.type };
+    const kind = TYPES[s.type] && TYPES[s.type].dim && s.kind === "i" ? " (income)" : "";
+    return t.name + kind + (s.period && t.period ? ` · ${periodText(s)}` : "");
+  }
+
+  function errorHtml(e) {
+    const msg = String(e && e.message || e);
+    return `<div class="notice error">${esc(msg)}${/token|settings/i.test(msg) ? ` <a href="#" data-open-settings>Open settings</a>` : ""}</div>`;
+  }
+  document.addEventListener("click", (ev) => { if (ev.target.closest("[data-open-settings]")) { ev.preventDefault(); openSettings(); } });
+
+  async function renderReport(host, spec, mode = "full") {
+    host.innerHTML = `<div class="empty">Loading…</div>`;
+    try {
+      await loadCfg();
+      switch (spec.type) {
+        case "networth": return await rNetworth(host, spec, mode);
+        case "balances": return await rBalances(host, spec, mode);
+        case "btc": case "btcchart": return await rBtcWidget(host, spec, mode);
+        case "saved": {
+          await loadReports();
+          const s = D.reports.find((r) => r.id === spec.ref);
+          if (!s) return emptyIn(host, "This saved report was deleted. Edit the widget to pick another.");
+          return renderReport(host, s, mode);
+        }
+      }
+      await loadRows();
+      if (spec.type === "kpi") return rKpi(host, spec, mode);
+      if (spec.type === "incexp") return rIncExp(host, spec, mode);
+      if (spec.type === "trend") return rTrend(host, spec, mode);
+      if (spec.type === "recent") return rRecent(host, spec, mode);
+      if (TYPES[spec.type] && TYPES[spec.type].dim) return rBreakdown(host, spec, mode);
+      emptyIn(host, "Unknown report type.");
+    } catch (e) { host.innerHTML = errorHtml(e); }
+  }
+  const stat = (label, value, cls = "") => `<div class="stat"><span>${esc(label)}</span><b class="${cls}">${value}</b></div>`;
+
+  function txTable(rows, limit = 200) {
+    const list = [...rows].sort((a, b) => (a[9] < b[9] ? 1 : -1)).slice(0, limit);
+    if (!list.length) return `<div class="empty">No bookings.</div>`;
+    return `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">Payee</th><th class="l">Description</th><th class="l">Category</th><th class="l">Account</th><th>Amount</th></tr></thead><tbody>${list.map((r) =>
+      `<tr><td>${r[9]}</td><td class="l">${esc(r[6])}</td><td class="l wr">${esc(r[10])}</td><td class="l">${esc(r[3] || "–")}</td><td class="l">${esc(r[8])}</td><td class="${r[1] === "i" ? "pos" : ""}">${r[1] === "i" ? "+" : "−"}${eur2(r[2])}</td></tr>`).join("")}</tbody></table></div>${rows.length > limit ? `<div class="sub" style="margin-top:6px">Showing the newest ${limit} of ${rows.length}.</div>` : ""}`;
+  }
+  function drill(host, rows, title) {
+    const d = host.querySelector(".drill");
+    if (!d) return;
+    d.innerHTML = `<h2 style="margin:0 0 6px;font-size:14px;display:flex;justify-content:space-between">${esc(title)} <span class="sub">${rows.length} bookings · ${eur2(sum(rows.map((r) => (r[1] === "i" ? r[2] : -r[2]))))}</span></h2>${txTable(rows, 300)}`;
+    d.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function rIncExp(host, spec, mode) {
+    const range = periodRange(spec), rows = filterRows(spec, range), months = monthKeys(range.from, range.to);
+    const I = months.map(() => 0), E = months.map(() => 0), pos = new Map(months.map((k, i) => [k, i]));
+    for (const r of rows) { const i = pos.get(r[0]); if (i == null) continue; if (r[1] === "i") I[i] += r[2]; else E[i] += r[2]; }
+    const N = months.map((_, i) => I[i] - E[i]), ti = sum(I), te = sum(E);
+    const kind = spec.kind || "both";
+    host.innerHTML = `<div class="sumline">${kind !== "e" ? stat("Income", eur(ti), "pos") : ""}${kind !== "i" ? stat("Expenses", eur(te), "neg") : ""}${kind === "both" ? stat("Left over", eur(ti - te), ti - te >= 0 ? "pos" : "neg") : ""}${kind === "both" && ti > 0 ? stat("Savings rate", pct((ti - te) / ti, 0)) : ""}${months.length > 1 ? stat(kind === "i" ? "Ø income / month" : "Ø spent / month", eur((kind === "i" ? ti : te) / months.length)) : ""}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
+    const groups = [];
+    if (kind !== "e") groups.push({ name: "Income", color: C.inc, values: I });
+    if (kind !== "i") groups.push({ name: "Expenses", color: C.exp, values: E });
+    const line = kind === "both" ? { name: "Left over", color: C.net, values: N } : null;
+    barChart(host.querySelector(".cb"), months, groups, { line, labelFmt: monthLabel, height: mode === "full" ? 300 : 220,
+      onClick: mode === "full" ? (i) => drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)) : null });
+    host.querySelector(".legend").innerHTML = legendHtml(groups.concat(line ? [line] : []));
+    if (mode !== "full") return;
+    let html = `<div class="tablewrap"><table><thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Left over</th><th>Savings rate</th></tr></thead><tbody>`;
+    for (let i = months.length - 1; i >= 0; i--) html += `<tr class="click" data-i="${i}"><td>${monthLabel(months[i], true)}</td><td>${eur2(I[i])}</td><td>${eur2(E[i])}</td><td class="${N[i] >= 0 ? "pos" : "neg"}">${eur2(N[i])}</td><td>${I[i] > 0 ? pct(N[i] / I[i], 0) : "–"}</td></tr>`;
+    html += `<tr class="total"><td>Total</td><td>${eur2(ti)}</td><td>${eur2(te)}</td><td>${eur2(ti - te)}</td><td>${ti > 0 ? pct((ti - te) / ti, 0) : "–"}</td></tr>`;
+    html += `<tr><td class="sub">Ø per month</td><td>${eur2(ti / months.length)}</td><td>${eur2(te / months.length)}</td><td>${eur2((ti - te) / months.length)}</td><td></td></tr></tbody></table></div>`;
+    const tbl = host.querySelector(".tbl"); tbl.innerHTML = html;
+    tbl.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", () => { const i = +tr.dataset.i; drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)); }));
+  }
+
+  function rBreakdown(host, spec, mode) {
+    const dim = TYPES[spec.type].dim, kind = spec.kind === "i" ? "i" : "e";
+    const range = periodRange(spec), rows = filterRows(spec, range, kind);
+    const groups = groupBy(rows, dim), total = sum(groups.map((g) => g.total));
+    const nM = monthKeys(range.from, range.to).length;
+    const top = mode === "full" ? 12 : (dim === "payee" ? 8 : 6);
+    const items = groups.slice(0, top).map((g, i) => ({ name: g.name, value: g.total, color: PAL[i % PAL.length], g }));
+    if (groups.length > top) { const rest = groups.slice(top); items.push({ name: `Other (${rest.length})`, value: sum(rest.map((g) => g.total)), color: OTHER, g: { name: "Other", rows: rest.flatMap((g) => g.rows) } }); }
+    host.innerHTML = `<div class="sumline">${stat(kind === "i" ? "Received" : "Spent", eur(total), kind === "i" ? "pos" : "")}${stat("Bookings", intF(rows.length))}${nM > 1 ? stat("Ø per month", eur(total / nM)) : ""}</div><div class="cb"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}${dim === "tag" ? `<div class="sub" style="margin-top:6px">A booking with several tags counts under each of them.</div>` : ""}`;
+    const onClick = mode === "full" ? (it) => drill(host, it.g.rows, it.g.name) : null;
+    if (dim === "payee") hbars(host.querySelector(".cb"), items, { onClick });
+    else donut(host.querySelector(".cb"), items, { onClick, label: kind === "i" ? "Received" : "Spent" });
+    if (mode !== "full") return;
+    const tbl = host.querySelector(".tbl");
+    tbl.innerHTML = `<div class="tablewrap"><table><thead><tr><th>${{ category: "Category", budget: "Budget", tag: "Tag", payee: "Payee" }[dim]}</th><th>Amount</th><th>Share</th><th>Bookings</th><th>Ø / month</th></tr></thead><tbody>${groups.map((g, i) =>
+      `<tr class="click" data-i="${i}"><td>${i < top ? `<span style="color:${PAL[i % PAL.length]}">●</span> ` : ""}${esc(g.name)}</td><td>${eur2(g.total)}</td><td>${total ? Math.round((g.total / total) * 100) : 0}%</td><td>${g.count}</td><td>${eur2(g.total / nM)}</td></tr>`).join("")}<tr class="total"><td>Total</td><td>${eur2(total)}</td><td>100%</td><td>${rows.length}</td><td>${eur2(total / nM)}</td></tr></tbody></table></div>`;
+    tbl.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", () => { const g = groups[+tr.dataset.i]; drill(host, g.rows, g.name); }));
+  }
+
+  function rTrend(host, spec, mode) {
+    const dim = spec.tdim || "category", kind = spec.kind === "i" ? "i" : "e";
+    const range = periodRange(spec), rows = filterRows(spec, range, kind), months = monthKeys(range.from, range.to);
+    const groups = groupBy(rows, dim);
+    const chosen = spec.tvalues && spec.tvalues.length ? groups.filter((g) => spec.tvalues.includes(g.name)) : groups.slice(0, 5);
+    const series = chosen.map((g, i) => {
+      const per = new Map(); for (const r of g.rows) per.set(r[0], (per.get(r[0]) || 0) + r[2]);
+      return { name: g.name, color: PAL[i % PAL.length], values: months.map((k) => per.get(k) || 0), total: g.total };
+    });
+    if (spec.combine && series.length > 1) series.splice(0, series.length, { name: "Combined", color: PAL[0], width: 2.5, values: months.map((_, i) => sum(series.map((s) => s.values[i]))), total: sum(series.map((s) => s.total)) });
+    host.innerHTML = `<div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
+    lineChart(host.querySelector(".cb"), months, series, { labelFmt: monthLabel, height: mode === "full" ? 300 : 220, empty: "Pick items in the report settings." });
+    host.querySelector(".legend").innerHTML = legendHtml(series);
+    if (mode !== "full") return;
+    const lastFull = months.length > 1 ? months.length - 1 : 0;
+    host.querySelector(".tbl").innerHTML = `<div class="tablewrap"><table><thead><tr><th>Item</th><th>Total</th><th>Ø / month</th><th>Highest month</th><th>${monthLabel(months[lastFull], true)}</th></tr></thead><tbody>${series.map((s) => {
+      const mx = Math.max(...s.values), mi = s.values.indexOf(mx);
+      return `<tr><td><span style="color:${s.color}">●</span> ${esc(s.name)}</td><td>${eur2(s.total)}</td><td>${eur2(s.total / months.length)}</td><td>${eur2(mx)} <span class="sub">${monthLabel(months[mi], true)}</span></td><td>${eur2(s.values[lastFull])}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+  }
+
+  function rRecent(host, spec, mode) {
+    const rows = filterRows(spec);
+    host.innerHTML = mode === "full" ? txTable(rows, 500) : (() => {
+      const list = [...rows].sort((a, b) => (a[9] < b[9] ? 1 : -1)).slice(0, 8);
+      if (!list.length) return `<div class="empty">No bookings.</div>`;
+      return `<table style="table-layout:fixed"><colgroup><col style="width:52px"><col><col style="width:96px"></colgroup><tbody>${list.map((r) => `<tr><td>${r[9].slice(5).split("-").reverse().join(".")}</td><td class="l" style="overflow:hidden;text-overflow:ellipsis">${esc(r[6] || r[10])}</td><td class="${r[1] === "i" ? "pos" : ""}">${r[1] === "i" ? "+" : "−"}${eur2(r[2])}</td></tr>`).join("")}</tbody></table>`;
+    })();
+  }
+
+  function rKpi(host, spec) {
+    const y = now.getFullYear(), m = now.getMonth();
+    const key = (yy, mm) => { const d = new Date(yy, mm, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+    const cur = key(y, m), prev = key(y, m - 1);
+    const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 12)}-01`, to: TODAY, kind: "both" });
+    const tot = (k, t) => sum(base.filter((r) => r[0] === k && r[1] === t).map((r) => r[2]));
+    const avg = (t) => { let s = 0; for (let i = 1; i <= 12; i++) s += tot(key(y, m - i), t); return s / 12; };
+    const ci = tot(cur, "i"), ce = tot(cur, "e"), pi = tot(prev, "i"), pe = tot(prev, "e"), ai = avg("i"), ae = avg("e");
+    const day = now.getDate(), dim = new Date(y, m + 1, 0).getDate();
+    const cmp = (a, b, goodUp) => { if (!b) return ""; const p = (a - b) / b; const good = goodUp ? p >= 0 : p <= 0; return `<span class="${good ? "pos" : "neg"}">${pct(p, 0)}</span>`; };
+    const cats = groupBy(base.filter((r) => r[0] === cur && r[1] === "e"), "category").slice(0, 3);
+    host.innerHTML = `<div class="tiles">
+      <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
+      <div class="tile"><span>Spent ${MONTHS[m]}</span><b>${eur(ce)}</b><small>${cmp(ce, pe * (day / dim))} vs same point last month · Ø ${eur(ae)}</small></div>
+      <div class="tile"><span>Left over</span><b class="${ci - ce >= 0 ? "pos" : "neg"}">${eur(ci - ce)}</b><small>last month ${eur(pi - pe)}</small></div>
+      <div class="tile"><span>Spending pace</span><b>${eur((ce / day) * dim)}</b><small>projected for ${MONTHS[m]} at day ${day} of ${dim}</small></div>
+      <div class="tile"><span>Top categories ${MONTHS[m]}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
+    </div>`;
+  }
+
+  async function rNetworth(host, spec, mode) {
+    const range = periodRange(spec);
+    const months = Math.max(2, Math.min(180, monthKeys(range.from, TODAY).length));
+    const [nw] = await Promise.all([loadNW(months), loadRows().catch(() => null)]);
+    let accs = nw.accounts.filter((a) => a.currency === D.cur);
+    accs = spec.accounts && spec.accounts.length ? accs.filter((a) => spec.accounts.includes(a.name)) : accs.filter((a) => a.net);
+    const labels = nw.dates, total = labels.map((_, i) => sum(accs.map((a) => a.values[i])));
+    const series = [];
+    let bv = null;
+    if (spec.btc) {
+      const M = await btcModelSafe();
+      if (M && M.ok) bv = labels.map((d) => M.valueOn(d));
+    }
+    const grand = bv ? total.map((v, i) => v + bv[i]) : total;
+    series.push({ name: bv ? "Total incl. Bitcoin" : "Total", color: C.net, width: 2.5, values: grand, area: true });
+    if (bv) { series.push({ name: "Accounts", color: "#a5d6ff", values: total, dash: true }); series.push({ name: "Bitcoin (Kraken)", color: C.btc, values: bv }); }
+    if (spec.split) accs.forEach((a, i) => series.push({ name: a.name, color: PAL[(i + 1) % PAL.length], values: a.values, width: 1.5, opacity: 0.85 }));
+    const first = grand[0], last = grand[grand.length - 1];
+    host.innerHTML = `<div class="sumline">${stat("Now", eur(last))}${stat(`Since ${dayLabel(labels[0], true)}`, `${eur(last - first)} <span class="sub">${first ? pct((last - first) / Math.abs(first)) : ""}</span>`, last >= first ? "pos" : "neg")}${stat("Highest", eur(Math.max(...grand)))}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div>` : ""}`;
+    lineChart(host.querySelector(".cb"), labels, series, { labelFmt: (d, long) => long ? dayLabel(d, true) : monthLabel(d.slice(0, 7)), zero: false, height: mode === "full" ? 320 : 220 });
+    host.querySelector(".legend").innerHTML = legendHtml(series);
+    if (mode !== "full") return;
+    const list = accs.map((a) => ({ name: a.name, a: a.values[0], b: a.values[a.values.length - 1] }));
+    if (bv) list.push({ name: "Bitcoin (Kraken buys)", a: bv[0], b: bv[bv.length - 1] });
+    host.querySelector(".tbl").innerHTML = `<div class="tablewrap"><table><thead><tr><th>Account</th><th>${dayLabel(labels[0], true)}</th><th>Now</th><th>Change</th></tr></thead><tbody>${list.sort((x, y) => y.b - x.b).map((r) =>
+      `<tr><td>${esc(r.name)}</td><td>${eur2(r.a)}</td><td>${eur2(r.b)}</td><td class="${r.b - r.a >= 0 ? "pos" : "neg"}">${eur2(r.b - r.a)}</td></tr>`).join("")}<tr class="total"><td>Total</td><td>${eur2(first)}</td><td>${eur2(last)}</td><td>${eur2(last - first)}</td></tr></tbody></table></div>
+      <div class="sub" style="margin-top:6px">Balances at each month end, read from Firefly. ${nw.accounts.length - accs.length ? `${nw.accounts.length - accs.length} account(s) left out (not in net worth, other currency, or filtered).` : ""}</div>`;
+  }
+
+  async function rBalances(host, spec, mode) {
+    const [res] = await Promise.all([loadAccounts(), loadRows().catch(() => null)]);
+    let accs = res.accounts.filter((a) => a.active && a.currency === D.cur);
+    if (spec.accounts && spec.accounts.length) accs = accs.filter((a) => spec.accounts.includes(a.name));
+    const items = accs.map((a, i) => ({ name: a.name, value: a.balance, color: PAL[i % PAL.length] }));
+    if (spec.btc) { const M = await btcModelSafe(); if (M && M.ok) items.push({ name: "Bitcoin (Kraken buys)", value: M.value, color: C.btc }); }
+    items.sort((a, b) => b.value - a.value);
+    items.forEach((it, i) => { if (it.color !== C.btc) it.color = PAL[i % PAL.length]; });
+    const total = sum(items.map((i) => i.value));
+    host.innerHTML = `<div class="sumline">${stat("Total", eur(total), total >= 0 ? "" : "neg")}${stat("Accounts", items.length)}</div><div class="cb"></div>`;
+    hbars(host.querySelector(".cb"), items, { fmt: eur });
+  }
+
+  /* ============================================================ bitcoin model */
+  async function btcModelSafe() { try { const d = await loadBtc(); return btcModel(d); } catch { return null; } }
+  function btcModel(data) {
+    if (D.btcModel && D.btcModel.spotKey === D.spot) return D.btcModel;
+    const M = computeBtc(data, D.spot);
+    M.spotKey = D.spot;
+    return (D.btcModel = M);
+  }
+  function fifoTake(lots, q) { while (q > 1e-12 && lots.length) { const l = lots[0], t = Math.min(l.qty, q); l.qty -= t; q -= t; if (l.qty <= 1e-12) lots.shift(); } }
+  function computeBtc(data, spotOverride) {
+    const P = data.prices || { px: [] }, px = P.px || [];
+    const t0 = Date.parse((P.start || TODAY) + "T00:00:00Z"), DAY = 864e5;
+    const spot = spotOverride || data.spot || px[px.length - 1] || 0;
+    const dayOf = (sec) => Math.floor((sec * 1000 - t0) / DAY);
+    const pxAt = (d) => (px.length ? px[Math.max(0, Math.min(px.length - 1, d))] : spot);
+    const pref = D.prefs || {}, asR = new Set(pref.asReward || []), notR = new Set(pref.notReward || []);
+    const tx = data.tx.map((r) => {
+      const o = { ...r, day: dayOf(r.t), date: isoUTC(r.t), autoType: r.type };
+      if (asR.has(r.ref) && o.btc > 0) o.type = "Reward";
+      if (notR.has(r.ref) && r.type === "Reward") o.type = "Internal";
+      return o;
+    });
+    let qty = 0, cost = 0, realised = 0, gross = 0, feeEur = 0, feeBtc = 0, proceeds = 0, soldQty = 0, buys = 0, sells = 0, rewardBtc = 0, rewardVal = 0;
+    const lots = [], steps = [], flows = [], warn = [], buyAmts = [];
+    for (const r of tx) {
+      if (r.type === "Buy" || r.type === "Reward" || r.type === "Convert in") {
+        const c = r.type === "Buy" ? r.eur : r.type === "Convert in" ? r.btc * pxAt(r.day) : 0;
+        r.cost = c; qty += r.btc; cost += c; gross += c;
+        if (r.type === "Buy") { buys++; feeEur += r.feeEur; buyAmts.push(r.eur); }
+        if (r.type === "Reward") { rewardBtc += r.btc; rewardVal += r.btc * pxAt(r.day); }
+        if (c > 0) flows.push([r.t * 1000, -c]);
+        lots.push({ t: r.t, qty: r.btc, price: r.btc ? c / r.btc : 0 });
+      } else if (r.type === "Sell" || r.type === "Convert out") {
+        const val = r.type === "Sell" ? r.eur : r.btc * pxAt(r.day);
+        if (r.btc > qty + 1e-8) warn.push(`${r.date}: sold ${btcS(r.btc)} BTC but the Kraken buys only add up to ${btcS(qty)} BTC at that point (coins deposited from elsewhere?).`);
+        const q = Math.min(r.btc, qty), avg = qty > 0 ? cost / qty : 0;
+        r.value = val; r.realised = val - avg * q;
+        realised += r.realised; cost -= avg * q; qty -= q; soldQty += q; proceeds += val; sells++;
+        feeEur += r.feeEur || 0; flows.push([r.t * 1000, val]); fifoTake(lots, r.btc);
+      } else if (r.type === "Withdrawal") {
+        feeBtc += r.feeBtc || 0; qty -= r.feeBtc || 0; fifoTake(lots, r.feeBtc || 0);
+      }
+      if (qty < 0) qty = 0;
+      steps.push({ day: r.day, qty, cost });
+    }
+    const n = px.length, day0 = tx.length ? Math.max(0, Math.min(n - 1, tx[0].day)) : 0;
+    const dates = [], dq = [], dc = [], dv = [], dp = [], davg = [];
+    let k = 0, cq = 0, cc = 0;
+    for (let d = day0; d < n; d++) {
+      while (k < steps.length && steps[k].day <= d) { cq = steps[k].qty; cc = steps[k].cost; k++; }
+      const p = d === n - 1 ? spot : px[d];
+      dates.push(new Date(t0 + d * DAY).toISOString().slice(0, 10)); dq.push(cq); dc.push(cc); dp.push(p); dv.push(cq * p); davg.push(cq > 0 ? cc / cq : null);
+    }
+    const value = qty * spot, avg = qty > 0 ? cost / qty : 0;
+    const nowS = Date.now() / 1000, YEAR = 366 * 86400;
+    const free = sum(lots.filter((l) => l.t + YEAR <= nowS).map((l) => l.qty));
+    const locked = lots.filter((l) => l.t + YEAR > nowS).map((l) => ({ ...l, unlock: l.t + YEAR }));
+    const onKraken = data.balance_btc != null ? data.balance_btc : data.ledger_btc;
+    const xirr = (() => {
+      if (!flows.length || value <= 0) return null;
+      const fl = flows.concat([[Date.now(), value]]), f0 = fl[0][0], YR = 365 * DAY;
+      const npv = (r) => fl.reduce((a, [t, cf]) => a + cf / Math.pow(1 + r, (t - f0) / YR), 0);
+      let lo = -0.95, hi = 5;
+      if (npv(lo) < 0 || npv(hi) > 0) return null;
+      for (let i = 0; i < 200; i++) { const mid = (lo + hi) / 2; if (npv(mid) > 0) lo = mid; else hi = mid; }
+      const r = (lo + hi) / 2;
+      return r < -0.94 || r > 4.9 ? null : r;
+    })();
+    const sorted = [...buyAmts].sort((a, b) => a - b);
+    return {
+      ok: tx.length > 0, tx, qty, cost, realised, gross, feeEur, feeBtc, proceeds, soldQty, buys, sells, rewardBtc, rewardVal,
+      value, avg, spot, free, locked, onKraken, xirr, warn, dates, dq, dc, dv, dp, davg, pxAt,
+      median: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0,
+      valueOn(d) { const i = Math.floor((Date.parse(d + "T00:00:00Z") - t0) / DAY); if (!dates.length || i < day0) return 0; const j = Math.min(dates.length - 1, i - day0); return dq[j] * (i >= n - 1 ? spot : px[Math.min(n - 1, i)]); },
+    };
+  }
+
+  async function rBtcWidget(host, spec, mode) {
+    const data = await loadBtc();
+    if (!data.configured) { host.innerHTML = `<div class="empty">Add your Kraken key in <a href="#" data-open-settings>Settings</a> to see your Bitcoin here.</div>`; return; }
+    if (!data.tx.length) { host.innerHTML = `<div class="empty">${data.sync.running ? "First Kraken sync is running…" : "No BTC entries found in your Kraken ledger yet."}</div>`; return; }
+    const M = btcModel(data), pl = M.value - M.cost;
+    if (spec.type === "btc") {
+      host.innerHTML = `<div class="tiles">
+        <div class="tile"><span>Value</span><b>${eur(M.value)}</b><small>${btcS(M.qty)} BTC × ${eur(M.spot)}</small></div>
+        <div class="tile"><span>Unrealised P/L</span><b class="${pl >= 0 ? "pos" : "neg"}">${pl >= 0 ? "+" : "−"}${eur(Math.abs(pl))}</b><small>${M.cost ? pct(pl / M.cost) : ""} on ${eur(M.cost)} invested</small></div>
+        <div class="tile"><span>Average cost</span><b>${eur(M.avg)}</b><small>${!M.avg ? "" : M.avg > M.spot ? `break-even ${pct(M.avg / M.spot - 1)} away` : `price is ${pct(M.spot / M.avg - 1)} above it`}</small></div>
+        <div class="tile"><span>Tax-free now</span><b>${btcS(M.free)} BTC</b><small>${M.qty ? Math.round((M.free / M.qty) * 100) : 0}% held over a year</small></div>
+      </div>`;
+      return;
+    }
+    const days = +(spec.range || 365), start = days ? Math.max(0, M.dates.length - days) : 0;
+    const sl = (a) => a.slice(start);
+    host.innerHTML = `<div class="sumline">${stat("Value", eur(M.value))}${stat("Invested", eur(M.cost))}${stat("Result", `${pl >= 0 ? "+" : "−"}${eur(Math.abs(pl))}`, pl >= 0 ? "pos" : "neg")}</div><div class="cb"></div><div class="legend"></div>`;
+    const series = [{ name: "Value", color: C.btc, values: sl(M.dv), area: true }, { name: "Invested", color: "#a5d6ff", values: sl(M.dc), step: true, dash: true }];
+    lineChart(host.querySelector(".cb"), sl(M.dates), series, { labelFmt: dayLabel, height: mode === "full" ? 300 : 220 });
+    host.querySelector(".legend").innerHTML = legendHtml(series);
+  }
+
+  /* ============================================================ editor */
+  function msel(label, options, selected, onChange, allText = "All") {
+    const el = frag(`<details class="ms"><summary><span></span></summary><div class="in"><input type="search" placeholder="Search…"><div class="list"></div><div class="row"><button type="button" class="btn sm" data-a="none">Clear</button></div></div></details>`);
+    const sum_ = el.querySelector("summary span"), list = el.querySelector(".list"), q = el.querySelector("input");
+    const sel = new Set(selected || []);
+    const upd = () => { sum_.textContent = `${label}: ${sel.size ? (sel.size <= 2 ? [...sel].join(", ") : `${sel.size} selected`) : allText}`; };
+    const draw = () => {
+      const f = q.value.toLowerCase();
+      list.replaceChildren(...options.filter((o) => !f || o.toLowerCase().includes(f)).slice(0, 400).map((o) => {
+        const l = frag(`<label><input type="checkbox"><span></span></label>`);
+        l.querySelector("span").textContent = o; l.title = o;
+        const cb = l.querySelector("input"); cb.checked = sel.has(o);
+        cb.addEventListener("change", () => { cb.checked ? sel.add(o) : sel.delete(o); upd(); onChange([...sel]); });
+        return l;
+      }));
+      if (!options.length) list.innerHTML = `<div class="sub">Nothing to choose from yet.</div>`;
+    };
+    q.addEventListener("input", draw);
+    el.querySelector("[data-a=none]").addEventListener("click", () => { sel.clear(); upd(); draw(); onChange([]); });
+    upd(); draw();
+    return el;
+  }
+  function uniq(arr) { return [...new Set(arr)].filter(Boolean).sort((a, b) => a.localeCompare(b)); }
+  function optionsFor(dim) {
+    if (!D.rows) return [];
+    if (dim === "tag") return uniq(D.rows.flatMap((r) => r[5]));
+    return uniq(D.rows.map((r) => keysOf(r, dim)[0]));
+  }
+
+  async function editor(spec, onChange, { home = false } = {}) {
+    await Promise.all([loadRows().catch(() => null), loadReports(), loadCfg().catch(() => null)]);
+    let accNames = D.rows ? uniq(D.rows.map((r) => r[8])) : [];
+    if (spec.type === "networth" || spec.type === "balances") {
+      try { const a = await loadAccounts(); accNames = uniq(a.accounts.map((x) => x.name)); } catch {}
+    }
+    const t = ALLTYPES[spec.type] || {};
+    const el = frag(`<div class="ed"></div>`);
+    const add = (html) => { const e = frag(html); el.appendChild(e); return e; };
+    const change = (rebuild) => onChange(rebuild);
+
+    const typeSel = add(`<label class="f">Report type<select></select></label>`).querySelector("select");
+    for (const [k, v] of Object.entries(home ? ALLTYPES : TYPES)) typeSel.add(new Option(v.name, k));
+    typeSel.value = spec.type;
+    typeSel.addEventListener("change", () => {
+      const keep = { title: spec.title, name: spec.name, comment: spec.comment, size: spec.size, id: spec.id, created: spec.created };
+      for (const k of Object.keys(spec)) delete spec[k];
+      Object.assign(spec, newSpec(typeSel.value));
+      for (const [k, v] of Object.entries(keep)) if (v !== undefined) spec[k] = v;
+      change(true);
+    });
+
+    if (spec.type === "saved") {
+      const s = add(`<label class="f">Saved report<select></select></label>`).querySelector("select");
+      if (!D.reports.length) s.add(new Option("No saved reports yet", ""));
+      for (const r of D.reports) s.add(new Option(r.name, r.id));
+      s.value = spec.ref || (D.reports[0] && D.reports[0].id) || "";
+      spec.ref = s.value;
+      s.addEventListener("change", () => { spec.ref = s.value; change(); });
+      return el;
+    }
+    if (spec.type === "btcchart") {
+      const s = add(`<label class="f">Time range<select></select></label>`).querySelector("select");
+      for (const [v, l] of [["30", "1 month"], ["91", "3 months"], ["182", "6 months"], ["365", "1 year"], ["730", "2 years"], ["1095", "3 years"], ["0", "All"]]) s.add(new Option(l, v));
+      s.value = spec.range || "365";
+      s.addEventListener("change", () => { spec.range = s.value; change(); });
+      return el;
+    }
+    if (spec.type === "btc" || spec.type === "kpi") {
+      if (spec.type === "kpi") el.appendChild(accountsField());
+      return el;
+    }
+
+    if (t.period) {
+      const ps = add(`<label class="f">Period<select></select></label>`).querySelector("select");
+      for (const [v, l] of PERIODS) ps.add(new Option(l, v));
+      ps.value = spec.period || t.period;
+      ps.addEventListener("change", () => { spec.period = ps.value; change(true); });
+      if (spec.period === "custom") {
+        const r = periodRange(spec);
+        const two = add(`<div class="two"><label class="f">From<input type="date"></label><label class="f">To<input type="date"></label></div>`);
+        const [a, b] = two.querySelectorAll("input");
+        a.value = r.from; b.value = r.to;
+        a.addEventListener("change", () => { spec.from = a.value; change(); });
+        b.addEventListener("change", () => { spec.to = b.value; change(); });
+      }
+    }
+    if (t.kinds) {
+      const opts = spec.type === "incexp" || spec.type === "recent" ? [["both", "Both"], ["e", "Expenses"], ["i", "Income"]] : [["e", "Expenses"], ["i", "Income"]];
+      const w = add(`<label class="f">Show<span class="seg">${opts.map(([v, l]) => `<button type="button" data-v="${v}">${l}</button>`).join("")}</span></label>`);
+      const cur = spec.kind || t.kind;
+      w.querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.v === cur); b.addEventListener("click", () => { spec.kind = b.dataset.v; change(true); }); });
+    }
+    if (spec.type === "trend") {
+      const ds = add(`<label class="f">Compare<select><option value="category">Categories</option><option value="tag">Tags</option><option value="budget">Budgets</option><option value="payee">Payees</option></select></label>`).querySelector("select");
+      ds.value = spec.tdim || "category";
+      ds.addEventListener("change", () => { spec.tdim = ds.value; spec.tvalues = []; change(true); });
+      const w = add(`<div class="f"></div>`);
+      w.appendChild(msel("Items", optionsFor(spec.tdim || "category"), spec.tvalues, (v) => { spec.tvalues = v; change(); }, "top 5"));
+      const cb = add(`<label class="chk"><input type="checkbox"> Add them up into one line</label>`).querySelector("input");
+      cb.checked = !!spec.combine; cb.addEventListener("change", () => { spec.combine = cb.checked; change(); });
+    }
+    if (t.btc) {
+      const cb = add(`<label class="chk"><input type="checkbox"> Include Bitcoin from Kraken</label>`).querySelector("input");
+      cb.checked = !!spec.btc; cb.addEventListener("change", () => { spec.btc = cb.checked; change(); });
+      if (spec.type === "networth") {
+        const c2 = add(`<label class="chk"><input type="checkbox"> Show each account as its own line</label>`).querySelector("input");
+        c2.checked = !!spec.split; c2.addEventListener("change", () => { spec.split = c2.checked; change(); });
+      }
+    }
+    el.appendChild(frag(`<hr>`));
+    add(`<div class="sub">Filter</div>`);
+    el.appendChild(accountsField());
+    if (t.rows) {
+      const fs = add(`<label class="f">Only bookings with<select><option value="">any category, tag, budget or payee</option><option value="category">these categories…</option><option value="tag">these tags…</option><option value="budget">these budgets…</option><option value="payee">these payees…</option></select></label>`).querySelector("select");
+      fs.value = spec.fdim || "";
+      fs.addEventListener("change", () => { spec.fdim = fs.value || undefined; spec.fvalues = []; change(true); });
+      if (spec.fdim) el.appendChild(msel({ category: "Categories", tag: "Tags", budget: "Budgets", payee: "Payees" }[spec.fdim], optionsFor(spec.fdim), spec.fvalues, (v) => { spec.fvalues = v; change(); }, "none picked"));
+      const q = add(`<label class="f">Text contains<input type="search" placeholder="e.g. Bäcker, REWE, Netflix"></label>`).querySelector("input");
+      q.value = spec.q || "";
+      let qt; q.addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(() => { spec.q = q.value; change(); }, 300); });
+    }
+    return el;
+
+    function accountsField() {
+      const w = frag(`<div></div>`);
+      w.appendChild(msel("Accounts", accNames, spec.accounts, (v) => { spec.accounts = v; change(); }, spec.type === "networth" ? "net-worth accounts" : "all"));
+      return w;
+    }
+  }
+
+  /* ============================================================ home */
+  const DEFAULT_LAYOUT = [
+    { id: "w1", type: "kpi", size: "l" },
+    { id: "w2", type: "incexp", size: "m", period: "12m", kind: "both" },
+    { id: "w3", type: "category", size: "m", period: "lastmonth", kind: "e" },
+    { id: "w4", type: "networth", size: "m", period: "24m", btc: true },
+    { id: "w5", type: "btc", size: "m" },
+    { id: "w6", type: "balances", size: "s", btc: true },
+    { id: "w7", type: "payee", size: "s", period: "3m", kind: "e" },
+    { id: "w8", type: "recent", size: "s", period: "3m", kind: "both" },
+  ];
+  let editing = false;
+  async function renderHome() {
+    const v = $("v-home");
+    if (!D.layout) {
+      v.innerHTML = `<div class="empty">Loading…</div>`;
+      const r = await api("api/store/layout").catch(() => ({}));
+      D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT);
+      await loadReports();
+    }
+    v.innerHTML = `<div class="homebar"><h2>Home</h2><span class="sub">${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</span><span class="spacer"></span>
+      ${editing ? `<button class="btn" id="hAdd">+ Add widget</button><button class="btn" id="hReset">Reset</button><button class="btn primary" id="hDone">Done</button>` : `<button class="btn" id="hEdit">Edit home</button>`}</div>
+      ${editing ? `<div class="sub" style="margin:-6px 0 12px">Drag widgets to reorder, or use the arrows. ⚙ changes what a widget shows. S / M / L sets its width.</div>` : ""}
+      <div class="wgrid${editing ? " editing" : ""}" id="wgrid"></div>`;
+    const grid = $("wgrid");
+    if (!D.layout.length && !editing) grid.innerHTML = `<div class="card" style="grid-column:1/-1"><div class="empty">Your home is empty. Press <b>Edit home</b> and add a few widgets.</div></div>`;
+    D.layout.forEach((w, idx) => {
+      const card = frag(`<div class="card w w-${w.size || "m"}" data-id="${w.id}">
+        <h2><span class="ttl" title="Open as report"></span><span class="tools">
+          <span class="seg sm">${["s", "m", "l"].map((s) => `<button type="button" data-size="${s}" class="${(w.size || "m") === s ? "on" : ""}">${s.toUpperCase()}</button>`).join("")}</span>
+          <button class="iconbtn" data-a="up" title="Move up">↑</button><button class="iconbtn" data-a="down" title="Move down">↓</button>
+          <button class="iconbtn" data-a="cfg" title="Change">⚙</button><button class="iconbtn" data-a="del" title="Remove">✕</button></span></h2>
+        <div class="wbody"></div></div>`);
+      card.querySelector(".ttl").textContent = specTitle(w);
+      card.querySelector(".ttl").addEventListener("click", () => { if (!editing) openWidget(w); });
+      card.querySelectorAll("[data-size]").forEach((b) => b.addEventListener("click", () => { w.size = b.dataset.size; saveLayout(); renderHome(); }));
+      card.querySelector("[data-a=up]").addEventListener("click", () => move(idx, -1));
+      card.querySelector("[data-a=down]").addEventListener("click", () => move(idx, 1));
+      card.querySelector("[data-a=cfg]").addEventListener("click", () => configureWidget(w));
+      card.querySelector("[data-a=del]").addEventListener("click", () => { D.layout.splice(idx, 1); saveLayout(); renderHome(); });
+      if (editing) {
+        card.draggable = true;
+        card.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", w.id); e.dataTransfer.effectAllowed = "move"; });
+        card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("dragover"); });
+        card.addEventListener("dragleave", () => card.classList.remove("dragover"));
+        card.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const from = D.layout.findIndex((x) => x.id === e.dataTransfer.getData("text/plain"));
+          if (from < 0 || from === idx) return renderHome();
+          const [it] = D.layout.splice(from, 1); D.layout.splice(idx, 0, it); saveLayout(); renderHome();
+        });
+      }
+      grid.appendChild(card);
+      renderReport(card.querySelector(".wbody"), w, "widget");
+    });
+    if (editing) { const a = frag(`<button class="addtile">+ Add widget</button>`); a.addEventListener("click", addWidget); grid.appendChild(a); }
+    const on = (id, fn) => { const e = $(id); if (e) e.addEventListener("click", fn); };
+    on("hEdit", () => { editing = true; renderHome(); });
+    on("hDone", () => { editing = false; saveLayout(); renderHome(); });
+    on("hAdd", addWidget);
+    on("hReset", () => { if (confirmInline("hReset", "Really reset?")) { D.layout = clone(DEFAULT_LAYOUT); saveLayout(); renderHome(); } });
+  }
+  function confirmInline(id, text) { const b = $(id); if (b.dataset.sure) return true; b.dataset.sure = 1; b.textContent = text; b.classList.add("danger"); return false; }
+  function move(i, d) { const j = i + d; if (j < 0 || j >= D.layout.length) return; [D.layout[i], D.layout[j]] = [D.layout[j], D.layout[i]]; saveLayout(); renderHome(); }
+  function openWidget(w) {
+    if (w.type === "btc" || w.type === "btcchart") return (location.hash = "#bitcoin");
+    if (w.type === "saved") return (location.hash = `#reports/saved/${w.ref}`);
+    if (w.type === "kpi") return (location.hash = "#reports/new/incexp");
+    D.openSpec = clone(w); delete D.openSpec.id; delete D.openSpec.size; delete D.openSpec.title;
+    location.hash = "#reports/open";
+  }
+  function addWidget() {
+    const body = $("wdlgBody");
+    body.innerHTML = `<h2 style="margin:0 0 4px;font-size:17px">Add a widget</h2><div class="sub">Pick what it should show. You can change the details right after.</div><div class="catalog"></div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="wdClose">Cancel</button></div>`;
+    const cat = body.querySelector(".catalog");
+    for (const [k, t] of Object.entries(ALLTYPES)) {
+      if (k === "saved" && !(D.reports || []).length) continue;
+      const b = frag(`<button type="button"><span class="mini">${miniIcon(k, 54, 34)}</span><span><b>${esc(t.name)}</b><small>${esc(t.desc)}</small></span></button>`);
+      b.addEventListener("click", () => {
+        const w = { id: uid(), size: k === "kpi" ? "l" : "m", ...newSpec(k) };
+        if (k === "saved") w.ref = D.reports[0].id;
+        D.layout.push(w); saveLayout(); $("wdlg").close(); renderHome();
+        if (!["kpi", "btc"].includes(k)) configureWidget(w);
+      });
+      cat.appendChild(b);
+    }
+    body.querySelector("#wdClose").addEventListener("click", () => $("wdlg").close());
+    $("wdlg").showModal();
+  }
+  async function configureWidget(w) {
+    const draft = clone(w);
+    const body = $("wdlgBody");
+    const draw = async () => {
+      body.innerHTML = `<h2 style="margin:0 0 12px;font-size:17px">Widget</h2><div class="ed"><label class="f">Title<input type="text" id="wdTitle" placeholder="${esc(specTitle({ ...draft, title: "" }))}"></label></div><div id="wdEd" style="margin-top:12px"></div>
+        <div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" id="wdCancel">Cancel</button><button class="btn primary" id="wdSave">Save</button></div>`;
+      body.querySelector("#wdTitle").value = draft.title || "";
+      body.querySelector("#wdTitle").addEventListener("input", (e) => { draft.title = e.target.value || undefined; });
+      body.querySelector("#wdEd").appendChild(await editor(draft, (rebuild) => { if (rebuild) draw(); }, { home: true }));
+      body.querySelector("#wdCancel").addEventListener("click", () => $("wdlg").close());
+      body.querySelector("#wdSave").addEventListener("click", () => {
+        const i = D.layout.findIndex((x) => x.id === w.id);
+        if (i >= 0) D.layout[i] = draft;
+        saveLayout(); $("wdlg").close(); renderHome();
+      });
+    };
+    await draw();
+    if (!$("wdlg").open) $("wdlg").showModal();
+  }
+
+  /* ============================================================ reports */
+  async function renderReports(parts) {
+    const v = $("v-reports");
+    await loadReports();
+    if (!parts.length) return reportList(v);
+    let spec, saved = null;
+    if (parts[0] === "new") spec = newSpec(TYPES[parts[1]] ? parts[1] : "incexp");
+    else if (parts[0] === "saved") { saved = D.reports.find((r) => r.id === parts[1]); if (!saved) { location.hash = "#reports"; return; } spec = clone(saved); }
+    else if (parts[0] === "open" && D.openSpec) spec = clone(D.openSpec);
+    else { location.hash = "#reports"; return; }
+    if (D.cur_report && D.cur_report.key === parts.join("/")) spec = D.cur_report.spec;
+    D.cur_report = { key: parts.join("/"), spec };
+    reportView(v, spec, saved);
+  }
+  function reportList(v) {
+    const typeName = (t) => (TYPES[t] || { name: t }).name;
+    v.innerHTML = `<div class="card" style="margin-bottom:16px"><h2>Saved reports <span class="hint">${D.reports.length ? "click to open" : ""}</span></h2>
+      ${D.reports.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th class="l">Saved</th><th class="l">Type</th><th class="l">Period</th><th class="l">Comment</th><th></th></tr></thead><tbody>${D.reports.map((r) =>
+        `<tr class="click" data-id="${r.id}"><td><b>${esc(r.name)}</b></td><td class="l">${esc((r.updated || r.created || "").slice(0, 10).split("-").reverse().join("."))}</td><td class="l">${esc(typeName(r.type))}</td><td class="l">${esc(r.period ? periodText(r) : "–")}</td><td class="l wr">${esc(r.comment || "")}</td>
+        <td><button class="btn sm" data-pin="${r.id}">Pin to Home</button></td></tr>`).join("")}</tbody></table></div>`
+        : `<div class="empty">No saved reports yet. Start one below, set the filters you like and press <b>Save</b>.</div>`}</div>
+      <div class="rtypes">${Object.entries(TYPES).map(([k, t]) => `<div class="card rtype"><div class="mini">${miniIcon(k)}</div><div><h3>${esc(t.name)}</h3><p>${esc(t.desc)}</p><a class="btn sm" href="#reports/new/${k}">Start report</a></div></div>`).join("")}</div>`;
+    v.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", (e) => { if (e.target.closest("[data-pin]")) return; location.hash = `#reports/saved/${tr.dataset.id}`; }));
+    v.querySelectorAll("[data-pin]").forEach((b) => b.addEventListener("click", () => pinSaved(b.dataset.pin)));
+  }
+  async function pinSaved(id) {
+    if (!D.layout) { const r = await api("api/store/layout").catch(() => ({})); D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT); }
+    D.layout.push({ id: uid(), type: "saved", ref: id, size: "m" }); saveLayout(); toast("Pinned to Home");
+  }
+  async function reportView(v, spec, saved) {
+    v.innerHTML = `<div class="rphead"><a href="#reports" class="btn sm">‹ Reports</a><h2></h2><span class="spacer"></span>
+      <button class="btn" id="rpPin">Pin to Home</button>${saved ? `<button class="btn danger" id="rpDel">Delete</button><button class="btn" id="rpSaveNew">Save as new</button>` : ""}<button class="btn primary" id="rpSave">${saved ? "Save changes" : "Save"}</button></div>
+      <div class="layout"><aside class="card"><div class="ed" id="rpMeta"><label class="f">Name<input type="text" id="rpName" placeholder="e.g. Amex, Bäcker, Games"></label><label class="f">Comment<input type="text" id="rpComment" placeholder="optional"></label><hr></div><div id="rpEd"></div></aside>
+      <section class="card"><h2 id="rpTitle"></h2><div id="rpOut"></div></section></div>`;
+    const title = () => { v.querySelector(".rphead h2").textContent = spec.name || (TYPES[spec.type] || {}).name || "Report"; $("rpTitle").textContent = specTitle({ ...spec, title: "" }); };
+    $("rpName").value = spec.name || ""; $("rpComment").value = spec.comment || "";
+    $("rpName").addEventListener("input", (e) => { spec.name = e.target.value; title(); });
+    $("rpComment").addEventListener("input", (e) => { spec.comment = e.target.value; });
+    const run = () => { title(); renderReport($("rpOut"), spec, "full"); };
+    const buildEd = async () => { const ed = await editor(spec, (rebuild) => { if (rebuild) buildEd(); run(); }); $("rpEd").replaceChildren(ed); };
+    await buildEd(); run();
+    const doSave = (asNew) => {
+      if (!spec.name || !spec.name.trim()) { $("rpName").focus(); toast("Give the report a name first"); return; }
+      const stamp = new Date().toISOString();
+      if (saved && !asNew) { Object.keys(saved).forEach((k) => delete saved[k]); Object.assign(saved, clone(spec), { updated: stamp }); saveReports(); toast("Saved"); D.cur_report = null; return; }
+      const rec = { ...clone(spec), id: uid(), created: stamp };
+      D.reports.push(rec); saveReports(); toast("Saved"); D.cur_report = null; location.hash = `#reports/saved/${rec.id}`;
+    };
+    $("rpSave").addEventListener("click", () => doSave(false));
+    if (saved) {
+      $("rpSaveNew").addEventListener("click", () => doSave(true));
+      $("rpDel").addEventListener("click", () => {
+        if (!confirmInline("rpDel", "Click again to delete")) return;
+        D.reports = D.reports.filter((r) => r.id !== saved.id); saveReports();
+        if (D.layout) { D.layout = D.layout.filter((w) => !(w.type === "saved" && w.ref === saved.id)); saveLayout(); }
+        location.hash = "#reports";
+      });
+    }
+    $("rpPin").addEventListener("click", async () => {
+      if (saved) return pinSaved(saved.id);
+      if (!D.layout) { const r = await api("api/store/layout").catch(() => ({})); D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT); }
+      const w = { ...clone(spec), id: uid(), size: "m" }; if (spec.name) w.title = spec.name; delete w.name; delete w.comment;
+      D.layout.push(w); saveLayout(); toast("Pinned to Home");
+    });
+  }
+
+  /* ============================================================ trends (compare view) */
+  const T = {
+    dim: store.get("dim", "category"), type: store.get("type", "e"),
+    from: store.get("from", now.getFullYear() - 2), to: store.get("to", now.getFullYear()),
+    selected: store.get("selected", {}), tl: "sep", yoy: "month", search: "", init: false,
+  };
+  function tAggregate() {
     const byItem = new Map();
-    for (const r of state.rows) {
-      if (r[1] !== state.type || r[7] !== state.currency) continue;
+    for (const r of D.rows) {
+      if (r[1] !== T.type || r[7] !== D.cur) continue;
       const y = +r[0].slice(0, 4);
-      if (y < state.from || y > state.to) continue;
-      for (const k of keysOf(r)) {
+      if (y < T.from || y > T.to) continue;
+      for (const k of keysOf(r, T.dim)) {
         let it = byItem.get(k);
-        if (!it) byItem.set(k, it = { name: k, total: 0, months: new Map() });
-        it.total += r[2];
-        it.months.set(r[0], (it.months.get(r[0]) || 0) + r[2]);
+        if (!it) byItem.set(k, (it = { name: k, total: 0, months: new Map() }));
+        it.total += r[2]; it.months.set(r[0], (it.months.get(r[0]) || 0) + r[2]);
       }
     }
     return [...byItem.values()].sort((a, b) => b.total - a.total);
   }
-  const sel = () => state.selected[state.dim] || [];
-  function setSel(list) { state.selected[state.dim] = list; store.set("selected", state.selected); }
-
-  async function load(refresh) {
-    document.body.classList.add("loading");
-    $("status").textContent = "Loading from Firefly…";
-    const start = `${state.from}-01-01`, end = `${state.to}-12-31`;
-    try {
-      const r = await fetch(`api/data?start=${start}&end=${end}${refresh ? "&refresh=1" : ""}`);
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || r.status);
-      state.rows = d.rows;
-      const curs = Object.entries(d.currencies).sort((a, b) => b[1] - a[1]);
-      state.currency = curs.length ? curs[0][0] : "EUR";
-      $("notice").innerHTML = curs.length > 1
-        ? `<div class="notice">Showing ${state.currency} only. Also found: ${curs.slice(1).map(([c, n]) => `${c} (${n})`).join(", ")}.</div>` : "";
-      $("status").textContent = `${d.rows.length} transactions · updated ${new Date(d.fetched * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-      render();
-    } catch (e) {
-      $("status").textContent = "";
-      $("notice").innerHTML = `<div class="notice error">${String(e.message).replace(/</g, "&lt;")}</div>`;
-      state.rows = []; render();
-      if (/token/i.test(e.message)) openSettings();
-    } finally { document.body.classList.remove("loading"); }
+  const tSel = () => T.selected[T.dim] || [];
+  function tSetSel(list) { T.selected[T.dim] = list; store.set("selected", T.selected); }
+  const tColor = (name) => { const i = tSel().indexOf(name); return i < 0 ? "transparent" : PAL[i % PAL.length]; };
+  async function renderTrends() {
+    if (!T.init) tInit();
+    $("v-trends").classList.add("loading");
+    try { await Promise.all([loadRows(), loadCfg()]); } catch (e) { $("tTimeline").innerHTML = errorHtml(e); $("v-trends").classList.remove("loading"); return; }
+    $("v-trends").classList.remove("loading");
+    const first = +((D.cfg && D.cfg.history_start) || `${now.getFullYear() - 5}`).slice(0, 4);
+    const ys = []; for (let y = now.getFullYear(); y >= first; y--) ys.push(y);
+    for (const s of [$("tFrom"), $("tTo")]) { const v = s.value; s.replaceChildren(...ys.map((y) => new Option(y, y))); if (v) s.value = v; }
+    T.from = Math.max(first, T.from); $("tFrom").value = T.from; $("tTo").value = T.to;
+    tRender();
   }
-
-  /* ---------------- picker ---------------- */
-  function colorFor(name) { const i = sel().indexOf(name); return i < 0 ? "transparent" : PALETTE[i % PALETTE.length]; }
-  function renderPicker(items) {
-    const q = state.search.toLowerCase();
-    const list = $("list");
+  function tRender() {
+    const items = tAggregate();
+    const names = new Set(items.map((i) => i.name));
+    if (!T.selected[T.dim]) tSetSel(items.slice(0, 5).map((i) => i.name));
+    tPicker(items);
+    const chosen = tSel().filter((n) => names.has(n)).map((n) => items.find((i) => i.name === n));
+    const months = []; for (let y = T.from; y <= T.to; y++) for (let m = 1; m <= 12; m++) { if (y === now.getFullYear() && m > now.getMonth()) break; months.push(`${y}-${String(m).padStart(2, "0")}`); }
+    let tl = chosen.map((it) => ({ name: it.name, color: tColor(it.name), values: months.map((k) => it.months.get(k) || 0) }));
+    if (T.tl === "sum" && tl.length > 1) tl = [{ name: "Combined", color: PAL[0], width: 2.5, values: months.map((_, i) => sum(tl.map((s) => s.values[i]))) }];
+    lineChart($("tTimeline"), months, tl, { labelFmt: monthLabel, height: 300, empty: "Select something on the left." });
+    $("tTlLegend").innerHTML = legendHtml(tl);
+    const years = []; for (let y = T.from; y <= T.to; y++) years.push(y);
+    const sumMonth = (k) => sum(chosen.map((it) => it.months.get(k) || 0));
+    const yoy = chosen.length ? years.map((y, idx) => {
+      let acc = 0;
+      const values = MONTHS.map((_, mi) => { if (y === now.getFullYear() && mi >= now.getMonth()) return null; const v = sumMonth(`${y}-${String(mi + 1).padStart(2, "0")}`); acc += v; return T.yoy === "cum" ? acc : v; });
+      const recent = years.length - 1 - idx;
+      return { name: String(y), color: recent === 0 ? PAL[0] : recent === 1 ? "#e3b341" : ["#4c5566", "#6b7689", "#8b97ab", "#a8b4c7"][Math.max(0, 3 - (recent - 2))], width: recent === 0 ? 2.75 : 2, values };
+    }) : [];
+    lineChart($("tYoyChart"), MONTHS, yoy, { height: 280, empty: "Select something on the left." });
+    $("tYoyLegend").innerHTML = legendHtml(yoy);
+    $("tYoyHint").textContent = chosen.length === 1 ? chosen[0].name : `${chosen.length} items combined`;
+    tTable(chosen, years);
+  }
+  function tPicker(items) {
+    const q = T.search.toLowerCase(), list = $("tList");
     list.replaceChildren();
     const shown = items.filter((it) => !q || it.name.toLowerCase().includes(q));
     for (const it of shown) {
-      const row = document.createElement("label");
-      row.className = "item";
-      const cb = document.createElement("input");
-      cb.type = "checkbox"; cb.checked = sel().includes(it.name);
-      cb.addEventListener("change", () => {
-        const s = sel().filter((n) => n !== it.name);
-        if (cb.checked) s.push(it.name);
-        setSel(s); render();
-      });
-      const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = colorFor(it.name);
-      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name; nm.title = it.name;
-      const am = document.createElement("span"); am.className = "am"; am.textContent = eur.format(it.total);
-      row.append(cb, sw, nm, am);
+      const row = frag(`<label class="item"><input type="checkbox"><span class="sw"></span><span class="nm"></span><span class="am"></span></label>`);
+      const cb = row.querySelector("input"); cb.checked = tSel().includes(it.name);
+      cb.addEventListener("change", () => { const s = tSel().filter((n) => n !== it.name); if (cb.checked) s.push(it.name); tSetSel(s); tRender(); });
+      row.querySelector(".sw").style.background = tColor(it.name);
+      row.querySelector(".nm").textContent = it.name; row.querySelector(".nm").title = it.name;
+      row.querySelector(".am").textContent = eur(it.total);
       list.appendChild(row);
     }
     if (!shown.length) list.innerHTML = `<div class="empty">Nothing found</div>`;
-    $("pickHint").textContent = `${sel().length} of ${items.length}`;
+    $("tHint").textContent = `${tSel().length} of ${items.length}`;
   }
-
-  /* ---------------- SVG line chart ---------------- */
-  function niceMax(v) {
-    if (v <= 0) return 1;
-    const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
-    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
-  }
-  function lineChart(host, labels, series, opts = {}) {
-    host.replaceChildren();
-    if (!series.length || !labels.length) { host.innerHTML = `<div class="empty">Select something on the left.</div>`; return; }
-    const W = Math.max(320, host.clientWidth), H = opts.height || 300;
-    const m = { l: 64, r: 12, t: 12, b: 28 };
-    const iw = W - m.l - m.r, ih = H - m.t - m.b;
-    const max = niceMax(Math.max(1, ...series.flatMap((s) => s.values.filter((v) => v != null))));
-    const x = (i) => m.l + (labels.length === 1 ? iw / 2 : (i * iw) / (labels.length - 1));
-    const y = (v) => m.t + ih - (v / max) * ih;
-    const NS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-    const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
-    for (let i = 0; i <= 4; i++) {
-      const v = (max / 4) * i, yy = y(v);
-      el("line", { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: "var(--grid)" });
-      const t = el("text", { x: m.l - 8, y: yy + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11 });
-      t.textContent = eur.format(v);
-    }
-    const step = Math.max(1, Math.ceil(labels.length / Math.floor(iw / 58)));
-    labels.forEach((lb, i) => {
-      if (i % step && i !== labels.length - 1) return;
-      const t = el("text", { x: x(i), y: H - 8, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11 });
-      t.textContent = opts.labelFmt ? opts.labelFmt(lb) : lb;
-    });
-    for (const s of series) {
-      let d = "", pen = false;
-      s.values.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
-      el("path", { d, fill: "none", stroke: s.color, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: s.opacity || 1 });
-      if (labels.length <= 24) s.values.forEach((v, i) => { if (v != null) el("circle", { cx: x(i), cy: y(v), r: 2.5, fill: s.color }); });
-    }
-    const guide = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--muted)", "stroke-dasharray": "3 3", opacity: 0 });
-    host.appendChild(svg);
-    const tip = document.createElement("div"); tip.className = "tip"; host.appendChild(tip);
-    const move = (ev) => {
-      const rect = svg.getBoundingClientRect();
-      const px = ((ev.clientX - rect.left) / rect.width) * W;
-      const i = Math.max(0, Math.min(labels.length - 1, Math.round(((px - m.l) / iw) * (labels.length - 1))));
-      guide.setAttribute("x1", x(i)); guide.setAttribute("x2", x(i)); guide.setAttribute("opacity", 1);
-      const rowsHtml = series.filter((s) => s.values[i] != null)
-        .sort((a, b) => b.values[i] - a.values[i])
-        .map((s) => `<div><span><i style="background:${s.color}"></i>${s.name.replace(/</g, "&lt;")}</span><span>${eur2.format(s.values[i])}</span></div>`).join("");
-      tip.innerHTML = `<b>${opts.labelFmt ? opts.labelFmt(labels[i], true) : labels[i]}</b>${rowsHtml || "<div>no data</div>"}`;
-      tip.style.display = "block";
-      const left = (x(i) / W) * rect.width;
-      tip.style.left = `${left + 14 + tip.offsetWidth > rect.width ? left - tip.offsetWidth - 14 : left + 14}px`;
-      tip.style.top = "10px";
-    };
-    svg.addEventListener("pointermove", move);
-    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; guide.setAttribute("opacity", 0); });
-  }
-  function legend(host, series) {
-    host.replaceChildren(...series.map((s) => { const e = document.createElement("span"); e.style.setProperty("--c", s.color); e.textContent = s.name; return e; }));
-  }
-  const monthLabel = (k, long) => { const [y, m] = k.split("-"); return long ? `${MONTHS[+m - 1]} ${y}` : (m === "01" ? y : MONTHS[+m - 1]); };
-
-  /* ---------------- render ---------------- */
-  function render() {
-    const items = aggregate();
-    const names = new Set(items.map((i) => i.name));
-    if (!state.selected[state.dim]) setSel(items.slice(0, 5).map((i) => i.name));
-    renderPicker(items);
-    const chosen = sel().filter((n) => names.has(n)).map((n) => items.find((i) => i.name === n));
-    const months = monthsRange();
-
-    // timeline
-    let tl = chosen.map((it) => ({ name: it.name, color: colorFor(it.name), values: months.map((k) => it.months.get(k) || 0) }));
-    if (state.tl === "sum" && tl.length > 1) tl = [{ name: "Combined", color: "#6ea8fe", width: 2.5, values: months.map((_, i) => tl.reduce((a, s) => a + s.values[i], 0)) }];
-    lineChart($("timeline"), months, tl, { labelFmt: monthLabel });
-    legend($("tlLegend"), tl);
-
-    // year over year (combined selection)
-    const years = [];
-    for (let y = state.from; y <= state.to; y++) years.push(y);
-    const sumMonth = (k) => chosen.reduce((a, it) => a + (it.months.get(k) || 0), 0);
-    const yoy = chosen.length ? years.map((y, idx) => {
-      let acc = 0;
-      const values = MONTHS.map((_, mi) => {
-        if (y === now.getFullYear() && mi >= now.getMonth()) return null;
-        const v = sumMonth(`${y}-${String(mi + 1).padStart(2, "0")}`);
-        acc += v; return state.yoy === "cum" ? acc : v;
-      });
-      const recent = years.length - 1 - idx;
-      return { name: String(y), color: recent === 0 ? "#6ea8fe" : recent === 1 ? "#e3b341" : YEAR_COLORS[Math.max(0, 3 - recent)], width: recent === 0 ? 2.75 : 2, values };
-    }) : [];
-    lineChart($("yoy"), MONTHS, yoy, { labelFmt: (l) => l });
-    legend($("yoyLegend"), yoy);
-    $("yoyHint").textContent = chosen.length === 1 ? chosen[0].name : `${chosen.length} items combined`;
-
-    renderTable(chosen, years);
-  }
-
-  function renderTable(chosen, years) {
-    const host = $("table");
+  function tTable(chosen, years) {
+    const host = $("tTable");
     if (!chosen.length) { host.innerHTML = `<div class="empty">Nothing selected.</div>`; return; }
-    const cy = now.getFullYear(), cm = now.getMonth();  // completed months this year
+    const cy = now.getFullYear(), cm = now.getMonth();
     const yearSum = (it, y, upto = 12) => { let s = 0; for (let m = 1; m <= upto; m++) s += it.months.get(`${y}-${String(m).padStart(2, "0")}`) || 0; return s; };
-    const fmtDelta = (a, b) => {
-      if (!b) return "";
-      const p = ((a - b) / b) * 100;
-      const cls = state.type === "e" ? (p > 0 ? "up" : "down") : (p > 0 ? "down" : "up");
-      return ` <span class="${cls}">${p > 0 ? "+" : ""}${p.toFixed(0)}%</span>`;
-    };
-    const cell = (it, y) => {
-      const v = y === cy ? yearSum(it, y, cm) : yearSum(it, y);
-      if (y === years[0]) return eur.format(v);
-      const prev = y === cy ? yearSum(it, y - 1, cm) : yearSum(it, y - 1);
-      const cur = y === cy ? yearSum(it, y, cm) : v;
-      return eur.format(v) + fmtDelta(cur, prev);
-    };
+    const fmtDelta = (a, b) => { if (!b) return ""; const p = (a - b) / b; const cls = T.type === "e" ? (p > 0 ? "up" : "down") : (p > 0 ? "down" : "up"); return ` <span class="${cls}">${pct(p, 0)}</span>`; };
+    const cell = (it, y) => { const upto = y === cy ? cm : 12; const v = yearSum(it, y, upto); return y === years[0] ? eur(v) : eur(v) + fmtDelta(v, yearSum(it, y - 1, upto)); };
     const total = { name: "Total", months: new Map() };
     for (const it of chosen) for (const [k, v] of it.months) total.months.set(k, (total.months.get(k) || 0) + v);
     const lastFull = years.filter((y) => y < cy).pop();
-    let html = `<table><thead><tr><th>${{ category: "Category", tag: "Tag", budget: "Budget", payee: "Payee" }[state.dim]}</th>`;
+    let html = `<table><thead><tr><th>${{ category: "Category", tag: "Tag", budget: "Budget", payee: "Payee" }[T.dim]}</th>`;
     html += years.map((y) => `<th>${y}${y === cy ? (cm ? ` (Jan–${MONTHS[cm - 1]})` : " (no full month yet)") : ""}</th>`).join("");
     html += lastFull ? `<th>Ø / month ${lastFull}</th>` : "";
     html += `</tr></thead><tbody>`;
     for (const it of [...chosen, total]) {
-      const esc = it.name.replace(/</g, "&lt;");
-      html += `<tr class="${it === total ? "total" : ""}"><td>${it === total ? esc : `<span style="color:${colorFor(it.name)}">●</span> ${esc}`}</td>`;
+      html += `<tr class="${it === total ? "total" : ""}"><td>${it === total ? "Total" : `<span style="color:${tColor(it.name)}">●</span> ${esc(it.name)}`}</td>`;
       html += years.map((y) => `<td>${cell(it, y)}</td>`).join("");
-      html += lastFull ? `<td>${eur.format(yearSum(it, lastFull) / 12)}</td>` : "";
+      html += lastFull ? `<td>${eur(yearSum(it, lastFull) / 12)}</td>` : "";
       html += `</tr>`;
     }
     host.innerHTML = html + `</tbody></table>`;
   }
-
-  /* ---------------- controls ---------------- */
-  function initYears() {
-    const ys = [];
-    for (let y = now.getFullYear(); y >= now.getFullYear() - 15; y--) ys.push(y);
-    for (const s of [$("fromYear"), $("toYear")]) s.replaceChildren(...ys.map((y) => new Option(y, y)));
-    $("fromYear").value = state.from; $("toYear").value = state.to;
-  }
-  const onYears = () => {
-    let f = +$("fromYear").value, t = +$("toYear").value;
-    if (f > t) [f, t] = [t, f];
-    state.from = f; state.to = t; store.set("from", f); store.set("to", t);
-    $("fromYear").value = f; $("toYear").value = t; load();
-  };
-  $("fromYear").addEventListener("change", onYears);
-  $("toYear").addEventListener("change", onYears);
-  $("refresh").addEventListener("click", () => load(true));
-
-  function seg(id, attr, key, persist) {
-    const host = $(id);
-    host.querySelectorAll("button").forEach((b) => {
-      b.classList.toggle("on", b.dataset[attr] === String(state[key]));
-      b.addEventListener("click", () => {
-        state[key] = b.dataset[attr]; if (persist) store.set(key, state[key]);
-        host.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
-        render();
+  function tInit() {
+    T.init = true;
+    const seg = (id, key, persist) => {
+      const host = $(id);
+      host.querySelectorAll("button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.v === String(T[key]));
+        b.addEventListener("click", () => { T[key] = b.dataset.v; if (persist) store.set(key, T[key]); host.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); tRender(); });
       });
-    });
+    };
+    seg("tDim", "dim", true); seg("tType", "type", true); seg("tTl", "tl"); seg("tYoy", "yoy");
+    const onYears = () => { let f = +$("tFrom").value, t = +$("tTo").value; if (f > t) [f, t] = [t, f]; T.from = f; T.to = t; store.set("from", f); store.set("to", t); $("tFrom").value = f; $("tTo").value = t; tRender(); };
+    $("tFrom").addEventListener("change", onYears); $("tTo").addEventListener("change", onYears);
+    $("tSearch").addEventListener("input", (e) => { T.search = e.target.value; tPicker(tAggregate()); });
+    $("tTop5").addEventListener("click", () => { tSetSel(tAggregate().slice(0, 5).map((i) => i.name)); tRender(); });
+    $("tClear").addEventListener("click", () => { tSetSel([]); tRender(); });
   }
-  seg("dimSeg", "dim", "dim", true);
-  seg("typeSeg", "type", "type", true);
-  seg("tlSeg", "m", "tl");
-  seg("yoySeg", "m", "yoy");
-  $("search").addEventListener("input", (e) => { state.search = e.target.value; renderPicker(aggregate()); });
-  $("top5").addEventListener("click", () => { setSel(aggregate().slice(0, 5).map((i) => i.name)); render(); });
-  $("clear").addEventListener("click", () => { setSel([]); render(); });
-  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(render, 150); });
 
-  /* ---------------- settings ---------------- */
+  /* ============================================================ bitcoin page */
+  const B = { range: store.get("btcRange", "0"), filter: "All", showAll: false };
+  let syncTimer = null;
+  function watchSync(data) {
+    clearTimeout(syncTimer);
+    if (!data.sync || !data.sync.running) return;
+    syncTimer = setTimeout(async () => {
+      try {
+        const d = await api("api/btc");
+        const el = $("btcSync");
+        if (d.sync.running) { if (el) el.innerHTML = syncText(d); watchSync(d); return; }
+        D.p.btc = Promise.resolve(d); D.btcModel = null;
+        if (current() === "bitcoin") renderBtc(); else watchSync(d);
+      } catch { watchSync(data); }
+    }, 3000);
+  }
+  function syncText(d) {
+    const s = d.sync || {};
+    if (s.running) return `<span class="pill">Syncing with Kraken…</span> ${esc(s.step || "")}`;
+    if (s.error) return `<span class="pill" style="color:var(--up)">Last sync failed</span> ${esc(s.error)} · <a href="#" id="btcSyncNow">try again</a>`;
+    const when = s.finished ? new Date(s.finished * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "not yet this session";
+    return `Kraken synced ${when} · syncs every 6 hours · <a href="#" id="btcSyncNow">sync now</a>`;
+  }
+  async function renderBtc() {
+    const v = $("v-bitcoin");
+    if (!v.innerHTML) v.innerHTML = `<div class="empty">Loading Bitcoin data…</div>`;
+    let data;
+    try { data = await loadBtc(); } catch (e) { v.innerHTML = errorHtml(e); return; }
+    watchSync(data);
+    if (!data.configured) {
+      v.innerHTML = `<div class="card" style="max-width:640px"><h2>Connect Kraken</h2><p class="sub" style="font-size:13.5px">This page reads your BTC purchases straight from your Kraken ledger. It needs a <b>read-only</b> API key with only <b>Query Funds</b> and <b>Query Ledger Entries</b> ticked — the same kind of key your Kraken importer uses, so you can reuse that one.</p><button class="btn primary" data-open-settings>Add Kraken key</button></div>`;
+      return;
+    }
+    if (!data.tx.length) {
+      v.innerHTML = `<div class="card"><div class="sub" id="btcSync">${syncText(data)}</div><div class="empty">${data.sync.running ? "The first sync reads your whole BTC history from Kraken. That can take a few minutes because Kraken limits how fast the API may be asked. This page fills in by itself when it's done." : "No BTC entries found in your Kraken ledger."}</div></div>`;
+      bindSyncNow(); return;
+    }
+    const M = btcModel(data);
+    const pl = M.value - M.cost, beven = M.avg ? M.avg / M.spot - 1 : 0;
+    const firstBuy = M.tx.find((r) => r.type === "Buy");
+    const nextUnlock = M.locked[0];
+    const tile = (label, value, small, cls = "", title = "") => `<div class="tile" title="${esc(title)}"><span>${label}</span><b class="${cls}">${value}</b><small>${small}</small></div>`;
+    v.innerHTML = `
+      <div class="btchead">
+        <div><div class="big">${btcF(M.qty)} <small>BTC</small></div><div class="sub">bought on Kraken · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(M.qty * 1e8)} sats</div></div>
+        <div class="spot"><label class="sub" for="spotIn">BTC price €</label><input id="spotIn" type="text" inputmode="decimal" value="${Math.round(M.spot)}"><button class="btn sm" id="spotLive" title="Back to the live Kraken price">Live</button></div>
+      </div>
+      <div class="sub" id="btcSync" style="margin-bottom:12px">${syncText(data)}</div>
+      <div class="tiles" style="margin-bottom:16px">
+        ${tile("Market value", eur(M.value), `${btcS(M.qty)} BTC × ${eur(M.spot)}`, "", "Coins held × the price in the box above. Type another price to see a what-if.")}
+        ${tile("Net invested", eur(M.cost), M.sells ? `cost of ${btcS(M.soldQty)} BTC sold removed` : "money still in the stack", "", "Everything paid in, minus the cost basis of coins sold since.")}
+        ${tile("Unrealised P/L", `${pl >= 0 ? "+" : "−"}${eur(Math.abs(pl))}`, M.cost ? `${pct(pl / M.cost)} on net invested` : "", pl >= 0 ? "pos" : "neg", "Market value minus net invested.")}
+        ${tile("Realised P/L", M.sells ? `${M.realised >= 0 ? "+" : "−"}${eur(Math.abs(M.realised))}` : "–", M.sells ? `${M.sells} sales, average-cost method` : "nothing sold", M.realised >= 0 ? "pos" : "neg", "What sales locked in, against the running average cost. Not your tax figure (German tax uses FIFO).")}
+        ${tile("Return p.a.", M.xirr == null ? "–" : pct(M.xirr), "money-weighted (XIRR)", M.xirr >= 0 ? "pos" : "neg", "The yearly rate that balances every payment in, every sale out and today's value. It respects when each euro arrived.")}
+        ${tile("Average cost", eur(M.avg), "per BTC, fees included", "", "Net invested ÷ coins held. Rewards come in at zero cost and pull it down.")}
+        ${tile("Break-even", M.avg ? (beven > 0 ? pct(beven) : "reached") : "–", M.avg ? (beven > 0 ? `price needs to reach ${eur(M.avg)}` : `${pct(-beven)} above your average`) : "", beven > 0 ? "neg" : "pos")}
+        ${tile("Total in", eur(M.gross), `${M.buys} buys · median ${eur(M.median)}`, "", "Every euro ever paid, fees included. Never goes down, not even when you sell.")}
+        ${tile("Fees paid", eur(M.feeEur), M.feeBtc ? `+ ${intF(M.feeBtc * 1e8)} sats network fees` : `${M.gross ? pct(M.feeEur / M.gross, 2).replace("+", "") : ""} of everything paid in`)}
+        ${tile("Sats per euro", intF(M.gross ? (M.qty * 1e8) / M.gross : 0), "lifetime average", "", "What a euro bought you on average over the whole period.")}
+        ${tile("Tax-free now", `${btcS(M.free)} BTC`, `${M.qty ? Math.round((M.free / M.qty) * 100) : 0}% held longer than a year`, "pos", "German 1-year rule (§23 EStG), coins counted first in, first out. Not tax advice.")}
+        ${M.rewardBtc ? tile("Rewards", `${intF(M.rewardBtc * 1e8)} sats`, `worth ${eur(M.rewardBtc * M.spot)} today`, "", "Krak card cashback, staking and other rewards found in the ledger, valued at zero cost.") : ""}
+      </div>
+      <div class="row" style="margin-bottom:12px"><span class="sub">Time range</span><span class="seg" id="btcRange">${[["30", "1M"], ["91", "3M"], ["182", "6M"], ["365", "1Y"], ["730", "2Y"], ["1095", "3Y"], ["0", "All"]].map(([d, l]) => `<button data-v="${d}" class="${B.range === d ? "on" : ""}">${l}</button>`).join("")}</span></div>
+      <div class="grid2">
+        <div class="card"><h2>Ahead or behind <span class="hint">value of the stack against the money still in it</span></h2><div id="bc1"></div><div class="legend" id="bl1"></div></div>
+        <div class="card"><h2>Stack growth <span class="hint">BTC held</span></h2><div id="bc2"></div></div>
+        <div class="card full"><h2>Price and every entry <span class="hint">dot size = euros spent</span></h2><div id="bc3"></div><div class="legend" id="bl3"></div></div>
+        <div class="card"><h2>Tax-free holdings <span class="hint">1-year rule · first in, first out</span></h2>
+          <div class="bar2"><i style="width:${M.qty ? (M.free / M.qty) * 100 : 0}%;background:${C.inc}"></i><i style="width:${M.qty ? (1 - M.free / M.qty) * 100 : 0}%;background:${C.btc};opacity:.6"></i></div>
+          <div class="sumline">${stat("Tax-free", `${btcS(M.free)} BTC`, "pos")}${stat("Still within a year", `${btcS(M.qty - M.free)} BTC`)}${nextUnlock ? stat("Next free on", dayLabel(isoUTC(nextUnlock.unlock), true)) : ""}</div>
+          <div id="unlocks"></div>
+          <div class="sub" style="margin-top:8px">Coins sold in Germany after holding them more than a year are tax-free (§23 EStG). This counts your Kraken buys oldest-first. Not tax advice.</div></div>
+        <div class="card"><h2>Where the coins sit</h2><div id="where"></div></div>
+        <div class="card full"><h2>By year</h2><div class="tablewrap" id="byYear"></div></div>
+        <div class="card full"><h2>By month <span class="hint">euros put in per month</span></h2><div id="bc4"></div></div>
+        <div class="card full"><h2>Transactions <span class="seg sm" id="btcFilter">${["All", "Buy", "Sell", "Reward", "Transfers", "Other"].map((f) => `<button data-v="${f}" class="${B.filter === f ? "on" : ""}">${f}</button>`).join("")}</span></h2><div id="btcTx"></div></div>
+        <div class="card full"><h2>Data check</h2><div class="checks" id="btcChecks"></div></div>
+      </div>`;
+    bindSyncNow();
+    const spotIn = $("spotIn");
+    spotIn.addEventListener("change", () => { const n = parseFloat(spotIn.value.replace(/\./g, "").replace(",", ".")); if (n > 0) { D.spot = n; D.btcModel = null; renderBtc(); } });
+    $("spotLive").addEventListener("click", () => { D.spot = null; D.btcModel = null; renderBtc(); });
+    $("btcRange").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { B.range = b.dataset.v; store.set("btcRange", B.range); renderBtc(); }));
+    $("btcFilter").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { B.filter = b.dataset.v; B.showAll = false; renderBtc(); }));
+    btcCharts(M); btcTables(M, data);
+  }
+  function bindSyncNow() {
+    const a = $("btcSyncNow");
+    if (a) a.addEventListener("click", async (e) => { e.preventDefault(); try { await api("api/btc/sync", { method: "POST" }); const d = await api("api/btc"); D.p.btc = Promise.resolve(d); $("btcSync").innerHTML = syncText(d); watchSync(d); } catch (er) { toast(er.message); } });
+  }
+  function btcCharts(M) {
+    const days = +B.range, start = days ? Math.max(0, M.dates.length - days) : 0;
+    const sl = (a) => a.slice(start), labels = sl(M.dates);
+    const s1 = [{ name: "Market value", color: C.btc, values: sl(M.dv), area: true }, { name: "Net invested", color: "#a5d6ff", values: sl(M.dc), step: true, dash: true }];
+    lineChart($("bc1"), labels, s1, { labelFmt: dayLabel, height: 260, tipExtra: (i) => { const d = M.dv[start + i] - M.dc[start + i]; return `<div><span>${d >= 0 ? "Ahead" : "Behind"}</span><span class="${d >= 0 ? "pos" : "neg"}">${eur(Math.abs(d))}</span></div>`; } });
+    $("bl1").innerHTML = legendHtml(s1);
+    lineChart($("bc2"), labels, [{ name: "BTC held", color: C.btc, values: sl(M.dq), step: true, area: true, fmt: (v) => `${btcF(v)} BTC` }], { labelFmt: dayLabel, height: 260, yFmt: (v) => btcS(v), ml: 54 });
+    const dayIdx = new Map(M.dates.map((d, i) => [d, i]));
+    const entries = M.tx.filter((r) => (r.type === "Buy" || r.type === "Sell") && dayIdx.has(r.date) && dayIdx.get(r.date) >= start);
+    const marks = entries.map((r) => ({ i: dayIdx.get(r.date) - start, v: r.eur / r.btc, r: Math.min(11, 2.5 + Math.sqrt(r.eur) / 7), color: r.type === "Buy" ? C.inc : C.exp }));
+    const byDay = new Map(); for (const r of entries) { const k = r.date; if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(r); }
+    const s3 = [{ name: "BTC price", color: C.price, values: sl(M.dp), width: 1.6 }, { name: "Your average cost", color: C.cost, values: sl(M.davg), dash: true, step: true }];
+    lineChart($("bc3"), labels, s3, { labelFmt: dayLabel, height: 320, zero: false, marks,
+      tipExtra: (i) => (byDay.get(labels[i]) || []).map((r) => `<div><span style="color:${r.type === "Buy" ? C.inc : C.exp}">${r.type} ${btcS(r.btc)}</span><span>${eur2(r.eur)}</span></div>`).join("") });
+    $("bl3").innerHTML = legendHtml(s3) + `<span class="dot" style="--c:${C.inc}">Buy</span><span class="dot" style="--c:${C.exp}">Sell</span>`;
+    const first = M.dates.length ? M.dates[start].slice(0, 7) : TODAY.slice(0, 7);
+    const months = monthKeys(first + "-01", TODAY);
+    const inv = new Map(), sats = new Map();
+    for (const r of M.tx) if (r.type === "Buy") { const k = r.date.slice(0, 7); inv.set(k, (inv.get(k) || 0) + r.eur); sats.set(k, (sats.get(k) || 0) + r.btc); }
+    barChart($("bc4"), months, [{ name: "Put in", color: C.btc, values: months.map((k) => inv.get(k) || 0) }], { labelFmt: monthLabel, height: 220,
+      tipExtra: (i) => { const s = sats.get(months[i]) || 0; return s ? `<div><span>BTC bought</span><span>${btcS(s)}</span></div><div><span>Ø price</span><span>${eur(inv.get(months[i]) / s)}</span></div>` : ""; } });
+  }
+  function btcTables(M, data) {
+    // unlock schedule
+    const un = new Map();
+    for (const l of M.locked) { const k = isoUTC(l.unlock).slice(0, 7); un.set(k, (un.get(k) || 0) + l.qty); }
+    const ul = [...un.entries()].slice(0, 12);
+    $("unlocks").innerHTML = ul.length ? `<table><thead><tr><th>Becomes tax-free</th><th>BTC</th><th>Worth now</th></tr></thead><tbody>${ul.map(([k, q]) => `<tr><td>${monthLabel(k, true)}</td><td>${btcS(q)}</td><td>${eur(q * M.spot)}</td></tr>`).join("")}</tbody></table>` : `<div class="empty" style="padding:12px">Everything you hold is past the one-year mark.</div>`;
+    // where
+    const onK = Math.max(0, M.onKraken || 0), out = Math.max(0, M.qty - onK);
+    $("where").innerHTML = `<div class="bar2"><i style="width:${M.qty ? Math.min(100, (onK / M.qty) * 100) : 0}%;background:${C.btc}"></i><i style="width:${M.qty ? (out / M.qty) * 100 : 0}%;background:${C.inc}"></i></div>
+      <table><tbody><tr><td><span style="color:${C.btc}">●</span> On Kraken now</td><td>${btcF(onK)}</td><td>${eur(onK * M.spot)}</td></tr>
+      <tr><td><span style="color:${C.inc}">●</span> Moved off Kraken</td><td>${btcF(out)}</td><td>${eur(out * M.spot)}</td></tr></tbody></table>
+      <div class="sub" style="margin-top:8px">${data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}.` : "Kraken balance not available, worked out from the ledger."} Coins you withdrew to your own wallet still count in the stack; only the network fee leaves it.</div>`;
+    // by year
+    const ys = new Map();
+    for (const r of M.tx) {
+      const y = r.date.slice(0, 4);
+      if (!ys.has(y)) ys.set(y, { buys: 0, eur: 0, btc: 0, sold: 0, soldEur: 0, reward: 0, fee: 0 });
+      const o = ys.get(y);
+      if (r.type === "Buy") { o.buys++; o.eur += r.eur; o.btc += r.btc; o.fee += r.feeEur; }
+      if (r.type === "Convert in") { o.eur += r.cost; o.btc += r.btc; }
+      if (r.type === "Sell" || r.type === "Convert out") { o.sold += r.btc; o.soldEur += r.value || r.eur; }
+      if (r.type === "Reward") o.reward += r.btc;
+    }
+    const yrs = [...ys.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+    $("byYear").innerHTML = `<table><thead><tr><th>Year</th><th>Buys</th><th>Put in</th><th>BTC bought</th><th>Ø price</th><th>Fees</th><th>Sold</th><th>Rewards</th><th>Worth today</th></tr></thead><tbody>${yrs.map(([y, o]) =>
+      `<tr><td>${y}</td><td>${o.buys}</td><td>${eur(o.eur)}</td><td>${btcS(o.btc)}</td><td>${o.btc ? eur(o.eur / o.btc) : "–"}</td><td>${eur(o.fee)}</td><td>${o.sold ? `${btcS(o.sold)} <span class="sub">${eur(o.soldEur)}</span>` : "–"}</td><td>${o.reward ? `${intF(o.reward * 1e8)} sats` : "–"}</td><td class="${o.btc * M.spot >= o.eur ? "pos" : "neg"}">${eur(o.btc * M.spot)}</td></tr>`).join("")}</tbody></table>`;
+    // transactions
+    const groups = { Buy: ["Buy"], Sell: ["Sell"], Reward: ["Reward"], Transfers: ["Deposit", "Withdrawal", "Internal"], Other: ["Convert in", "Convert out", "Unmatched"] };
+    const list = M.tx.filter((r) => B.filter === "All" || (groups[B.filter] || []).includes(r.type)).slice().reverse();
+    const shown = B.showAll ? list : list.slice(0, 60);
+    $("btcTx").innerHTML = list.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">Type</th><th>BTC</th><th>Euro</th><th>Price</th><th>Fee</th><th class="l">Kraken entry</th></tr></thead><tbody>${shown.map((r) =>
+      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}">${r.type}</span></td><td>${["Sell", "Withdrawal", "Convert out"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
+    const more = $("btcMore"); if (more) more.addEventListener("click", () => { B.showAll = true; btcTables(M, data); });
+    $("btcTx").querySelectorAll("[data-rw]").forEach((b) => b.addEventListener("click", () => {
+      const ref = b.dataset.rw, on = b.dataset.on === "1";
+      D.prefs = D.prefs || {};
+      const a = new Set(D.prefs.asReward || []), n = new Set(D.prefs.notReward || []);
+      if (on) { a.delete(ref); n.add(ref); } else { n.delete(ref); a.add(ref); }
+      D.prefs.asReward = [...a]; D.prefs.notReward = [...n]; savePrefs();
+      D.btcModel = null; renderBtc();
+    }));
+    // checks
+    const ch = [];
+    if (data.balance_btc != null && Math.abs(data.balance_btc - data.ledger_btc) > 1e-6) ch.push(["warn", "Ledger and balance differ", `Kraken reports ${btcF(data.balance_btc)} BTC, the ledger entries add up to ${btcF(data.ledger_btc)} BTC. Something is booked outside the exchange ledger (for example the Krak app or a Krak card payment in BTC).`]);
+    else if (data.balance_btc != null) ch.push(["ok", "Ledger matches your Kraken balance", `${btcF(data.balance_btc)} BTC on Kraken, and the ledger adds up to exactly that.`]);
+    if (data.balance_error) ch.push(["warn", "Balance could not be read", `${data.balance_error}. Give the key the “Query Funds” permission.`]);
+    const cnt = (t) => M.tx.filter((r) => r.type === t).length;
+    if (cnt("Unmatched")) ch.push(["warn", `${cnt("Unmatched")} entries without a euro side`, "These BTC entries look like trades, but no matching euro entry was found, so they are left out of the stack. See them under Transactions → Other."]);
+    if (cnt("Deposit")) ch.push(["warn", `${cnt("Deposit")} BTC deposits from elsewhere`, "Coins you sent to Kraken from another wallet aren't counted as bought, because their purchase price is unknown. If one of them is actually cashback, open Transactions → Transfers and press “Count as reward”."]);
+    if (cnt("Convert in") + cnt("Convert out")) ch.push(["ok", `${cnt("Convert in") + cnt("Convert out")} swaps with other coins`, "Valued at that day's BTC price."]);
+    if (cnt("Internal")) ch.push(["ok", `${cnt("Internal")} internal moves ignored`, "Moves between Kraken's spot and earn wallets don't change the stack."]);
+    M.warn.slice(0, 5).forEach((w) => ch.push(["warn", "Sold more than bought", w]));
+    const pu = data.prices && data.prices.updated;
+    ch.push(["ok", "Prices", `Daily BTC/EUR closes from Binance and Kraken${pu ? `, updated ${new Date(pu * 1000).toLocaleDateString()}` : ""}. Live price from Kraken.`]);
+    $("btcChecks").innerHTML = ch.map(([lvl, t, d]) => `<div class="${lvl}"><b>${esc(t)}</b>${esc(d)}</div>`).join("");
+  }
+
+  /* ============================================================ settings */
   async function openSettings() {
-    const c = await (await fetch("api/config")).json();
-    $("ffUrl").value = c.firefly_url; $("ffToken").value = "";
+    const c = await api("api/config");
+    $("ffUrl").value = c.firefly_url; $("ffToken").value = ""; $("ffHist").value = c.history_start || "";
     $("ffToken").placeholder = c.token_set ? "leave empty to keep the current one" : "paste your Firefly token";
+    $("krKey").value = ""; $("krSecret").value = ""; $("krRemove").checked = false;
+    $("krKey").placeholder = c.kraken_set ? "set · leave empty to keep" : "paste API key";
+    $("krSecret").placeholder = c.kraken_set ? "set · leave empty to keep" : "paste private key";
+    $("krRemoveWrap").style.display = c.kraken_set ? "flex" : "none";
     $("settingsMsg").textContent = "";
     if (!$("settings").open) $("settings").showModal();
   }
@@ -446,15 +1534,44 @@
   $("saveSettings").addEventListener("click", async (e) => {
     e.preventDefault();
     $("settingsMsg").textContent = "Checking…";
-    const r = await fetch("api/config", { method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firefly_url: $("ffUrl").value, token: $("ffToken").value }) });
-    const d = await r.json();
-    if (!r.ok) { $("settingsMsg").textContent = d.error; return; }
-    $("settings").close(); load(true);
+    try {
+      await put("api/config", { firefly_url: $("ffUrl").value, token: $("ffToken").value, history_start: $("ffHist").value,
+        kraken_key: $("krKey").value, kraken_secret: $("krSecret").value, kraken_remove: $("krRemove").checked });
+    } catch (er) { $("settingsMsg").textContent = er.message; return; }
+    $("settings").close();
+    D.p = {}; D.btcModel = null; D.rows = null;
+    if ($("krKey").value) toast("Kraken connected — first sync started");
+    route();
   });
 
-  initYears();
-  load();
+  /* ============================================================ router */
+  const current = () => (location.hash.slice(1) || "home").split("/")[0];
+  function route() {
+    const parts = (location.hash.slice(1) || "home").split("/").map(decodeURIComponent);
+    let view = parts[0];
+    if (!["home", "reports", "trends", "bitcoin"].includes(view)) view = "home";
+    document.querySelectorAll(".view").forEach((s) => s.classList.toggle("on", s.id === "v-" + view));
+    document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.v === view));
+    if (view !== "reports") D.cur_report = null;
+    if (view === "home") renderHome();
+    else if (view === "reports") renderReports(parts.slice(1));
+    else if (view === "trends") renderTrends();
+    else renderBtc();
+  }
+  window.addEventListener("hashchange", () => { window.scrollTo(0, 0); route(); });
+  $("refresh").addEventListener("click", async () => {
+    D.p = {}; D.btcModel = null;
+    D.fresh = new Set(["rows", ...Array.from({ length: 181 }, (_, i) => "nw" + i)]);
+    route();
+  });
+  let lastW = window.innerWidth, rt;
+  window.addEventListener("resize", () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { if (Math.abs(window.innerWidth - lastW) < 40) return; lastW = window.innerWidth; if ($("wdlg").open || $("settings").open) return; route(); }, 200);
+  });
+
+  loadCfg().then((c) => { if (!c.token_set) openSettings(); }).catch(() => {});
+  route();
 })();
 </script>
 </body>
