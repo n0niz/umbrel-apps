@@ -1,0 +1,27 @@
+manifestVersion: 1
+id: n0niz-trends
+name: Spending Trends
+tagline: Compare Firefly III categories, tags and budgets across months and years
+icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
+category: finance
+version: "1.0.0"
+port: 4949
+description: >-
+  A reporting view for your Firefly III data. Pick several categories, tags,
+  budgets or payees and see them month by month over several years, compare
+  years against each other per month or cumulatively, and get yearly totals
+  with the change against the previous year. Reads your data through a Firefly
+  III personal access token, which stays on your server.
+developer: n0niz
+website: https://github.com/n0niz/umbrel-apps
+submitter: n0niz
+submission: https://github.com/n0niz/umbrel-apps
+repo: https://github.com/n0niz/umbrel-apps
+support: https://github.com/n0niz/umbrel-apps/issues
+gallery: []
+releaseNotes: ""
+dependencies:
+  - firefly-iii
+path: ""
+defaultUsername: ""
+defaultPassword: ""

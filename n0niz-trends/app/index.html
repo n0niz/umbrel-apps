@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1016">
+<title>Spending Trends</title>
+<style>
+  :root {
+    --bg: #0d1016; --panel: #151a22; --panel2: #1c222c; --line: #2a313d; --grid: #232a35;
+    --text: #e9edf3; --muted: #93a0b2; --accent: #6ea8fe; --up: #ff7b72; --down: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 60px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 12.5px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select, input[type=search], input[type=text], input[type=password] {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none; }
+  select:focus, input:focus { border-color: var(--accent); }
+  .btn { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  .btn:hover { background: var(--panel2); }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #0d1016; font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--panel); border: 0; padding: 7px 12px; cursor: pointer; color: var(--muted); }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--panel2); color: var(--text); }
+
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+  .layout > * { min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card h2 .hint { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .picker { position: sticky; top: 12px; }
+  .picker .list { max-height: 60vh; overflow: auto; margin: 8px -6px 0; }
+  .item { display: grid; grid-template-columns: 18px 10px 1fr auto; gap: 8px; align-items: center; padding: 6px; border-radius: 7px; cursor: pointer; user-select: none; }
+  .item:hover { background: var(--panel2); }
+  .item input { margin: 0; accent-color: var(--accent); }
+  .item .sw { width: 10px; height: 10px; border-radius: 3px; background: transparent; }
+  .item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .am { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12.5px; }
+  .picker .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .picker input[type=search] { width: 100%; }
+  .charts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+  .charts > .card { min-width: 0; }
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; border-radius: 2px; background: var(--c); margin-right: 6px; vertical-align: middle; }
+  .tip { position: absolute; pointer-events: none; background: #0b0e13ee; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; min-width: 150px; z-index: 5; display: none; box-shadow: 0 8px 24px #0008; }
+  .tip b { display: block; margin-bottom: 4px; }
+  .tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
+  .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px 10px; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13px; }
+  th, td { padding: 7px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; }
+  tr.total td { font-weight: 600; border-top: 1px solid var(--line); }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .tablewrap { overflow-x: auto; }
+  .notice { background: #3b2f12; border: 1px solid #6b5418; color: #f5d27a; border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; font-size: 13px; }
+  .error { background: #3a1616; border-color: #6b2323; color: #ffb3b3; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; padding: 20px; width: min(440px, calc(100% - 32px)); }
+  dialog::backdrop { background: #000a; }
+  dialog label { display: grid; gap: 5px; color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+  dialog input { width: 100%; }
+  .loading { opacity: .5; pointer-events: none; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .picker { position: static; }
+    .picker .list { max-height: 260px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Spending Trends</h1>
+      <div class="sub" id="status">Loading…</div>
+    </div>
+    <div class="row">
+      <label class="sub">From <select id="fromYear"></select></label>
+      <label class="sub">to <select id="toYear"></select></label>
+      <button class="btn" id="refresh" title="Fetch fresh data from Firefly">Refresh</button>
+      <button class="btn" id="settingsBtn">Settings</button>
+    </div>
+  </header>
+
+  <div id="notice"></div>
+
+  <div class="row" style="margin-bottom:14px">
+    <div class="seg" id="dimSeg">
+      <button data-dim="category" class="on">Categories</button>
+      <button data-dim="tag">Tags</button>
+      <button data-dim="budget">Budgets</button>
+      <button data-dim="payee">Payees</button>
+    </div>
+    <div class="seg" id="typeSeg">
+      <button data-type="e" class="on">Expenses</button>
+      <button data-type="i">Income</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="card picker">
+      <h2>Select <span class="hint" id="pickHint"></span></h2>
+      <input type="search" id="search" placeholder="Search…" aria-label="Search">
+      <div class="actions">
+        <button class="btn" id="top5">Top 5</button>
+        <button class="btn" id="clear">Clear</button>
+      </div>
+      <div class="list" id="list"></div>
+    </aside>
+
+    <section class="charts">
+      <div class="card">
+        <h2>Month by month
+          <span class="seg" id="tlSeg"><button data-m="sep" class="on">Each</button><button data-m="sum">Combined</button></span>
+        </h2>
+        <div class="chart" id="timeline"></div>
+        <div class="legend" id="tlLegend"></div>
+      </div>
+      <div class="card">
+        <h2>Year over year <span class="hint" id="yoyHint">selected items combined</span>
+          <span class="seg" id="yoySeg"><button data-m="month" class="on">Per month</button><button data-m="cum">Cumulative</button></span>
+        </h2>
+        <div class="chart" id="yoy"></div>
+        <div class="legend" id="yoyLegend"></div>
+      </div>
+      <div class="card">
+        <h2>Totals per year <span class="hint">completed months only · current year compared with the same months last year</span></h2>
+        <div class="tablewrap" id="table"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2 style="margin:0 0 4px;font-size:17px">Connection to Firefly III</h2>
+    <div class="sub">The token is stored on your server only.</div>
+    <label>Firefly III URL<input type="text" id="ffUrl" required></label>
+    <label>Personal access token <input type="password" id="ffToken" placeholder="leave empty to keep the current one"></label>
+    <div class="sub" id="settingsMsg" style="margin-top:10px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:16px">
+      <button class="btn" value="cancel" formnovalidate>Cancel</button>
+      <button class="btn primary" id="saveSettings" value="save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const PALETTE = ["#6ea8fe", "#f0883e", "#3fb950", "#d2a8ff", "#ff7b72", "#e3b341", "#39c5cf", "#ff9bce", "#a5d6ff", "#7ee787"];
+  const YEAR_COLORS = ["#4c5566", "#6b7689", "#8b97ab", "#a8b4c7", "#e3b341", "#6ea8fe"];
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+  const eur2 = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("si:" + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("si:" + k, JSON.stringify(v)); } catch {} },
+  };
+
+  const now = new Date();
+  const state = {
+    rows: [], currency: "EUR",
+    dim: store.get("dim", "category"), type: store.get("type", "e"),
+    from: store.get("from", now.getFullYear() - 2), to: store.get("to", now.getFullYear()),
+    selected: store.get("selected", {}), tl: "sep", yoy: "month", search: "",
+  };
+
+  /* ---------------- data ---------------- */
+  function keysOf(r) {
+    switch (state.dim) {
+      case "category": return [r[3] || "(no category)"];
+      case "budget": return [r[4] || "(no budget)"];
+      case "tag": return r[5].length ? r[5] : ["(no tag)"];
+      default: return [r[6] || "(unknown)"];
+    }
+  }
+  function monthsRange() {
+    const out = [];
+    for (let y = state.from; y <= state.to; y++) for (let m = 1; m <= 12; m++) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      if (y === now.getFullYear() && m > now.getMonth()) break;  // only completed months
+      out.push(key);
+    }
+    return out;
+  }
+  function aggregate() {
+    const byItem = new Map();
+    for (const r of state.rows) {
+      if (r[1] !== state.type || r[7] !== state.currency) continue;
+      const y = +r[0].slice(0, 4);
+      if (y < state.from || y > state.to) continue;
+      for (const k of keysOf(r)) {
+        let it = byItem.get(k);
+        if (!it) byItem.set(k, it = { name: k, total: 0, months: new Map() });
+        it.total += r[2];
+        it.months.set(r[0], (it.months.get(r[0]) || 0) + r[2]);
+      }
+    }
+    return [...byItem.values()].sort((a, b) => b.total - a.total);
+  }
+  const sel = () => state.selected[state.dim] || [];
+  function setSel(list) { state.selected[state.dim] = list; store.set("selected", state.selected); }
+
+  async function load(refresh) {
+    document.body.classList.add("loading");
+    $("status").textContent = "Loading from Firefly…";
+    const start = `${state.from}-01-01`, end = `${state.to}-12-31`;
+    try {
+      const r = await fetch(`api/data?start=${start}&end=${end}${refresh ? "&refresh=1" : ""}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || r.status);
+      state.rows = d.rows;
+      const curs = Object.entries(d.currencies).sort((a, b) => b[1] - a[1]);
+      state.currency = curs.length ? curs[0][0] : "EUR";
+      $("notice").innerHTML = curs.length > 1
+        ? `<div class="notice">Showing ${state.currency} only. Also found: ${curs.slice(1).map(([c, n]) => `${c} (${n})`).join(", ")}.</div>` : "";
+      $("status").textContent = `${d.rows.length} transactions · updated ${new Date(d.fetched * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      render();
+    } catch (e) {
+      $("status").textContent = "";
+      $("notice").innerHTML = `<div class="notice error">${String(e.message).replace(/</g, "&lt;")}</div>`;
+      state.rows = []; render();
+      if (/token/i.test(e.message)) openSettings();
+    } finally { document.body.classList.remove("loading"); }
+  }
+
+  /* ---------------- picker ---------------- */
+  function colorFor(name) { const i = sel().indexOf(name); return i < 0 ? "transparent" : PALETTE[i % PALETTE.length]; }
+  function renderPicker(items) {
+    const q = state.search.toLowerCase();
+    const list = $("list");
+    list.replaceChildren();
+    const shown = items.filter((it) => !q || it.name.toLowerCase().includes(q));
+    for (const it of shown) {
+      const row = document.createElement("label");
+      row.className = "item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.checked = sel().includes(it.name);
+      cb.addEventListener("change", () => {
+        const s = sel().filter((n) => n !== it.name);
+        if (cb.checked) s.push(it.name);
+        setSel(s); render();
+      });
+      const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = colorFor(it.name);
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = it.name; nm.title = it.name;
+      const am = document.createElement("span"); am.className = "am"; am.textContent = eur.format(it.total);
+      row.append(cb, sw, nm, am);
+      list.appendChild(row);
+    }
+    if (!shown.length) list.innerHTML = `<div class="empty">Nothing found</div>`;
+    $("pickHint").textContent = `${sel().length} of ${items.length}`;
+  }
+
+  /* ---------------- SVG line chart ---------------- */
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  }
+  function lineChart(host, labels, series, opts = {}) {
+    host.replaceChildren();
+    if (!series.length || !labels.length) { host.innerHTML = `<div class="empty">Select something on the left.</div>`; return; }
+    const W = Math.max(320, host.clientWidth), H = opts.height || 300;
+    const m = { l: 64, r: 12, t: 12, b: 28 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const max = niceMax(Math.max(1, ...series.flatMap((s) => s.values.filter((v) => v != null))));
+    const x = (i) => m.l + (labels.length === 1 ? iw / 2 : (i * iw) / (labels.length - 1));
+    const y = (v) => m.t + ih - (v / max) * ih;
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const el = (tag, attrs, parent = svg) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+    for (let i = 0; i <= 4; i++) {
+      const v = (max / 4) * i, yy = y(v);
+      el("line", { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: "var(--grid)" });
+      const t = el("text", { x: m.l - 8, y: yy + 4, "text-anchor": "end", fill: "var(--muted)", "font-size": 11 });
+      t.textContent = eur.format(v);
+    }
+    const step = Math.max(1, Math.ceil(labels.length / Math.floor(iw / 58)));
+    labels.forEach((lb, i) => {
+      if (i % step && i !== labels.length - 1) return;
+      const t = el("text", { x: x(i), y: H - 8, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11 });
+      t.textContent = opts.labelFmt ? opts.labelFmt(lb) : lb;
+    });
+    for (const s of series) {
+      let d = "", pen = false;
+      s.values.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; pen = true; });
+      el("path", { d, fill: "none", stroke: s.color, "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round", opacity: s.opacity || 1 });
+      if (labels.length <= 24) s.values.forEach((v, i) => { if (v != null) el("circle", { cx: x(i), cy: y(v), r: 2.5, fill: s.color }); });
+    }
+    const guide = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--muted)", "stroke-dasharray": "3 3", opacity: 0 });
+    host.appendChild(svg);
+    const tip = document.createElement("div"); tip.className = "tip"; host.appendChild(tip);
+    const move = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const px = ((ev.clientX - rect.left) / rect.width) * W;
+      const i = Math.max(0, Math.min(labels.length - 1, Math.round(((px - m.l) / iw) * (labels.length - 1))));
+      guide.setAttribute("x1", x(i)); guide.setAttribute("x2", x(i)); guide.setAttribute("opacity", 1);
+      const rowsHtml = series.filter((s) => s.values[i] != null)
+        .sort((a, b) => b.values[i] - a.values[i])
+        .map((s) => `<div><span><i style="background:${s.color}"></i>${s.name.replace(/</g, "&lt;")}</span><span>${eur2.format(s.values[i])}</span></div>`).join("");
+      tip.innerHTML = `<b>${opts.labelFmt ? opts.labelFmt(labels[i], true) : labels[i]}</b>${rowsHtml || "<div>no data</div>"}`;
+      tip.style.display = "block";
+      const left = (x(i) / W) * rect.width;
+      tip.style.left = `${left + 14 + tip.offsetWidth > rect.width ? left - tip.offsetWidth - 14 : left + 14}px`;
+      tip.style.top = "10px";
+    };
+    svg.addEventListener("pointermove", move);
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; guide.setAttribute("opacity", 0); });
+  }
+  function legend(host, series) {
+    host.replaceChildren(...series.map((s) => { const e = document.createElement("span"); e.style.setProperty("--c", s.color); e.textContent = s.name; return e; }));
+  }
+  const monthLabel = (k, long) => { const [y, m] = k.split("-"); return long ? `${MONTHS[+m - 1]} ${y}` : (m === "01" ? y : MONTHS[+m - 1]); };
+
+  /* ---------------- render ---------------- */
+  function render() {
+    const items = aggregate();
+    const names = new Set(items.map((i) => i.name));
+    if (!state.selected[state.dim]) setSel(items.slice(0, 5).map((i) => i.name));
+    renderPicker(items);
+    const chosen = sel().filter((n) => names.has(n)).map((n) => items.find((i) => i.name === n));
+    const months = monthsRange();
+
+    // timeline
+    let tl = chosen.map((it) => ({ name: it.name, color: colorFor(it.name), values: months.map((k) => it.months.get(k) || 0) }));
+    if (state.tl === "sum" && tl.length > 1) tl = [{ name: "Combined", color: "#6ea8fe", width: 2.5, values: months.map((_, i) => tl.reduce((a, s) => a + s.values[i], 0)) }];
+    lineChart($("timeline"), months, tl, { labelFmt: monthLabel });
+    legend($("tlLegend"), tl);
+
+    // year over year (combined selection)
+    const years = [];
+    for (let y = state.from; y <= state.to; y++) years.push(y);
+    const sumMonth = (k) => chosen.reduce((a, it) => a + (it.months.get(k) || 0), 0);
+    const yoy = chosen.length ? years.map((y, idx) => {
+      let acc = 0;
+      const values = MONTHS.map((_, mi) => {
+        if (y === now.getFullYear() && mi >= now.getMonth()) return null;
+        const v = sumMonth(`${y}-${String(mi + 1).padStart(2, "0")}`);
+        acc += v; return state.yoy === "cum" ? acc : v;
+      });
+      const recent = years.length - 1 - idx;
+      return { name: String(y), color: recent === 0 ? "#6ea8fe" : recent === 1 ? "#e3b341" : YEAR_COLORS[Math.max(0, 3 - recent)], width: recent === 0 ? 2.75 : 2, values };
+    }) : [];
+    lineChart($("yoy"), MONTHS, yoy, { labelFmt: (l) => l });
+    legend($("yoyLegend"), yoy);
+    $("yoyHint").textContent = chosen.length === 1 ? chosen[0].name : `${chosen.length} items combined`;
+
+    renderTable(chosen, years);
+  }
+
+  function renderTable(chosen, years) {
+    const host = $("table");
+    if (!chosen.length) { host.innerHTML = `<div class="empty">Nothing selected.</div>`; return; }
+    const cy = now.getFullYear(), cm = now.getMonth();  // completed months this year
+    const yearSum = (it, y, upto = 12) => { let s = 0; for (let m = 1; m <= upto; m++) s += it.months.get(`${y}-${String(m).padStart(2, "0")}`) || 0; return s; };
+    const fmtDelta = (a, b) => {
+      if (!b) return "";
+      const p = ((a - b) / b) * 100;
+      const cls = state.type === "e" ? (p > 0 ? "up" : "down") : (p > 0 ? "down" : "up");
+      return ` <span class="${cls}">${p > 0 ? "+" : ""}${p.toFixed(0)}%</span>`;
+    };
+    const cell = (it, y) => {
+      const v = y === cy ? yearSum(it, y, cm) : yearSum(it, y);
+      if (y === years[0]) return eur.format(v);
+      const prev = y === cy ? yearSum(it, y - 1, cm) : yearSum(it, y - 1);
+      const cur = y === cy ? yearSum(it, y, cm) : v;
+      return eur.format(v) + fmtDelta(cur, prev);
+    };
+    const total = { name: "Total", months: new Map() };
+    for (const it of chosen) for (const [k, v] of it.months) total.months.set(k, (total.months.get(k) || 0) + v);
+    const lastFull = years.filter((y) => y < cy).pop();
+    let html = `<table><thead><tr><th>${{ category: "Category", tag: "Tag", budget: "Budget", payee: "Payee" }[state.dim]}</th>`;
+    html += years.map((y) => `<th>${y}${y === cy ? (cm ? ` (Jan–${MONTHS[cm - 1]})` : " (no full month yet)") : ""}</th>`).join("");
+    html += lastFull ? `<th>Ø / month ${lastFull}</th>` : "";
+    html += `</tr></thead><tbody>`;
+    for (const it of [...chosen, total]) {
+      const esc = it.name.replace(/</g, "&lt;");
+      html += `<tr class="${it === total ? "total" : ""}"><td>${it === total ? esc : `<span style="color:${colorFor(it.name)}">●</span> ${esc}`}</td>`;
+      html += years.map((y) => `<td>${cell(it, y)}</td>`).join("");
+      html += lastFull ? `<td>${eur.format(yearSum(it, lastFull) / 12)}</td>` : "";
+      html += `</tr>`;
+    }
+    host.innerHTML = html + `</tbody></table>`;
+  }
+
+  /* ---------------- controls ---------------- */
+  function initYears() {
+    const ys = [];
+    for (let y = now.getFullYear(); y >= now.getFullYear() - 15; y--) ys.push(y);
+    for (const s of [$("fromYear"), $("toYear")]) s.replaceChildren(...ys.map((y) => new Option(y, y)));
+    $("fromYear").value = state.from; $("toYear").value = state.to;
+  }
+  const onYears = () => {
+    let f = +$("fromYear").value, t = +$("toYear").value;
+    if (f > t) [f, t] = [t, f];
+    state.from = f; state.to = t; store.set("from", f); store.set("to", t);
+    $("fromYear").value = f; $("toYear").value = t; load();
+  };
+  $("fromYear").addEventListener("change", onYears);
+  $("toYear").addEventListener("change", onYears);
+  $("refresh").addEventListener("click", () => load(true));
+
+  function seg(id, attr, key, persist) {
+    const host = $(id);
+    host.querySelectorAll("button").forEach((b) => {
+      b.classList.toggle("on", b.dataset[attr] === String(state[key]));
+      b.addEventListener("click", () => {
+        state[key] = b.dataset[attr]; if (persist) store.set(key, state[key]);
+        host.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+        render();
+      });
+    });
+  }
+  seg("dimSeg", "dim", "dim", true);
+  seg("typeSeg", "type", "type", true);
+  seg("tlSeg", "m", "tl");
+  seg("yoySeg", "m", "yoy");
+  $("search").addEventListener("input", (e) => { state.search = e.target.value; renderPicker(aggregate()); });
+  $("top5").addEventListener("click", () => { setSel(aggregate().slice(0, 5).map((i) => i.name)); render(); });
+  $("clear").addEventListener("click", () => { setSel([]); render(); });
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(render, 150); });
+
+  /* ---------------- settings ---------------- */
+  async function openSettings() {
+    const c = await (await fetch("api/config")).json();
+    $("ffUrl").value = c.firefly_url; $("ffToken").value = "";
+    $("ffToken").placeholder = c.token_set ? "leave empty to keep the current one" : "paste your Firefly token";
+    $("settingsMsg").textContent = "";
+    if (!$("settings").open) $("settings").showModal();
+  }
+  $("settingsBtn").addEventListener("click", openSettings);
+  $("saveSettings").addEventListener("click", async (e) => {
+    e.preventDefault();
+    $("settingsMsg").textContent = "Checking…";
+    const r = await fetch("api/config", { method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ firefly_url: $("ffUrl").value, token: $("ffToken").value }) });
+    const d = await r.json();
+    if (!r.ok) { $("settingsMsg").textContent = d.error; return; }
+    $("settings").close(); load(true);
+  });
+
+  initYears();
+  load();
+})();
+</script>
+</body>
+</html>
