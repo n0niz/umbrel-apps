@@ -90,7 +90,8 @@ AMOUNT_PATTERNS = [
     re.compile(CODE + r"\s?" + NUM, re.I),              # EUR 12.34
     re.compile(NUM + r"\s?" + CODE, re.I),              # 12.34 EUR
 ]
-REFUND = re.compile(r"refund|erstatt|gutschrift|returned|zurückerstatt|reversal|storniert|cashback", re.I)
+REFUND = re.compile(r"refund|erstatt|gutschrift|returned|zurückerstatt|reversal|storniert", re.I)
+# note: Krak adds "…Bitcoin-Cashback erhalten" to every payment, so cashback must NOT mean refund
 GENERIC_TITLES = re.compile(r"^(krak|kraken|payment|zahlung|card payment|kartenzahlung|transaction|"
                             r"transaktion|purchase|einkauf|google wallet|wallet|neue? zahlung)\b", re.I)
 MERCHANT_PATTERNS = [
