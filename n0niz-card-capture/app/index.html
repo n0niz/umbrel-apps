@@ -61,6 +61,9 @@
   .warn { background: #2e2612; border-color: #5c4a19; }
   a { color: var(--accent); }
   kbd { background: var(--panel2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; font-size: 12px; }
+  .cardrow { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .cardrow h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .cpill { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--panel2); font-size: 11.5px; color: var(--muted); }
   @media (max-width: 640px) { .fix { grid-template-columns: 1fr 1fr; } .fix .m { grid-column: 1 / -1; } }
 </style>
 </head>
@@ -101,10 +104,11 @@
   <section id="tab-guide" hidden>
     <div class="card">
       <h2>How it works</h2>
-      <p style="margin:0">Every time you pay with the card, the Krak app shows a notification such as <i>“You paid €12.34 at REWE”</i>.
-        An automation app on your Android phone forwards that notification to this app. Card Capture reads amount and
-        merchant and books the payment into Firefly III, into its own account <b id="gAcc">Krak Card</b>. Your Firefly
-        rules then sort it into categories like any other transaction.</p>
+      <p style="margin:0">Every time you pay with a card, its app shows a notification such as <i>“You paid €12.34 at REWE”</i>.
+        An automation app on the Android phone forwards that notification here. Card Capture reads amount and
+        merchant and books the payment into Firefly III, into that card's own account. Your Firefly rules then sort it
+        into categories like any other transaction. Each card has its <b>own address</b>, so several cards and several phones work side by side.</p>
+      <label style="margin-top:12px;max-width:360px">Show the setup for this card<select id="gCard"></select></label>
       <div class="note warn">This works on <b>Android</b> only. iPhones don't let apps read other apps' notifications.</div>
     </div>
 
@@ -113,11 +117,12 @@
         <li>
           <h3>Connect Firefly III</h3>
           Open the <a href="#" data-goto="settings">Settings</a> tab, paste your Firefly personal access token (the same one your scheduler uses)
-          and save. Card Capture checks the connection and creates the account <b>Krak Card</b> in Firefly if it doesn't exist yet.
+          and save. Add the card there if it isn't listed yet. Card Capture checks the connection and creates the account <b class="gAcc">…</b> in Firefly if it doesn't exist yet.
         </li>
         <li>
           <h3>Keep Tailscale on, on your phone</h3>
-          Your phone has to reach the Umbrel when a payment happens, also when you're out.
+          The phone has to reach the Umbrel when a payment happens, also when you're out. For a second person's phone,
+          invite that phone to your Tailscale network (Tailscale admin → <b>Share</b> the umbrel machine, or add the device to your account).
           <ul>
             <li>Install <b>Tailscale</b> from the Play Store and log in with the same account as on your Umbrel.</li>
             <li>Android <b>Settings → Network → VPN</b> → gear icon next to Tailscale → turn on <b>Always-on VPN</b>.</li>
@@ -133,9 +138,9 @@
         <li>
           <h3>Create the macro: trigger</h3>
           <ul>
-            <li>MacroDroid → <b>Add macro</b>, name it <i>Krak to Firefly</i>.</li>
+            <li>MacroDroid → <b>Add macro</b>, name it <i><span class="gName">Card</span> to Firefly</i>. One macro per card.</li>
             <li><b>Triggers</b> → <b>+</b> → <b>Device events</b> → <b>Notification</b> → <b>Notification received</b>.</li>
-            <li>Select application(s): <b>Krak</b>. If you also pay with the phone via Google Wallet, add <b>Google Wallet</b>, since the payment notification may come from there.</li>
+            <li>Select application(s): <b class="gApp">the card's app</b>. If the card is used through Google Wallet, add <b>Google Wallet</b> too, since the payment notification may come from there — but then only for this one card, otherwise two macros catch the same payment.</li>
             <li>Text content: <b>Any</b>.</li>
           </ul>
         </li>
@@ -165,7 +170,7 @@
           <h3>Test it</h3>
           <ul>
             <li>Paste the text of a real Krak payment notification into the test box below to see what Card Capture would book.</li>
-            <li>Then make a small card payment. Within seconds it should appear in the <a href="#" data-goto="activity">Activity</a> tab as <span class="pill booked">booked</span>, and in Firefly under the <b>Krak Card</b> account.</li>
+            <li>Then make a small card payment. Within seconds it should appear in the <a href="#" data-goto="activity">Activity</a> tab as <span class="pill booked">booked</span>, and in Firefly under the <b class="gAcc">…</b> account.</li>
             <li>In MacroDroid you can also open the macro → ⋮ → <b>Test actions</b>; that sends empty placeholders, which shows up here as <i>ignored</i>. That's fine, it only proves the connection works.</li>
           </ul>
           <div class="card" style="margin:8px 0 0;background:var(--bg)">
@@ -180,12 +185,13 @@
           <h3>Let Firefly categorise</h3>
           The merchant becomes the description and the expense account of each transaction. Create rules in Firefly as usual,
           e.g. <i>description contains “REWE” → category Groceries</i>. Card Capture asks Firefly to apply rules on every booking.
-          Every booking also gets the tag <b>krak-card</b>.
+          Every booking also gets the card's tag, e.g. <b class="gTag">…</b>.
         </li>
         <li>
           <h3>Book top-ups as transfers</h3>
-          When you move money from DKB or the Kraken exchange to the card, create a Firefly rule that turns it into a
-          <b>transfer</b> to the <b>Krak Card</b> account. Otherwise the top-up and the purchases are both counted as spending.
+          When you pay the card from a bank account (a top-up, or the monthly credit card bill), create a Firefly rule that turns
+          that payment into a <b>transfer</b> to the card's account. Otherwise the bill and the purchases are both counted as spending.
+          If you also import the same card from a CSV statement, stop that, or every purchase appears twice.
         </li>
       </ol>
     </div>
@@ -213,23 +219,17 @@
       <div class="grid">
         <label>Firefly III URL<input type="text" name="firefly_url" spellcheck="false"></label>
         <label>Personal access token<input type="password" name="token" id="tok"></label>
-        <label>Account for card payments<input type="text" name="account"></label>
-        <label>Currency of that account<input type="text" name="currency" maxlength="3"></label>
-        <label>Tag added to every booking<input type="text" name="tag"></label>
       </div>
-      <h2 style="margin-top:18px">Filters</h2>
-      <div class="grid">
-        <label>Ignore notifications containing (regular expression)<input type="text" name="ignore" spellcheck="false"></label>
-        <label>Only accept notifications matching (optional)<input type="text" name="require" spellcheck="false" placeholder="e.g. paid|bezahlt"></label>
+      <h2 style="margin-top:18px">Cards</h2>
+      <div class="sub">Each card books into its own Firefly account and has its own address for MacroDroid.</div>
+      <div id="cards"></div>
+      <div class="row" style="margin-top:10px">
+        <select id="addTpl" style="width:auto"><option value="amex">+ Amex</option><option value="visa">+ DKB Visa</option><option value="krak">+ Krak</option><option value="other">+ Other card</option></select>
+        <button type="button" class="btn small" id="addCard">Add card</button>
       </div>
       <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn primary">Save</button></div>
       <div class="msg" id="saveMsg"></div>
     </form>
-    <div class="card">
-      <h2>Secret key</h2>
-      <p class="sub" style="margin-top:0">Part of the web address the phone uses. Create a new one if the address ever leaked; then update the URL in MacroDroid.</p>
-      <button class="btn" id="newSecret">Create new secret key</button>
-    </div>
   </section>
 </div>
 
@@ -238,7 +238,7 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  let cfg = {};
+  let cfg = {}, draft = [];
 
   function show(tab) {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === tab));
@@ -252,22 +252,61 @@
   async function loadConfig() {
     cfg = await (await fetch("api/config")).json();
     const f = $("form");
-    for (const k of ["firefly_url", "account", "currency", "tag", "ignore", "require"]) f.elements[k].value = cfg[k] || "";
+    f.elements.firefly_url.value = cfg.firefly_url || "";
     $("tok").placeholder = cfg.token_set ? "saved – leave empty to keep" : "paste your Firefly token";
-    $("gAcc").textContent = cfg.account;
+    draft = cfg.cards.map((c) => ({ ...c }));
+    drawCards();
+    const g = $("gCard"), keep = g.value;
+    g.replaceChildren(...cfg.cards.map((c) => new Option(c.name, c.id)));
+    if (keep && cfg.cards.some((c) => c.id === keep)) g.value = keep;
     let base = "";
     try { base = localStorage.getItem("cc:base") || ""; } catch {}
     $("base").value = base || location.origin;
     updateUrl();
     if (!cfg.token_set) show("guide");
   }
+  const curCard = () => cfg.cards.find((c) => c.id === $("gCard").value) || cfg.cards[0];
   function updateUrl() {
     const base = $("base").value.trim().replace(/\/+$/, "");
-    $("hookUrl").textContent = `${base}/api/hook?key=${cfg.secret || "…"}`;
+    const c = curCard();
+    $("hookUrl").textContent = `${base}/api/hook?key=${c.secret || "…"}`;
+    document.querySelectorAll(".gAcc").forEach((e) => (e.textContent = c.account));
+    document.querySelectorAll(".gName").forEach((e) => (e.textContent = c.name));
+    document.querySelectorAll(".gTag").forEach((e) => (e.textContent = c.tag || "–"));
+    document.querySelectorAll(".gApp").forEach((e) => (e.textContent = c.app || "the card's app"));
     $("pingUrl").textContent = `${base}/api/hook`;
     try { localStorage.setItem("cc:base", base); } catch {}
   }
   $("base").addEventListener("input", updateUrl);
+  $("gCard").addEventListener("change", updateUrl);
+  function drawCards() {
+    $("cards").replaceChildren(...draft.map((c, i) => {
+      const el = document.createElement("div"); el.className = "cardrow";
+      el.innerHTML = `<h3><span>${esc(c.name || "New card")}</span><span class="row">${c.secret ? `<button type="button" class="btn small" data-new="${i}">New address</button>` : ""}${draft.length > 1 ? `<button type="button" class="btn small" data-del="${i}">Remove</button>` : ""}</span></h3>
+        <div class="grid">
+          <label>Name<input type="text" data-k="name" value="${esc(c.name)}"></label>
+          <label>Firefly account<input type="text" data-k="account" value="${esc(c.account)}"></label>
+          <label>Currency<input type="text" data-k="currency" maxlength="3" value="${esc(c.currency || "EUR")}"></label>
+          <label>Tag on every booking<input type="text" data-k="tag" value="${esc(c.tag || "")}"></label>
+          <label>Notifications come from app<input type="text" data-k="app" value="${esc(c.app || "")}" placeholder="e.g. Amex"></label>
+          <label>Only accept matching (optional)<input type="text" data-k="require" spellcheck="false" value="${esc(c.require || "")}" placeholder="e.g. bezahlt|paid"></label>
+          <label style="grid-column:1/-1">Ignore notifications containing (regular expression)<input type="text" data-k="ignore" spellcheck="false" value="${esc(c.ignore || "")}"></label>
+        </div>`;
+      el.querySelectorAll("[data-k]").forEach((inp) => inp.addEventListener("input", () => (c[inp.dataset.k] = inp.value)));
+      const del = el.querySelector("[data-del]"); if (del) del.addEventListener("click", () => { draft.splice(i, 1); drawCards(); });
+      const nw = el.querySelector("[data-new]"); if (nw) nw.addEventListener("click", async () => {
+        if (!confirm(`The old address of “${c.name}” stops working. Continue?`)) return;
+        await fetch("api/secret", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ card: c.id }) });
+        await loadConfig(); $("gCard").value = c.id; updateUrl(); show("guide");
+      });
+      return el;
+    }));
+  }
+  const TPL = { krak: ["Krak Card", "krak-card", "Krak"], amex: ["Amex", "amex", "Amex"], visa: ["DKB Visa", "dkb-visa", "DKB"], other: ["Card", "card", ""] };
+  $("addCard").addEventListener("click", () => {
+    const t = $("addTpl").value, [name, tag, app] = TPL[t];
+    draft.push({ template: t, name, account: name, tag, app, currency: "EUR" }); drawCards();
+  });
   document.querySelectorAll("[data-copy]").forEach((b) => b.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($(b.dataset.copy).textContent); b.textContent = "Copied"; }
     catch { b.textContent = "Select & copy"; }
@@ -278,13 +317,14 @@
     const r = await (await fetch("api/test", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: $("tTitle").value, text: $("tText").value }) })).json();
     $("tOut").innerHTML = r.ok
-      ? `Would book: <b>${r.parsed.kind === "deposit" ? "refund +" : "−"}${r.parsed.amount.toFixed(2)} ${esc(r.parsed.currency)}</b> · merchant <b>${esc(r.parsed.merchant)}</b>${r.parsed.currency !== cfg.currency ? " · goes to review (foreign currency)" : ""}`
+      ? `Would book: <b>${r.parsed.kind === "deposit" ? "refund +" : "−"}${r.parsed.amount.toFixed(2)} ${esc(r.parsed.currency)}</b> · merchant <b>${esc(r.parsed.merchant)}</b>${r.parsed.currency !== curCard().currency ? " · goes to review (foreign currency)" : ""}`
       : `<span style="color:var(--warn)">Not understood: ${esc(r.reason)}</span>`;
   });
 
   $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const data = Object.fromEntries(new FormData(e.target));
+    const data = { firefly_url: e.target.elements.firefly_url.value, token: $("tok").value,
+      cards: draft.map(({ id, template, name, account, currency, tag, app, require, ignore }) => ({ id, template, name, account, currency, tag, app, require, ignore })) };
     $("saveMsg").className = "msg"; $("saveMsg").textContent = "Checking…";
     const r = await fetch("api/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     const d = await r.json();
@@ -292,12 +332,10 @@
     $("saveMsg").textContent = r.ok ? (d.message || "Saved") : d.error;
     if (r.ok) { $("tok").value = ""; loadConfig(); }
   });
-  $("newSecret").addEventListener("click", async () => {
-    if (!confirm("The old address stops working. Continue?")) return;
-    await fetch("api/secret", { method: "POST" }); await loadConfig(); show("guide");
-  });
+
 
   /* ---------- activity ---------- */
+  const cardName = (id) => ((cfg.cards || []).find((c) => c.id === id) || (cfg.cards || [])[0] || { name: "" }).name;
   const LABEL = { booked: "booked", review: "needs review", error: "error", ignored: "ignored", duplicate: "duplicate" };
   async function loadEvents() {
     const evs = await (await fetch("api/events")).json();
@@ -322,7 +360,7 @@
           <button class="btn small" data-act="ignore">Ignore</button>
         </div>` : "";
       return `<div class="ev">
-        <div class="top"><span><span class="pill ${e.status}">${LABEL[e.status] || e.status}</span> <span class="sub">${when}</span> <b>${esc(p ? p.merchant : "")}</b></span><span class="amt">${amt}</span></div>
+        <div class="top"><span><span class="pill ${e.status}">${LABEL[e.status] || e.status}</span> <span class="cpill">${esc(cardName(e.card))}</span> <span class="sub">${when}</span> <b>${esc(p ? p.merchant : "")}</b></span><span class="amt">${amt}</span></div>
         <div class="raw">${esc([e.title, e.text].filter(Boolean).join(" — "))}${e.reason ? ` · <i>${esc(e.reason)}</i>` : ""}</div>${fix}</div>`;
     }).join("");
   }

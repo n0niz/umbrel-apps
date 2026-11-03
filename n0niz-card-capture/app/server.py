@@ -1,10 +1,11 @@
 """Card Capture: turn card payment notifications into Firefly III transactions.
 
 An automation app on the phone (MacroDroid, Tasker, ...) forwards each payment
-notification to POST /api/hook?key=SECRET. The text is parsed for amount,
-currency and merchant and booked into Firefly III as a withdrawal from a
-dedicated asset account (default "Krak Card"). Anything that cannot be parsed
-safely lands in a review list in the web interface.
+notification to POST /api/hook?key=SECRET. Every card (Krak, Amex, a partner's
+Visa, ...) has its own secret key and its own Firefly account, so one phone or
+several phones can feed several cards. The text is parsed for amount, currency
+and merchant and booked as a withdrawal from that card's account. Anything that
+cannot be parsed safely lands in a review list in the web interface.
 
 Standard library only.
 """
@@ -42,7 +43,28 @@ DEFAULTS = {
     "ignore": r"declined|abgelehnt|failed|fehlgeschlagen|top.?up|aufgeladen|deposit|einzahlung",
 }
 
+BASE_IGNORE = r"declined|abgelehnt|failed|fehlgeschlagen|verification|bestätigungscode|code:|tan\b|anmeld|login"
+TEMPLATES = {
+    "krak": {"name": "Krak Card", "account": "Krak Card", "tag": "krak-card", "app": "Krak",
+             "ignore": BASE_IGNORE + r"|top.?up|aufgeladen|deposit|einzahlung"},
+    "amex": {"name": "Amex", "account": "Amex", "tag": "amex", "app": "Amex",
+             "ignore": BASE_IGNORE + r"|zahlung(?:seingang| erhalten| eingegangen)|payment received|statement|kontoauszug|"
+                       r"abrechnung|membership rewards|punkte|points|limit"},
+    "visa": {"name": "DKB Visa", "account": "DKB Visa", "tag": "dkb-visa", "app": "DKB",
+             "ignore": BASE_IGNORE + r"|geldeingang|zahlungseingang|überweisung|kontostand|saldo|freigabe|push.?tan|dauerauftrag"},
+    "other": {"name": "Card", "account": "Card", "tag": "card", "app": "", "ignore": BASE_IGNORE},
+}
+CARD_KEYS = ("name", "account", "currency", "tag", "require", "ignore", "app")
+
 lock = threading.Lock()
+
+
+def new_card(template="other", **over):
+    t = TEMPLATES.get(template, TEMPLATES["other"])
+    c = {"id": secrets.token_hex(4), "template": template, "currency": "EUR", "require": "",
+         "secret": secrets.token_urlsafe(18), **t}
+    c.update({k: v for k, v in over.items() if v is not None})
+    return c
 
 
 # --------------------------------------------------------------- storage ---
@@ -52,10 +74,20 @@ def load_config():
         cfg.update(json.loads(CONFIG_FILE.read_text()))
     except (OSError, ValueError):
         pass
-    if not cfg["secret"]:
-        cfg["secret"] = secrets.token_urlsafe(18)
+    if not cfg.get("cards"):
+        # move the single-card setup of 1.0.x into the first card; its secret stays, so
+        # the address already saved in MacroDroid keeps working
+        cfg["cards"] = [new_card("krak", id="krak", account=cfg.get("account") or "Krak Card",
+                                 currency=cfg.get("currency") or "EUR", tag=cfg.get("tag", "krak-card"),
+                                 require=cfg.get("require", ""), ignore=cfg.get("ignore") or TEMPLATES["krak"]["ignore"],
+                                 secret=cfg.get("secret") or secrets.token_urlsafe(18))]
+        cfg["cards"][0]["name"] = cfg["cards"][0]["account"]
         save_config(cfg)
     return cfg
+
+
+def card_by_id(cfg, cid):
+    return next((c for c in cfg["cards"] if c["id"] == cid), cfg["cards"][0])
 
 
 def save_config(cfg):
@@ -176,36 +208,41 @@ def ff(cfg, method, path, body=None, params=None):
     return json.loads(raw) if raw else {}
 
 
-def ensure_account(cfg):
-    res = ff(cfg, "GET", "/api/v1/accounts", params={"type": "asset", "limit": 200})
-    for a in res.get("data", []):
-        if a["attributes"]["name"].lower() == cfg["account"].lower():
-            return "exists"
-    ff(cfg, "POST", "/api/v1/accounts", {"name": cfg["account"], "type": "asset",
-                                          "account_role": "defaultAsset", "currency_code": cfg["currency"]})
+def ensure_account(cfg, card):
+    page = 1
+    while True:
+        res = ff(cfg, "GET", "/api/v1/accounts", params={"type": "asset", "limit": 200, "page": page})
+        for a in res.get("data", []):
+            if a["attributes"]["name"].lower() == card["account"].lower():
+                return "exists"
+        if not res.get("data") or page >= int(res.get("meta", {}).get("pagination", {}).get("total_pages") or 1):
+            break
+        page += 1
+    ff(cfg, "POST", "/api/v1/accounts", {"name": card["account"], "type": "asset",
+                                          "account_role": "defaultAsset", "currency_code": card["currency"]})
     return "created"
 
 
-def book(cfg, ev):
+def book(cfg, card, ev):
     p = ev["parsed"]
     base = {
         "type": p["kind"], "date": ev["received"], "amount": f"{p['amount']:.2f}",
-        "description": p["merchant"], "currency_code": cfg["currency"],
-        "tags": [cfg["tag"]] if cfg["tag"] else [], "external_id": "cc-" + ev["id"],
+        "description": p["merchant"], "currency_code": card["currency"],
+        "tags": [card["tag"]] if card["tag"] else [], "external_id": "cc-" + ev["id"],
         "notes": f"{ev.get('title', '')}\n{ev.get('text', '')}".strip()[:1000],
     }
     if p["kind"] == "withdrawal":
-        base.update(source_name=cfg["account"], destination_name=p["merchant"])
+        base.update(source_name=card["account"], destination_name=p["merchant"])
     else:
-        base.update(source_name=p["merchant"], destination_name=cfg["account"])
+        base.update(source_name=p["merchant"], destination_name=card["account"])
     res = ff(cfg, "POST", "/api/v1/transactions",
              {"error_if_duplicate_hash": True, "apply_rules": True, "fire_webhooks": True, "transactions": [base]})
     return res.get("data", {}).get("id")
 
 
-def try_book(cfg, ev):
+def try_book(cfg, card, ev):
     try:
-        ev["firefly_id"] = book(cfg, ev)
+        ev["firefly_id"] = book(cfg, card, ev)
         ev["status"], ev["reason"] = "booked", ""
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
@@ -218,12 +255,12 @@ def try_book(cfg, ev):
 
 
 # --------------------------------------------------------------- handling ---
-def handle_notification(title, text, app=""):
+def handle_notification(card, title, text, app=""):
     cfg = load_config()
     now = datetime.now(timezone.utc).astimezone()
-    fingerprint = hashlib.sha256(f"{title}|{text}".encode()).hexdigest()[:16]
+    fingerprint = hashlib.sha256(f"{card['id']}|{title}|{text}".encode()).hexdigest()[:16]
     ev = {"id": f"{int(time.time() * 1000)}-{fingerprint[:6]}", "received": now.isoformat(timespec="seconds"),
-          "title": title[:300], "text": text[:2000], "app": app[:80], "fp": fingerprint}
+          "title": title[:300], "text": text[:2000], "app": app[:80], "fp": fingerprint, "card": card["id"]}
     with lock:
         events = load_events()
         recent = [e for e in events[-50:] if e.get("fp") == fingerprint
@@ -231,19 +268,19 @@ def handle_notification(title, text, app=""):
         if recent:
             return {"status": "repeat", "reason": "same notification within 15 minutes, ignored"}
         full = f"{title}\n{text}"
-        if cfg["require"] and not re.search(cfg["require"], full, re.I):
+        if card["require"] and not re.search(card["require"], full, re.I):
             ev["status"], ev["reason"] = "ignored", "does not match the required pattern"
-        elif cfg["ignore"] and re.search(cfg["ignore"], full, re.I):
+        elif card["ignore"] and re.search(card["ignore"], full, re.I):
             ev["status"], ev["reason"] = "ignored", "matches an ignore word"
         else:
             try:
                 ev["parsed"] = parse(title, text)
-                if ev["parsed"]["currency"] != cfg["currency"]:
-                    ev["status"], ev["reason"] = "review", f"paid in {ev['parsed']['currency']}, enter the {cfg['currency']} amount"
+                if ev["parsed"]["currency"] != card["currency"]:
+                    ev["status"], ev["reason"] = "review", f"paid in {ev['parsed']['currency']}, enter the {card['currency']} amount"
                 elif not cfg["token"]:
                     ev["status"], ev["reason"] = "review", "no Firefly token set yet"
                 else:
-                    try_book(cfg, ev)
+                    try_book(cfg, card, ev)
             except ValueError as e:
                 # payment notifications always carry an amount; without one it is most
                 # likely a news/summary/security message, so it is only logged
@@ -306,8 +343,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (APP_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
         if url.path == "/api/config":
             cfg = load_config()
-            out = {k: v for k, v in cfg.items() if k != "token"}
-            out["token_set"] = bool(cfg["token"])
+            out = {"firefly_url": cfg["firefly_url"], "token_set": bool(cfg["token"]), "cards": cfg["cards"],
+                   "templates": {k: {"name": v["name"], "app": v["app"]} for k, v in TEMPLATES.items()}}
             return self._json(200, out)
         if url.path == "/api/events":
             return self._json(200, list(reversed(load_events()))[:200])
@@ -319,7 +356,11 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/hook":
             cfg = load_config()
             key = q.get("key", [""])[0] or self.headers.get("X-Key", "")
-            if not secrets.compare_digest(key, cfg["secret"]):
+            card = None
+            for c in cfg["cards"]:
+                if secrets.compare_digest(key.encode(), c["secret"].encode()):
+                    card = c
+            if not card:
                 return self._json(403, {"error": "wrong key"})
             try:
                 raw = self._body()
@@ -328,7 +369,7 @@ class Handler(BaseHTTPRequestHandler):
             title, text, app = extract_fields(raw, self.headers.get("Content-Type", ""), q)
             if not (title or text).strip():
                 return self._json(400, {"error": "empty notification"})
-            return self._json(200, handle_notification(title, text, app))
+            return self._json(200, handle_notification(card, title, text, app))
 
         if url.path == "/api/test":
             data = json.loads(self._body() or b"{}")
@@ -352,20 +393,23 @@ class Handler(BaseHTTPRequestHandler):
                         amount = float(str(data["amount"]).replace(",", "."))
                     except (KeyError, ValueError):
                         return self._json(400, {"error": "invalid amount"})
-                    ev["parsed"] = {"amount": round(amount, 2), "currency": cfg["currency"],
+                    card = card_by_id(cfg, ev.get("card", ""))
+                    ev["parsed"] = {"amount": round(amount, 2), "currency": card["currency"],
                                     "merchant": (data.get("merchant") or "Card payment").strip()[:80],
                                     "kind": "deposit" if data.get("kind") == "deposit" else "withdrawal"}
                     if not cfg["token"]:
                         return self._json(400, {"error": "Set the Firefly token in Settings first."})
-                    try_book(cfg, ev)
+                    try_book(cfg, card, ev)
                 save_events(events)
             return self._json(200, ev)
 
         if url.path == "/api/secret":
+            data = json.loads(self._body() or b"{}")
             cfg = load_config()
-            cfg["secret"] = secrets.token_urlsafe(18)
+            card = card_by_id(cfg, data.get("card", ""))
+            card["secret"] = secrets.token_urlsafe(18)
             save_config(cfg)
-            return self._json(200, {"secret": cfg["secret"]})
+            return self._json(200, {"secret": card["secret"]})
         self._json(404, {"error": "not found"})
 
     def do_PUT(self):
@@ -380,22 +424,38 @@ class Handler(BaseHTTPRequestHandler):
         new_url = str(data.get("firefly_url", cfg["firefly_url"])).strip()
         if new_url.rstrip("/") != cfg["firefly_url"].rstrip("/") and not data.get("token"):
             return self._json(400, {"error": "You changed the Firefly address - paste the token again to confirm."})
-        for k in ("firefly_url", "account", "currency", "tag", "require", "ignore"):
-            if k in data:
-                cfg[k] = str(data[k]).strip()
+        if "firefly_url" in data:
+            cfg["firefly_url"] = new_url
         if data.get("token"):
             cfg["token"] = data["token"].strip()
-        for k in ("require", "ignore"):
-            try:
-                re.compile(cfg[k])
-            except re.error as e:
-                return self._json(400, {"error": f"{k}: invalid pattern ({e})"})
-        if not cfg["account"]:
-            return self._json(400, {"error": "Account name is required."})
+        if isinstance(data.get("cards"), list):
+            old = {c["id"]: c for c in cfg["cards"]}
+            cards = []
+            for d in data["cards"]:
+                c = old.get(d.get("id")) or new_card(d.get("template") or "other")
+                for k in CARD_KEYS:
+                    if k in d:
+                        c[k] = str(d[k]).strip()
+                c["currency"] = (c["currency"] or "EUR").upper()[:3]
+                for k in ("require", "ignore"):
+                    try:
+                        re.compile(c[k])
+                    except re.error as e:
+                        return self._json(400, {"error": f"{c['name']}: {k} is not a valid pattern ({e})"})
+                if not c["account"]:
+                    return self._json(400, {"error": f"{c['name'] or 'Card'}: account name is required."})
+                c["name"] = c["name"] or c["account"]
+                cards.append(c)
+            if not cards:
+                return self._json(400, {"error": "Keep at least one card."})
+            if len({c["account"].lower() for c in cards}) < len(cards):
+                return self._json(400, {"error": "Two cards use the same Firefly account."})
+            cfg["cards"] = cards
         msg = ""
         if cfg["token"]:
             try:
-                msg = f"Firefly connected, account “{cfg['account']}” {ensure_account(cfg)}."
+                done = [f"“{c['account']}” {ensure_account(cfg, c)}" for c in cfg["cards"]]
+                msg = "Firefly connected · accounts " + ", ".join(done) + "."
             except urllib.error.HTTPError as e:
                 return self._json(400, {"error": "Token rejected by Firefly." if e.code == 401 else f"Firefly error {e.code}"})
             except Exception as e:
