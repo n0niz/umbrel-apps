@@ -8,6 +8,7 @@ side, and cached in /data so only new entries are fetched later.
 Standard library only.
 """
 
+import agent
 import base64
 import btcwallet
 import hashlib
@@ -37,6 +38,8 @@ CACHE_SECONDS = 600
 KRAKEN_API = os.environ.get("KRAKEN_API", "https://api.kraken.com")
 BINANCE_API = os.environ.get("BINANCE_API", "https://api.binance.com")
 STORES = {"layout", "reports", "prefs"}
+AGENT_FILE = DATA_DIR / "agent.json"
+NEWS_DIR = DATA_DIR / "news"
 SYNC_EVERY = 6 * 3600
 KRAKEN_PAUSE = float(os.environ.get("KRAKEN_PAUSE", "2.5"))
 
@@ -48,6 +51,13 @@ DEFAULTS = {
     "history_start": "",
     "mempool_url": "",
     "wallets": [],
+    "agent_auto": False,
+    "agent_hour": 8,
+    "agent_days": 3,
+    "agent_min_conf": 0.75,
+    "ollama_url": "",
+    "ollama_model": "",
+    "news_lang": "en",
 }
 
 cache = {}
@@ -103,6 +113,24 @@ def more_pages(res, page):
         return True
     per = int(pg.get("per_page") or 0)
     return bool(per) and len(data) >= per and page < 2000
+
+
+def firefly_put(cfg, path, body):
+    req = urllib.request.Request(cfg["firefly_url"].rstrip("/") + path, method="PUT", data=json.dumps(body).encode(),
+                                 headers={"Authorization": f"Bearer {cfg['token']}", "Accept": "application/vnd.api+json",
+                                          "Content-Type": "application/json", "User-Agent": "spending-trends/2.2"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read() or b"{}")
+
+
+def berlin_now():
+    """Local time in Germany without tzdata: CET, CEST from the last Sunday of March to the last Sunday of October."""
+    u = datetime.now(timezone.utc)
+    def last_sunday(month):
+        d = datetime(u.year, month, 31, 1, tzinfo=timezone.utc)
+        return d - timedelta(days=(d.weekday() + 1) % 7)
+    off = 2 if last_sunday(3) <= u < last_sunday(10) else 1
+    return (u + timedelta(hours=off)).replace(tzinfo=None)
 
 
 def firefly_get(cfg, path, params):
@@ -419,6 +447,102 @@ def start_sync(cfg):
     threading.Thread(target=btc_sync, args=(cfg,), daemon=True).start()
 
 
+# --------------------------------------------------------------- agent ---
+agent_lock = threading.Lock()
+agent_state = {"running": False, "step": "", "error": ""}
+llm_cache = {"t": 0, "v": None, "err": ""}
+
+
+def llm_for(cfg, fresh=False):
+    if not fresh and time.time() - llm_cache["t"] < 300:
+        return llm_cache["v"]
+    try:
+        base, models = agent.find_ollama(cfg.get("ollama_url", ""))
+        model = agent.pick_model(models, cfg.get("ollama_model", ""))
+        llm_cache.update(t=time.time(), v=(base, model, models) if model else None,
+                         err="" if model else "Ollama has no model yet. On the Umbrel run: sudo docker exec ollama_ollama_1 ollama pull qwen2.5:3b")
+    except Exception as e:  # noqa: BLE001
+        llm_cache.update(t=time.time(), v=None, err=str(e))
+    return llm_cache["v"]
+
+
+def agent_run(cfg, dry=False, days=None, auto=False):
+    with agent_lock:
+        if agent_state["running"]:
+            return False
+        agent_state.update(running=True, step="Starting", error="")
+    st = read_json(AGENT_FILE, {})
+    try:
+        llm = llm_for(cfg, fresh=True)
+        days = int(days or cfg.get("agent_days") or 3)
+        stats, actions, cats = agent.run(
+            lambda path, params: firefly_get(cfg, path, params), lambda path, body: firefly_put(cfg, path, body),
+            days=days, dry=dry, min_conf=float(cfg.get("agent_min_conf") or 0.75), llm=llm[:2] if llm else None,
+            progress=lambda i, n: agent_state.update(step=f"Looking at booking {i} of {n}"))
+        for a in actions:
+            a["dry"] = dry
+        keep = [a for a in st.get("actions", []) if not (dry and a.get("dry"))]
+        seen = {(a["jid"], a["action"]) for a in actions}
+        keep = [a for a in keep if (a.get("jid"), a.get("action")) not in seen]
+        st["actions"] = (actions + keep)[:400]
+        st["categories"] = cats
+        st["last"] = {"t": int(time.time()), "dry": dry, "days": days, "auto": auto, "stats": stats,
+                      "model": llm[1] if llm else "", "llm_error": "" if llm else llm_cache["err"]}
+        if auto:
+            st["last_auto_day"] = berlin_now().date().isoformat()
+        write_json(AGENT_FILE, st)
+        if not dry:
+            with cache_lock:
+                cache.clear()
+        agent_state.update(running=False, step="")
+    except Exception as e:  # noqa: BLE001
+        if auto:
+            st["last_auto_day"] = berlin_now().date().isoformat()
+            write_json(AGENT_FILE, st)
+        agent_state.update(running=False, step="", error=str(e))
+    return True
+
+
+def news_for(cfg, month, refresh=False):
+    NEWS_DIR.mkdir(parents=True, exist_ok=True)
+    f = NEWS_DIR / f"{month}.json"
+    now = berlin_now()
+    current = month == now.strftime("%Y-%m")
+    old = read_json(f, None)
+    if old and not refresh and (not current or time.time() - old.get("t", 0) < 3600) and (old.get("text") or time.time() - old.get("t", 0) < 6 * 3600):
+        return old
+    y, m = map(int, month.split("-"))
+    start = f"{y - 2}-{m:02d}-01"
+    end = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).isoformat()
+    data = fetch_rows(cfg, start, end)
+    cur = max(data["currencies"], key=data["currencies"].get) if data["currencies"] else "EUR"
+    fx = agent.facts(data["rows"], month, cur, upto_day=now.day if current else None)
+    llm = llm_for(cfg)
+    text, lines = agent.news_text(fx, cfg.get("news_lang") or "en", llm[:2] if llm else None)
+    out = {"month": month, "t": int(time.time()), "facts": fx, "headlines": lines, "text": text,
+           "model": llm[1] if (llm and text) else "", "llm_error": "" if llm else llm_cache["err"], "partial": current}
+    write_json(f, out)
+    return out
+
+
+def agent_loop():
+    while True:
+        try:
+            cfg = load_config()
+            if cfg.get("token"):
+                now = berlin_now()
+                st = read_json(AGENT_FILE, {})
+                if cfg.get("agent_auto") and now.hour >= int(cfg.get("agent_hour") or 8) and st.get("last_auto_day") != now.date().isoformat():
+                    agent_run(cfg, auto=True)
+                prev = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+                got = read_json(NEWS_DIR / f"{prev}.json", None)
+                if now.hour >= int(cfg.get("agent_hour") or 8) and (not got or (not got.get("text") and time.time() - got.get("t", 0) > 6 * 3600)):
+                    news_for(cfg, prev, refresh=bool(got))
+        except Exception as e:  # noqa: BLE001
+            print("agent loop:", e, flush=True)
+        time.sleep(300)
+
+
 def sync_loop():
     while True:
         cfg = load_config()
@@ -681,6 +805,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._firefly(lambda cfg: fetch_networth(cfg, months))
         if p == "/api/btc":
             return self._json(200, btc_payload(load_config()))
+        if p == "/api/agent":
+            cfg = load_config()
+            st = read_json(AGENT_FILE, {})
+            llm = llm_for(cfg)
+            with agent_lock:
+                run_state = dict(agent_state)
+            return self._json(200, {"state": run_state, "last": st.get("last"), "actions": st.get("actions", []),
+                                    "categories": st.get("categories", []),
+                                    "config": {k: cfg.get(k) for k in ("agent_auto", "agent_hour", "agent_days", "agent_min_conf", "ollama_url", "ollama_model", "news_lang")},
+                                    "llm": {"ok": bool(llm), "base": llm[0] if llm else "", "model": llm[1] if llm else "",
+                                            "models": llm[2] if llm else [], "error": "" if llm else llm_cache["err"]}})
+        if p == "/api/news":
+            now = berlin_now()
+            month = (q.get("month") or [""])[0] or (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+            if month == "current":
+                month = now.strftime("%Y-%m")
+            if not re.fullmatch(r"\d{4}-\d{2}", month):
+                return self._json(400, {"error": "month must look like 2026-10"})
+            return self._firefly(lambda cfg: news_for(cfg, month, refresh="refresh" in q))
         if p.startswith("/api/store/"):
             name = p.rsplit("/", 1)[-1]
             if name not in STORES:
@@ -689,6 +832,30 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
     def do_POST(self):
+        if self.path in ("/api/agent/run", "/api/agent/correct", "/api/agent/review"):
+            cfg = load_config()
+            body = self._body() or {}
+            if not cfg.get("token"):
+                return self._json(400, {"error": "No Firefly token set yet. Open Settings."})
+            if self.path == "/api/agent/run":
+                threading.Thread(target=agent_run, args=(cfg, bool(body.get("dry")), body.get("days")), daemon=True).start()
+                return self._json(200, {"ok": True})
+            st = read_json(AGENT_FILE, {})
+            if self.path == "/api/agent/correct":
+                try:
+                    agent.correct(lambda path, params: firefly_get(cfg, path, params), lambda path, b: firefly_put(cfg, path, b),
+                                  body["gid"], body["jid"], body.get("category"))
+                except Exception as e:  # noqa: BLE001
+                    return self._json(502, {"error": f"Firefly: {e}"})
+                with cache_lock:
+                    cache.clear()
+            for a in st.get("actions", []):
+                if str(a.get("jid")) == str(body.get("jid")):
+                    a["reviewed"] = True
+                    if self.path == "/api/agent/correct":
+                        a["final"] = body.get("category")
+            write_json(AGENT_FILE, st)
+            return self._json(200, {"ok": True})
         if self.path == "/api/btc/sync":
             cfg = load_config()
             if not cfg.get("kraken_key"):
@@ -751,6 +918,15 @@ class Handler(BaseHTTPRequestHandler):
                 new.append({"id": wid, "name": name, "desc": desc, "type": typ})
             wallets_changed = [(w["id"], w["desc"], w["type"]) for w in new] != [(w["id"], w["desc"], w.get("type", "")) for w in cfg.get("wallets", [])]
             cfg["wallets"] = new
+        for k, cast in (("agent_auto", bool), ("agent_hour", int), ("agent_days", int), ("agent_min_conf", float),
+                        ("ollama_url", str), ("ollama_model", str), ("news_lang", str)):
+            if k in body:
+                try:
+                    cfg[k] = cast(body[k]) if not isinstance(body[k], str) or cast is str else cast(float(body[k])) if cast is int else cast(body[k])
+                except (TypeError, ValueError):
+                    return self._json(400, {"error": f"bad value for {k}"})
+                if k in ("ollama_url", "ollama_model"):
+                    llm_cache["t"] = 0
         if "mempool_url" in body:
             cfg["mempool_url"] = (body.get("mempool_url") or "").strip()
         if body.get("kraken_remove"):
@@ -766,4 +942,5 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     print(f"Spending Trends on :{PORT}", flush=True)
     threading.Thread(target=sync_loop, daemon=True).start()
+    threading.Thread(target=agent_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

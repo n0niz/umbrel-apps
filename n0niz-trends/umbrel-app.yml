@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.1.1"
+version: "2.2.0"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -15,7 +15,9 @@ description: >-
   straight from a read-only Kraken API key, with cost basis, profit, return
   and the German one-year tax-free rule. Hardware wallets can be added watch-only
   (xpub, zpub or Sparrow descriptor, multisig too) and are read through your own
-  Mempool app. Tokens and keys stay on your server.
+  Mempool app. A local AI agent (Ollama) sorts bookings your Firefly rules
+  missed, learns from your own categories and tags, and writes a monthly news
+  flash. Tokens and keys stay on your server.
 developer: n0niz
 website: https://github.com/n0niz/umbrel-apps
 submitter: n0niz
@@ -24,8 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Watch-only Bitcoin wallets (xpub/ypub/zpub or descriptor, multisig too), read
-  through your own Mempool app and matched with Kraken withdrawals and deposits.
+  New Agent tab: sorts uncategorised bookings with your history and local
+  Ollama, adds the tags you usually use, flags odd categories, and a monthly
+  news flash widget for Home.
 dependencies:
   - firefly-iii
 path: ""

@@ -196,6 +196,14 @@
   .catalog .mini { height: 38px; display: grid; place-items: center; }
   .catalog b { display: block; font-weight: 600; }
   .catalog small { color: var(--muted); }
+  .news ul { margin: 6px 0 10px; padding-left: 18px; display: grid; gap: 6px; }
+  .news li { line-height: 1.45; }
+  .news .meta { color: var(--muted); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .agtable td { vertical-align: top; }
+  .agtable td.wr { min-width: 180px; }
+  .agtable tr.done td { opacity: .55; }
+  .agtable select { max-width: 190px; padding: 4px 6px; }
+  .pill.ai { color: #d2a8ff; } .pill.history { color: var(--accent); } .pill.unsure, .pill.check { color: #f5d27a; } .pill.tags { color: var(--inc); } .pill.error { color: var(--up); }
   .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #22314a; border: 1px solid #34507a; padding: 9px 16px; border-radius: 10px; font-size: 13px; z-index: 50; display: none; }
   .loading { opacity: .55; pointer-events: none; }
 
@@ -226,6 +234,7 @@
         <a href="#reports" data-v="reports">Reports</a>
         <a href="#trends" data-v="trends">Trends</a>
         <a href="#bitcoin" data-v="bitcoin">Bitcoin</a>
+        <a href="#agent" data-v="agent">Agent</a>
       </nav>
     </div>
     <div class="row">
@@ -278,6 +287,7 @@
   </section>
 
   <section class="view" id="v-bitcoin"></section>
+  <section class="view" id="v-agent"></section>
 </div>
 
 <dialog id="settings">
@@ -623,6 +633,7 @@
       case "payee": case "balances": return box([0, 1, 2, 3, 4].map((i) => `<rect x="10" y="${8 + i * 10}" width="${74 - i * 13}" height="6" rx="2" fill="${PAL[i]}"/>`).join(""));
       case "trend": return box(`<path d="M8 44 L24 36 L40 40 L56 24 L72 28 L88 14" fill="none" stroke="${PAL[0]}" stroke-width="2.5"/><path d="M8 50 L24 46 L40 30 L56 38 L72 34 L88 30" fill="none" stroke="${PAL[1]}" stroke-width="2.5"/>`);
       case "networth": case "btcchart": return box(`<path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16 L88 54 L8 54Z" fill="${type === "btcchart" ? C.btc : PAL[0]}" opacity=".18"/><path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16" fill="none" stroke="${type === "btcchart" ? C.btc : PAL[0]}" stroke-width="2.5"/>`);
+      case "news": return box(`<rect x="8" y="10" width="80" height="40" rx="5" fill="#26303d"/><rect x="14" y="16" width="34" height="5" rx="1" fill="${PAL[0]}"/>${[0, 1, 2].map((i) => `<circle cx="17" cy="${29 + i * 8}" r="1.6" fill="#93a0b2"/><rect x="22" y="${27 + i * 8}" width="${58 - i * 12}" height="3" rx="1" fill="#5b6475"/>`).join("")}`);
       case "recent": return box([0, 1, 2, 3, 4].map((i) => `<rect x="10" y="${8 + i * 10}" width="40" height="4" rx="1" fill="#3a4352"/><rect x="${68 + (i % 2) * 6}" y="${8 + i * 10}" width="${18 - (i % 2) * 6}" height="4" rx="1" fill="${i % 3 ? C.exp : C.inc}"/>`).join(""));
       case "kpi": return box([0, 1, 2].map((i) => `<rect x="${6 + i * 30}" y="14" width="26" height="32" rx="4" fill="#26303d"/><rect x="${10 + i * 30}" y="20" width="12" height="3" rx="1" fill="#5b6475"/><rect x="${10 + i * 30}" y="29" width="17" height="6" rx="1" fill="${[C.inc, C.exp, PAL[0]][i]}"/>`).join(""));
       case "btc": return box(`<circle cx="30" cy="30" r="17" fill="${C.btc}"/><text x="30" y="37" text-anchor="middle" font-size="20" font-weight="700" fill="#0d1016">₿</text><rect x="56" y="18" width="30" height="5" rx="1" fill="#5b6475"/><rect x="56" y="28" width="22" height="8" rx="1" fill="${C.inc}"/>`);
@@ -647,6 +658,7 @@
     btc: { name: "Bitcoin summary", desc: "Stack, value and result of your Kraken purchases." },
     btcchart: { name: "Bitcoin value vs invested", desc: "The stack's value against the money you put in." },
     saved: { name: "Saved report", desc: "Show one of your saved reports." },
+    news: { name: "News flash", desc: "What changed this month: categories, new payees, subscriptions, price changes." },
   };
   const ALLTYPES = { ...TYPES, ...HOME_TYPES };
   function newSpec(type) {
@@ -681,6 +693,7 @@
         case "networth": return await rNetworth(host, spec, mode);
         case "balances": return await rBalances(host, spec, mode);
         case "btc": case "btcchart": return await rBtcWidget(host, spec, mode);
+        case "news": return await rNews(host, spec, mode);
         case "saved": {
           await loadReports();
           const s = D.reports.find((r) => r.id === spec.ref);
@@ -1048,6 +1061,12 @@
       s.addEventListener("change", () => { spec.range = s.value; change(); });
       return el;
     }
+    if (spec.type === "news") {
+      const s = add(`<label class="f">Which month<select><option value="last">Last month (finished)</option><option value="current">This month so far</option></select></label>`).querySelector("select");
+      s.value = spec.month || "last";
+      s.addEventListener("change", () => { spec.month = s.value; change(); });
+      return el;
+    }
     if (spec.type === "btc" || spec.type === "kpi") {
       if (spec.type === "kpi") el.appendChild(accountsField());
       return el;
@@ -1115,6 +1134,7 @@
 
   /* ============================================================ home */
   const DEFAULT_LAYOUT = [
+    { id: "w0", type: "news", size: "l", month: "last" },
     { id: "w1", type: "kpi", size: "l" },
     { id: "w2", type: "incexp", size: "m", period: "12m", kind: "both" },
     { id: "w3", type: "category", size: "m", period: "lastmonth", kind: "e" },
@@ -1181,6 +1201,7 @@
     if (w.type === "btc" || w.type === "btcchart") return (location.hash = "#bitcoin");
     if (w.type === "saved") return (location.hash = `#reports/saved/${w.ref}`);
     if (w.type === "kpi") return (location.hash = "#reports/new/incexp");
+    if (w.type === "news") return (location.hash = "#agent");
     D.openSpec = clone(w); delete D.openSpec.id; delete D.openSpec.size; delete D.openSpec.title;
     location.hash = "#reports/open";
   }
@@ -1605,6 +1626,118 @@
     $("btcChecks").innerHTML = ch.map(([lvl, t, d]) => `<div class="${lvl}"><b>${esc(t)}</b>${esc(d)}</div>`).join("");
   }
 
+  /* ============================================================ news flash */
+  const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  async function rNews(host, spec, mode, monthOverride) {
+    const m = monthOverride || (spec.month === "current" ? "current" : "");
+    const load = async (refresh) => api(`api/news?month=${m}${refresh ? "&refresh=1" : ""}`);
+    let d = await load(false);
+    const draw = () => {
+      const f = d.facts, [y, mm] = d.month.split("-");
+      const lines = d.text || d.headlines;
+      const vs = f.spent_avg12 ? (f.spent - f.spent_avg12) / f.spent_avg12 : null;
+      host.innerHTML = `<div class="news"><div class="sumline">${stat(`${MONTH_LONG[+mm - 1]} ${y}${d.partial ? " so far" : ""}`, eur(f.spent))}${vs != null ? stat("vs. average", `<span class="${vs > 0 ? "neg" : "pos"}">${pct(vs, 0)}</span>`) : ""}${f.income ? stat("Left over", eur(f.net), f.net >= 0 ? "pos" : "neg") : ""}${f.spent_last_year ? stat("Last year", eur(f.spent_last_year)) : ""}</div>
+        <ul>${lines.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        <div class="meta"><span>${d.text ? `written by ${esc(d.model)} on your server · numbers calculated exactly` : d.llm_error ? `facts only — ${esc(d.llm_error.slice(0, 120))}` : "facts only"}</span><a href="#" data-rw>rewrite</a></div></div>`;
+      host.querySelector("[data-rw]").addEventListener("click", async (e) => {
+        e.preventDefault(); host.querySelector(".meta span").textContent = "writing…";
+        try { d = await load(true); draw(); } catch (er) { toast(er.message); }
+      });
+    };
+    draw();
+  }
+
+  /* ============================================================ agent */
+  const AG = { tab: "need", poll: null };
+  const ACT = { history: "From your history", ai: "AI sorted", unsure: "AI unsure", check: "Looks wrong", tags: "Tags added", error: "Error" };
+  async function renderAgent() {
+    const v = $("v-agent");
+    if (!v.innerHTML) v.innerHTML = `<div class="empty">Loading…</div>`;
+    let d;
+    try { d = await api("api/agent"); } catch (e) { v.innerHTML = errorHtml(e); return; }
+    clearTimeout(AG.poll);
+    if (d.state.running) AG.poll = setTimeout(() => { if (current() === "agent") renderAgent(); }, 2500);
+    const c = d.config, last = d.last, st = (last && last.stats) || {};
+    const need = d.actions.filter((a) => !a.reviewed && !a.dry && (a.action === "unsure" || a.action === "check" || a.action === "error"));
+    const done = d.actions.filter((a) => !a.dry && ["ai", "history", "tags"].includes(a.action));
+    const list = AG.tab === "need" ? need : AG.tab === "done" ? done : d.actions;
+    const when = (t) => new Date(t * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    v.innerHTML = `<div class="rphead"><h2>Agent</h2><span class="sub">${d.state.running ? `<span class="pill">working…</span> ${esc(d.state.step)}` : d.state.error ? `<span class="neg">${esc(d.state.error)}</span>` : last ? `last run ${when(last.t)}${last.dry ? " (dry run)" : ""}` : "never run yet"}</span><span class="spacer"></span>
+        <button class="btn" id="agDry" title="Shows what it would do for the last 30 days without changing anything">Dry run · 30 days</button><button class="btn primary" id="agRun">Run now</button></div>
+      <div class="grid2">
+        <div class="card full"><h2>News flash <span class="row"><select id="agMonth"></select></span></h2><div id="agNews"></div></div>
+        <div class="card"><h2>Settings</h2><div class="ed">
+          <label class="chk"><input type="checkbox" id="agAuto"> Sort new bookings automatically every day</label>
+          <div class="two"><label class="f">From<select id="agHour">${Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("")}</select></label>
+          <label class="f">Look back<select id="agDays">${[1, 2, 3, 5, 7, 14, 30].map((n) => `<option value="${n}">${n} day${n > 1 ? "s" : ""}</option>`).join("")}</select></label></div>
+          <div class="two"><label class="f">AI must be at least<select id="agConf">${[[0.6, "60 % sure"], [0.75, "75 % sure"], [0.9, "90 % sure"]].map(([v2, l]) => `<option value="${v2}">${l}</option>`).join("")}</select></label>
+          <label class="f">News language<select id="agLang"><option value="en">English</option><option value="de">Deutsch</option></select></label></div>
+          <label class="f">Model ${d.llm.ok ? `<span class="pos">· Ollama connected</span>` : `<span class="neg">· Ollama not reachable</span>`}<select id="agModel">${(d.llm.models.length ? d.llm.models : [c.ollama_model || ""]).map((m) => `<option value="${esc(m)}">${esc(m || "automatic")}</option>`).join("")}</select></label>
+          ${d.llm.ok ? "" : `<div class="sub neg">${esc(d.llm.error)}</div>`}
+          <label class="f">Ollama address<input type="text" id="agOllama" placeholder="automatic (Umbrel Ollama app)"></label>
+          <div class="row" style="justify-content:flex-end"><button class="btn primary" id="agSave">Save</button></div>
+          <div class="sub">Firefly rules run first, at import. The agent only fills in what is still missing, learns from bookings you sorted yourself, and never overwrites a category you set. Everything it changes gets a tag: <span class="mono">auto-categorized</span>, <span class="mono">ai-categorized</span>, <span class="mono">ai-unsure</span> or <span class="mono">ai-check</span>.</div></div></div>
+        <div class="card"><h2>Last run ${last ? `<span class="hint">${when(last.t)} · last ${last.days} days${last.model ? ` · ${esc(last.model)}` : ""}</span>` : ""}</h2>
+          ${last ? `<div class="tiles">
+            <div class="tile"><span>From your history</span><b>${st.history || 0}</b><small>payee seen before</small></div>
+            <div class="tile"><span>AI sorted</span><b>${st.ai || 0}</b><small>new payees, confident</small></div>
+            <div class="tile"><span>Needs you</span><b class="${need.length ? "neg" : ""}">${need.length}</b><small>unsure or looks wrong</small></div>
+            <div class="tile"><span>Tags added</span><b>${st.tags || 0}</b><small>on bookings with a category</small></div>
+            <div class="tile"><span>Already fine</span><b>${st.ok || 0}</b><small>left alone</small></div>
+            <div class="tile"><span>Learned from</span><b>${st.learned || 0}</b><small>payees, ${st.categories || 0} categories</small></div></div>
+            ${last.dry ? `<div class="notice" style="margin:10px 0 0">That was a dry run — nothing in Firefly was changed. Its results are under “All”.</div>` : ""}${last.llm_error ? `<div class="sub" style="margin-top:8px">Without AI this time: ${esc(last.llm_error)}</div>` : ""}`
+            : `<div class="empty">Press <b>Dry run</b> first to see what it would do, then <b>Run now</b>.</div>`}</div>
+        <div class="card full"><h2>Review <span class="seg sm" id="agTabs"><button data-v="need">Needs you (${need.length})</button><button data-v="done">Done by agent (${done.length})</button><button data-v="all">All</button></span></h2><div id="agList"></div></div>
+      </div>`;
+    $("agAuto").checked = !!c.agent_auto; $("agHour").value = String(c.agent_hour ?? 8); $("agDays").value = String(c.agent_days || 3);
+    $("agConf").value = String(c.agent_min_conf || 0.75); $("agLang").value = c.news_lang || "en"; $("agOllama").value = c.ollama_url || "";
+    if (d.llm.model) $("agModel").value = d.llm.model;
+    $("agSave").addEventListener("click", async () => {
+      try {
+        await put("api/config", { agent_auto: $("agAuto").checked, agent_hour: +$("agHour").value, agent_days: +$("agDays").value, agent_min_conf: +$("agConf").value,
+          news_lang: $("agLang").value, ollama_url: $("agOllama").value, ollama_model: $("agModel").value });
+        toast("Saved"); renderAgent();
+      } catch (e) { toast(e.message); }
+    });
+    const start = async (dry) => { try { await api("api/agent/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dry ? { dry: true, days: 30 } : {}) }); if (dry) AG.tab = "all"; setTimeout(renderAgent, 600); } catch (e) { toast(e.message); } };
+    $("agRun").addEventListener("click", () => start(false)); $("agDry").addEventListener("click", () => start(true));
+    $("agTabs").querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.v === AG.tab); b.addEventListener("click", () => { AG.tab = b.dataset.v; renderAgent(); }); });
+    // news month picker
+    const ms = $("agMonth"), nowD = new Date();
+    for (let i = 0; i < 13; i++) { const dd = new Date(nowD.getFullYear(), nowD.getMonth() - i, 1); const k = `${dd.getFullYear()}-${String(dd.getMonth() + 1).padStart(2, "0")}`; ms.add(new Option(i === 0 ? `${MONTH_LONG[dd.getMonth()]} ${dd.getFullYear()} (so far)` : `${MONTH_LONG[dd.getMonth()]} ${dd.getFullYear()}`, i === 0 ? "current" : k)); }
+    ms.selectedIndex = AG.newsIdx || 1;
+    const showNews = () => { AG.newsIdx = ms.selectedIndex; $("agNews").innerHTML = `<div class="empty">Loading…</div>`; rNews($("agNews"), {}, "full", ms.value).catch((e) => ($("agNews").innerHTML = errorHtml(e))); };
+    ms.addEventListener("change", showNews); showNews();
+    // review list
+    const host = $("agList");
+    if (!list.length) { host.innerHTML = `<div class="empty">${AG.tab === "need" ? "Nothing waiting for you." : "Nothing here yet."}</div>`; return; }
+    const catOpts = (sel) => `<option value="">— pick —</option>` + d.categories.map((x) => `<option${x === sel ? " selected" : ""}>${esc(x)}</option>`).join("");
+    host.innerHTML = `<div class="tablewrap"><table class="agtable"><thead><tr><th>Date</th><th class="l">Payee</th><th>Amount</th><th class="l">What happened</th><th class="l">Category</th><th></th></tr></thead><tbody>${list.slice(0, 200).map((a, i) => {
+      const what = `<span class="pill ${a.action}">${ACT[a.action] || a.action}</span>${a.dry ? ` <span class="sub">dry run</span>` : ""}<div class="sub">${esc(a.action === "check" ? `is “${a.category}”, usually “${a.suggest}”` : a.reason || "")}${a.tags && a.tags.length ? ` · tags +${esc(a.tags.join(", "))}` : ""}</div>`;
+      let ctl = "", btn = "";
+      if (a.reviewed) ctl = `<span class="sub">${a.final ? `→ ${esc(a.final)}` : "reviewed"}</span>`;
+      else if (a.dry) ctl = `<span class="sub">${esc(a.category || (a.suggest ? `maybe ${a.suggest}` : "–"))}</span>`;
+      else if (a.action === "check") { ctl = `<select data-i="${i}">${catOpts(a.suggest)}</select>`; btn = `<button class="btn sm" data-save="${i}">Change</button> <button class="btn sm" data-ok="${i}">Keep</button>`; }
+      else if (a.action === "unsure" || a.action === "error") { ctl = `<select data-i="${i}">${catOpts(a.suggest)}</select>`; btn = `<button class="btn sm primary" data-save="${i}">Save</button>`; }
+      else { ctl = `<select data-i="${i}">${catOpts(a.category)}</select>`; btn = `<button class="btn sm" data-ok="${i}">OK</button> <button class="btn sm" data-save="${i}">Change</button>`; }
+      return `<tr class="${a.reviewed ? "done" : ""}"><td>${a.date}</td><td class="l wr">${esc(a.payee)}<div class="sub">${esc(a.account)}${a.description && a.description !== a.payee ? " · " + esc(a.description.slice(0, 60)) : ""}</div></td><td class="${a.amount > 0 ? "pos" : ""}">${eur2(a.amount)}</td><td class="l wr">${what}</td><td class="l">${ctl}</td><td>${btn}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+    const send = async (path, a, category) => {
+      try { await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ gid: a.gid, jid: a.jid, category }) }); D.p = {}; renderAgent(); }
+      catch (e) { toast(e.message); }
+    };
+    host.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", () => {
+      const a = list[+b.dataset.save], val = host.querySelector(`select[data-i="${b.dataset.save}"]`).value;
+      if (!val) return toast("Pick a category first");
+      send("api/agent/correct", a, val);
+    }));
+    host.querySelectorAll("[data-ok]").forEach((b) => b.addEventListener("click", () => {
+      const a = list[+b.dataset.ok];
+      // confirming a category removes the agent's tag, so future runs learn from it
+      if (a.action === "tags") send("api/agent/review", a); else send("api/agent/correct", a, a.category);
+    }));
+  }
+
   /* ============================================================ settings */
   async function openSettings() {
     const c = await api("api/config");
@@ -1657,13 +1790,14 @@
   function route() {
     const parts = (location.hash.slice(1) || "home").split("/").map(decodeURIComponent);
     let view = parts[0];
-    if (!["home", "reports", "trends", "bitcoin"].includes(view)) view = "home";
+    if (!["home", "reports", "trends", "bitcoin", "agent"].includes(view)) view = "home";
     document.querySelectorAll(".view").forEach((s) => s.classList.toggle("on", s.id === "v-" + view));
     document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.v === view));
     if (view !== "reports") D.cur_report = null;
     if (view === "home") renderHome();
     else if (view === "reports") renderReports(parts.slice(1));
     else if (view === "trends") renderTrends();
+    else if (view === "agent") renderAgent();
     else renderBtc();
   }
   window.addEventListener("hashchange", () => { window.scrollTo(0, 0); route(); });
