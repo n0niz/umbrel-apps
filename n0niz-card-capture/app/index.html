@@ -330,7 +330,7 @@
   $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = { firefly_url: e.target.elements.firefly_url.value, token: $("tok").value,
-      cards: draft.map(({ id, template, name, account, currency, tag, app, require, ignore }) => ({ id, template, name, account, currency, tag, app, require, ignore })) };
+      cards: draft.map(({ id, template, name, account, currency, tag, app, digits, require, ignore }) => ({ id, template, name, account, currency, tag, app, digits, require, ignore })) };
     $("saveMsg").className = "msg"; $("saveMsg").textContent = "Checking…";
     const r = await fetch("api/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     const d = await r.json();
