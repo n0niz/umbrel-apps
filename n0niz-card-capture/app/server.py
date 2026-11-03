@@ -168,6 +168,11 @@ def find_amount(text):
 CARD_DIGITS = re.compile(r"(?:[*•·x]{2,}|\.\.|endet auf|ending(?: in)?|karte)\s*(\d{4})\b", re.I)
 
 
+LOOKS_LIKE_CARD = re.compile(r"(?:kredit|debit)?karte|\bcard\b|[*•·]{2,}\s*\d{4}|\bvisa\b|mastercard|maestro|american express|\bamex\b|girocard", re.I)
+CARD_WORDS = {"amex": re.compile(r"american express|\bamex\b", re.I), "visa": re.compile(r"\bvisa\b", re.I),
+              "krak": re.compile(r"\bkrak\b", re.I)}
+
+
 def card_digits(text):
     return CARD_DIGITS.findall(text or "")
 
@@ -196,12 +201,12 @@ def parse(title, text):
     for line in [l for l in rest.splitlines() if l.strip()] or [rest]:
         for pat in MERCHANT_PATTERNS:
             m = pat.search(line)
-            if m and clean_merchant(m.group(1)):
+            if m and clean_merchant(m.group(1)) and not LOOKS_LIKE_CARD.search(m.group(1)):
                 merchant = clean_merchant(m.group(1))
                 break
         if merchant:
             break
-    if not merchant and title.strip() and not GENERIC_TITLES.search(title.strip()):
+    if not merchant and title.strip() and not GENERIC_TITLES.search(title.strip()) and not LOOKS_LIKE_CARD.search(title):
         t_amount, _, _ = find_amount(title)
         if t_amount is None:
             merchant = clean_merchant(title)
@@ -273,14 +278,20 @@ def route_card(cfg, card, full):
     """A notification that names a card number goes to the card with those digits,
     whichever address it was sent to (one Google Wallet macro can serve all cards)."""
     found = card_digits(full)
-    if not found:
-        return card, ""
-    for c in cfg["cards"]:
-        mine = {d.strip() for d in re.split(r"[,\s]+", c.get("digits") or "") if d.strip()}
-        if mine & set(found):
-            return c, ""
-    known = any((c.get("digits") or "").strip() for c in cfg["cards"])
-    return (None, f"card ••{found[0]} is not set up here") if known else (card, "")
+    digits = lambda c: {d.strip() for d in re.split(r"[,\s]+", c.get("digits") or "") if d.strip()}  # noqa: E731
+    if found:
+        for c in cfg["cards"]:
+            if digits(c) & set(found):
+                return c, ""
+    # no digits configured for it: go by the card's name in the text ("Visa", "American Express")
+    named = [c for c in cfg["cards"] if (CARD_WORDS.get(c.get("template")) or re.compile(re.escape(c["name"]), re.I)).search(full)]
+    if named:
+        return named[0], ""
+    if found and any(digits(c) for c in cfg["cards"]):
+        return None, f"card ••{found[0]} is not set up here"
+    if found and card.get("template") == "krak" and LOOKS_LIKE_CARD.search(full):
+        return None, f"this names card ••{found[0]}, which is not the Krak card – set its last 4 digits under Settings"
+    return card, ""
 
 
 def merge_duplicate(cfg, events, card, ev):
