@@ -9,6 +9,7 @@ Standard library only.
 """
 
 import base64
+import btcwallet
 import hashlib
 import hmac
 import json
@@ -29,6 +30,8 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 CONFIG_FILE = DATA_DIR / "config.json"
 KRAKEN_FILE = DATA_DIR / "kraken.json"
 PRICES_FILE = DATA_DIR / "btc_prices.json"
+WALLETS_FILE = DATA_DIR / "wallets.json"
+MEMPOOL_DEFAULTS = [os.environ.get("MEMPOOL_URL", ""), "http://mempool_web_1:3006/api", "http://mempool_api_1:8999/api/v1"]
 PORT = int(os.environ.get("PORT", "8080"))
 CACHE_SECONDS = 600
 KRAKEN_API = os.environ.get("KRAKEN_API", "https://api.kraken.com")
@@ -43,6 +46,8 @@ DEFAULTS = {
     "kraken_key": os.environ.get("KRAKEN_KEY", ""),
     "kraken_secret": os.environ.get("KRAKEN_SECRET", ""),
     "history_start": "",
+    "mempool_url": "",
+    "wallets": [],
 }
 
 cache = {}
@@ -87,6 +92,19 @@ def http_json(url, data=None, headers=None, timeout=60):
 
 
 # ------------------------------------------------------------- Firefly ---
+def more_pages(res, page):
+    """True while Firefly has another page. Does not trust total_pages alone: some
+    versions cap the page size, so a full page always means "ask for the next one"."""
+    pg = res.get("meta", {}).get("pagination", {}) or {}
+    data = res.get("data", [])
+    if not data:
+        return False
+    if page < int(pg.get("total_pages") or 1):
+        return True
+    per = int(pg.get("per_page") or 0)
+    return bool(per) and len(data) >= per and page < 2000
+
+
 def firefly_get(cfg, path, params):
     url = cfg["firefly_url"].rstrip("/") + path + "?" + urllib.parse.urlencode(params)
     return http_json(url, headers={"Authorization": f"Bearer {cfg['token']}",
@@ -131,8 +149,7 @@ def fetch_rows(cfg, start, end):
                         (t.get("description") or "")[:120],
                         1 if ((t.get("destination_type") if out else t.get("source_type")) or "").lower() in LIAB_TYPES else 0,
                     ])
-            pages = res.get("meta", {}).get("pagination", {}).get("total_pages", 1)
-            if page >= pages:
+            if not more_pages(res, page):
                 break
             page += 1
     return {"rows": rows, "currencies": currencies, "start": start, "end": end,
@@ -174,7 +191,7 @@ def fetch_accounts(cfg, on_date=None):
                     "active": bool(at.get("active", True)),
                     "net": at.get("include_net_worth", True) is not False,
                 })
-            if page >= res.get("meta", {}).get("pagination", {}).get("total_pages", 1):
+            if not more_pages(res, page):
                 break
             page += 1
     return out
@@ -294,79 +311,119 @@ def kraken_fetch_btc(cfg, st):
     raise last_err
 
 
-def kraken_sync(cfg):
-    if not (cfg.get("kraken_key") and cfg.get("kraken_secret")):
+def btc_sync(cfg):
+    has_kraken = bool(cfg.get("kraken_key") and cfg.get("kraken_secret"))
+    if not (has_kraken or cfg.get("wallets")):
         return
     with sync_lock:
         if sync_state["running"]:
             return
         sync_state.update(running=True, error="", step="Starting", done=0, total=0)
-    try:
-        st = read_json(KRAKEN_FILE, {})
-        st.setdefault("btc", {})
-        st.setdefault("ctr", {})
-        new = kraken_fetch_btc(cfg, st)
-        for k, v in new.items():
-            v["id"] = k
-            st["btc"][k] = v
-        if st["btc"]:
-            st["last"] = max(float(v["time"]) for v in st["btc"].values())
-        write_json(KRAKEN_FILE, st)
-
-        # euro (or other) side of each BTC trade, looked up in a small time window
-        todo = {}
-        for v in st["btc"].values():
-            if v.get("type") in NO_COUNTERPART or v["refid"] in st["ctr"]:
-                continue
-            todo.setdefault(v["refid"], float(v["time"]))
-        windows = []
-        for t in sorted(set(todo.values())):
-            if windows and t - windows[-1][1] <= 5:
-                windows[-1][1] = t
-            else:
-                windows.append([t, t])
-        set_sync(total=len(windows), done=0)
-        for i, (a, b) in enumerate(windows):
-            set_sync(step=f"Matching euro side of trades ({i + 1} of {len(windows)})", done=i)
-            res = kraken_private("Ledgers", {"start": int(a) - 3, "end": int(b) + 3},
-                                 cfg["kraken_key"], cfg["kraken_secret"])
-            found = {}
-            for k, v in res.get("ledger", {}).items():
-                if is_btc(v.get("asset")):
-                    continue
-                v["id"] = k
-                found.setdefault(v["refid"], []).append(v)
-            for ref, t in todo.items():
-                if a - 1 <= t <= b + 1:
-                    st["ctr"][ref] = found.get(ref, [])
-            if i % 10 == 9:
-                write_json(KRAKEN_FILE, st)
-            time.sleep(KRAKEN_PAUSE)
-
-        set_sync(step="Reading balance")
+    errors = []
+    if has_kraken:
         try:
-            st["balance"] = kraken_private("Balance", {}, cfg["kraken_key"], cfg["kraken_secret"])
-            st["balance_at"] = int(time.time())
-        except RuntimeError as e:
-            st["balance_error"] = str(e)
-        write_json(KRAKEN_FILE, st)
-
-        set_sync(step="Updating price history")
+            kraken_part(cfg)
+        except Exception as e:  # noqa: BLE001 - shown in the UI
+            errors.append(f"Kraken: {e}")
+    if cfg.get("wallets"):
+        try:
+            wallet_part(cfg)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"Wallets: {e}")
+    set_sync(step="Updating price history")
+    try:
         update_prices()
-        set_sync(running=False, step="", finished=int(time.time()))
-    except Exception as e:  # noqa: BLE001 - shown in the UI
-        set_sync(running=False, step="", error=str(e), finished=int(time.time()))
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"Prices: {e}")
+    set_sync(running=False, step="", error=" · ".join(errors), finished=int(time.time()))
+
+
+def wallet_part(cfg):
+    base = btcwallet.find_backend([cfg.get("mempool_url")] + MEMPOOL_DEFAULTS)
+    store = read_json(WALLETS_FILE, {})
+    keep = {}
+    for w in cfg.get("wallets", []):
+        old = store.get(w["id"], {})
+        rec = {"name": w["name"], "cache": old.get("cache", {}), "result": old.get("result"), "error": "", "at": old.get("at", 0)}
+        try:
+            spec = btcwallet.parse_wallet(w["desc"], w.get("type", ""))
+            if old.get("desc_hash") != hashlib.sha256(w["desc"].encode()).hexdigest():
+                rec["cache"] = {}
+            rec["desc_hash"] = hashlib.sha256(w["desc"].encode()).hexdigest()
+            prog = lambda c, i, n=w["name"]: set_sync(step=f"Scanning wallet {n} ({'change' if c else 'receive'} address {i})")  # noqa: E731
+            rec["result"] = btcwallet.scan(spec, base, rec["cache"], progress=prog)
+            rec["at"] = int(time.time())
+        except Exception as e:  # noqa: BLE001
+            rec["error"] = str(e)
+        keep[w["id"]] = rec
+        write_json(WALLETS_FILE, {**store, **keep})
+    write_json(WALLETS_FILE, keep)
+    bad = [f"{r['name']}: {r['error']}" for r in keep.values() if r["error"]]
+    if bad:
+        raise RuntimeError("; ".join(bad))
+
+
+def kraken_part(cfg):
+    st = read_json(KRAKEN_FILE, {})
+    st.setdefault("btc", {})
+    st.setdefault("ctr", {})
+    new = kraken_fetch_btc(cfg, st)
+    for k, v in new.items():
+        v["id"] = k
+        st["btc"][k] = v
+    if st["btc"]:
+        st["last"] = max(float(v["time"]) for v in st["btc"].values())
+    write_json(KRAKEN_FILE, st)
+
+    # euro (or other) side of each BTC trade, looked up in a small time window
+    todo = {}
+    for v in st["btc"].values():
+        if v.get("type") in NO_COUNTERPART or v["refid"] in st["ctr"]:
+            continue
+        todo.setdefault(v["refid"], float(v["time"]))
+    windows = []
+    for t in sorted(set(todo.values())):
+        if windows and t - windows[-1][1] <= 5:
+            windows[-1][1] = t
+        else:
+            windows.append([t, t])
+    set_sync(total=len(windows), done=0)
+    for i, (a, b) in enumerate(windows):
+        set_sync(step=f"Matching euro side of trades ({i + 1} of {len(windows)})", done=i)
+        res = kraken_private("Ledgers", {"start": int(a) - 3, "end": int(b) + 3},
+                             cfg["kraken_key"], cfg["kraken_secret"])
+        found = {}
+        for k, v in res.get("ledger", {}).items():
+            if is_btc(v.get("asset")):
+                continue
+            v["id"] = k
+            found.setdefault(v["refid"], []).append(v)
+        for ref, t in todo.items():
+            if a - 1 <= t <= b + 1:
+                st["ctr"][ref] = found.get(ref, [])
+        if i % 10 == 9:
+            write_json(KRAKEN_FILE, st)
+        time.sleep(KRAKEN_PAUSE)
+
+    set_sync(step="Reading balance")
+    try:
+        st["balance"] = kraken_private("Balance", {}, cfg["kraken_key"], cfg["kraken_secret"])
+        st["balance_at"] = int(time.time())
+    except RuntimeError as e:
+        st["balance_error"] = str(e)
+    write_json(KRAKEN_FILE, st)
+
 
 
 def start_sync(cfg):
-    threading.Thread(target=kraken_sync, args=(cfg,), daemon=True).start()
+    threading.Thread(target=btc_sync, args=(cfg,), daemon=True).start()
 
 
 def sync_loop():
     while True:
         cfg = load_config()
-        if cfg.get("kraken_key"):
-            kraken_sync(cfg)
+        if cfg.get("kraken_key") or cfg.get("wallets"):
+            btc_sync(cfg)
         time.sleep(SYNC_EVERY)
 
 
@@ -475,7 +532,7 @@ def classify(st):
     return tx, onk
 
 
-def price_series(tx):
+def price_series(tx, first_t=None):
     pr = read_json(PRICES_FILE, {"days": {}})
     anchors = dict(pr.get("days", {}))
     for r in tx:
@@ -484,8 +541,9 @@ def price_series(tx):
             anchors.setdefault(d, round(r["eur"] / r["btc"]))
     if not anchors:
         return {"start": date.today().isoformat(), "px": []}
-    if tx:
-        first = datetime.fromtimestamp(tx[0]["t"], timezone.utc).date().isoformat()
+    ts = [r["t"] for r in tx[:1]] + ([first_t] if first_t else [])
+    if ts:
+        first = datetime.fromtimestamp(min(ts), timezone.utc).date().isoformat()
     else:
         first = max(min(anchors), (date.today() - timedelta(days=730)).isoformat())
     d0 = date.fromisoformat(first)
@@ -515,14 +573,25 @@ def btc_payload(cfg):
     bal = st.get("balance") or {}
     with sync_lock:
         sync = dict(sync_state)
+    wstore = read_json(WALLETS_FILE, {})
+    wallets = []
+    for w in cfg.get("wallets", []):
+        rec = wstore.get(w["id"], {})
+        res = rec.get("result") or {}
+        wallets.append({"id": w["id"], "name": w["name"], "balance": res.get("balance", 0) / 1e8,
+                        "txs": res.get("txs", []), "used": res.get("used", 0), "at": rec.get("at", 0),
+                        "error": rec.get("error", "")})
+    wts = [t["t"] for w in wallets for t in w["txs"]]
     return {
-        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")),
+        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets),
+        "kraken": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")),
+        "wallets": wallets,
         "tx": tx,
         "ledger_btc": round(onk, 8),
         "balance_btc": round(sum(float(v) for k, v in bal.items() if is_btc(k)), 8) if bal else None,
         "balance_at": st.get("balance_at", 0),
         "balance_error": st.get("balance_error", ""),
-        "prices": price_series(tx),
+        "prices": price_series(tx, min(wts) if wts else None),
         "spot": spot_price(),
         "sync": sync,
     }
@@ -571,7 +640,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (APP_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
         if p == "/api/config":
             cfg = load_config()
+            wl = []
+            for w in cfg.get("wallets", []):
+                item = {"id": w["id"], "name": w["name"], "type": w.get("type", ""),
+                        "masked": w["desc"][:12] + "…" + w["desc"][-6:]}
+                try:
+                    spec = btcwallet.parse_wallet(w["desc"], w.get("type", ""))
+                    item.update(first=btcwallet.address(spec, spec["chains"][0], 0), kind=btcwallet.describe(spec))
+                except ValueError as e:
+                    item["error"] = str(e)
+                wl.append(item)
             return self._json(200, {"firefly_url": cfg["firefly_url"], "token_set": bool(cfg["token"]),
+                                    "wallets": wl, "mempool_url": cfg.get("mempool_url", ""),
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
                                     "history_start": history_start(cfg)})
         if p == "/api/data":
@@ -655,12 +735,30 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": f"Kraken rejected the key: {e}"})
             kraken_changed = (k, s) != (cfg.get("kraken_key"), cfg.get("kraken_secret"))
             cfg["kraken_key"], cfg["kraken_secret"] = k, s
+        wallets_changed = False
+        if isinstance(body.get("wallets"), list):
+            old = {w["id"]: w for w in cfg.get("wallets", [])}
+            new = []
+            for i, w in enumerate(body["wallets"]):
+                wid = w.get("id") or hashlib.sha256(f"{time.time()}{i}".encode()).hexdigest()[:10]
+                desc = (w.get("desc") or "").strip() or old.get(wid, {}).get("desc", "")
+                name = (w.get("name") or "").strip() or f"Wallet {i + 1}"
+                typ = w.get("type") or ""
+                try:
+                    btcwallet.parse_wallet(desc, typ)
+                except ValueError as e:
+                    return self._json(400, {"error": f"Wallet “{name}”: {e}"})
+                new.append({"id": wid, "name": name, "desc": desc, "type": typ})
+            wallets_changed = [(w["id"], w["desc"], w["type"]) for w in new] != [(w["id"], w["desc"], w.get("type", "")) for w in cfg.get("wallets", [])]
+            cfg["wallets"] = new
+        if "mempool_url" in body:
+            cfg["mempool_url"] = (body.get("mempool_url") or "").strip()
         if body.get("kraken_remove"):
             cfg["kraken_key"] = cfg["kraken_secret"] = ""
         save_config(cfg)
         with cache_lock:
             cache.clear()
-        if kraken_changed:
+        if kraken_changed or wallets_changed:
             start_sync(cfg)
         self._json(200, {"ok": True})
 
