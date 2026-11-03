@@ -903,6 +903,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/api/config":
             return self._json(404, {"error": "not found"})
         cfg = load_config()
+        # never send the stored token to a new address: a changed URL needs the token again
+        if body.get("firefly_url") and body["firefly_url"].strip().rstrip("/") != cfg["firefly_url"].rstrip("/") and not body.get("token"):
+            return self._json(400, {"error": "You changed the Firefly address - paste the token again to confirm."})
         if body.get("firefly_url"):
             cfg["firefly_url"] = body["firefly_url"].strip()
         if body.get("token"):
