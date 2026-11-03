@@ -923,6 +923,8 @@
       const o = { ...r, autoType: r.type, src: "kraken" };
       if (asR.has(r.ref) && o.btc > 0) o.type = "Reward";
       if (notR.has(r.ref) && r.type === "Reward") o.type = "Internal";
+      const dep = (pref.dep || {})[r.ref];
+      if (o.type === "Deposit" && dep) { o.counted = true; o.setCost = typeof dep === "object" ? dep.cost : null; }
       return o;
     });
     const wr = walletEvents(data, kr);
@@ -930,8 +932,10 @@
     let qty = 0, cost = 0, realised = 0, gross = 0, feeEur = 0, feeBtc = 0, proceeds = 0, soldQty = 0, buys = 0, sells = 0, rewardBtc = 0, rewardVal = 0;
     const lots = [], steps = [], flows = [], warn = [], buyAmts = [];
     for (const r of tx) {
-      if (r.type === "Buy" || r.type === "Reward" || r.type === "Convert in" || (r.type === "Received" && !r.ignored)) {
-        const c = r.type === "Buy" ? r.eur : r.type === "Convert in" ? r.btc * pxAt(r.day) : r.type === "Received" ? (r.setCost != null ? r.setCost : r.btc * pxAt(r.day)) : 0;
+      const depCounted = r.type === "Deposit" && r.counted && !r.matched;
+      if (r.type === "Buy" || r.type === "Reward" || r.type === "Convert in" || (r.type === "Received" && !r.ignored) || depCounted) {
+        const c = r.type === "Buy" ? r.eur : r.type === "Convert in" ? r.btc * pxAt(r.day) : (r.type === "Received" || depCounted) ? (r.setCost != null ? r.setCost : r.btc * pxAt(r.day)) : 0;
+        if (depCounted) r.cost = c;
         r.cost = c; qty += r.btc; cost += c; gross += c;
         if (r.type === "Buy") { buys++; feeEur += r.feeEur; buyAmts.push(r.eur); }
         if (r.type === "Reward") { rewardBtc += r.btc; rewardVal += r.btc * pxAt(r.day); }
@@ -1525,6 +1529,10 @@
     $("btcFilter").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { B.filter = b.dataset.v; B.showAll = false; renderBtc(); }));
     btcCharts(M); btcTables(M, data);
   }
+  function depButtons(r) {
+    if (r.counted) return ` <button class="btn sm" data-dep="${esc(r.ref)}" data-act="cost">${r.setCost != null ? `Paid ${eur(r.setCost)} · change` : `Counted at ${eur2(r.cost || 0)} · set price`}</button> <button class="btn sm" data-dep="${esc(r.ref)}" data-act="reset">Don't count</button>`;
+    return ` <button class="btn sm" data-dep="${esc(r.ref)}" data-act="market" title="Coins you bought elsewhere and sent to Kraken">Count at that day's price</button> <button class="btn sm" data-dep="${esc(r.ref)}" data-act="cost">Set price paid</button>`;
+  }
   function walletCell(r) {
     const short = `${r.txid.slice(0, 8)}…${r.txid.slice(-4)}`;
     let btns = "";
@@ -1596,8 +1604,23 @@
     const list = M.tx.filter((r) => B.filter === "All" || (groups[B.filter] || []).includes(r.type)).slice().reverse();
     const shown = B.showAll ? list : list.slice(0, 60);
     $("btcTx").innerHTML = list.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">Type</th><th>BTC</th><th>Euro</th><th>Price</th><th>Fee</th><th class="l">Source</th></tr></thead><tbody>${shown.map((r) =>
-      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}${r.ignored ? " ign" : ""}">${r.type}</span>${r.src === "wallet" && !r.conf ? ` <span class="sub">unconfirmed</span>` : ""}</td><td>${["Sell", "Withdrawal", "Convert out", "Sent", "To Kraken"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : r.value ? `<span class="sub">${eur2(r.value)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${r.src === "wallet" ? walletCell(r) : `Kraken · ${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${r.matched ? ` · ${r.type === "Withdrawal" ? "to" : "from"} ${esc(r.matched)}` : ""}`}${r.src === "wallet" ? "" : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
+      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}${r.ignored ? " ign" : ""}">${r.type}</span>${r.src === "wallet" && !r.conf ? ` <span class="sub">unconfirmed</span>` : ""}</td><td>${["Sell", "Withdrawal", "Convert out", "Sent", "To Kraken"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : r.value ? `<span class="sub">${eur2(r.value)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${r.src === "wallet" ? walletCell(r) : `Kraken · ${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${r.matched ? ` · ${r.type === "Withdrawal" ? "to" : "from"} ${esc(r.matched)}` : ""}`}${r.src === "wallet" ? "" : ""}${r.type === "Deposit" && !r.matched ? depButtons(r) : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 && !r.counted ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
     const more = $("btcMore"); if (more) more.addEventListener("click", () => { B.showAll = true; btcTables(M, data); });
+    $("btcTx").querySelectorAll("[data-dep]").forEach((b) => b.addEventListener("click", () => {
+      const ref = b.dataset.dep, act = b.dataset.act;
+      D.prefs = D.prefs || {}; D.prefs.dep = D.prefs.dep || {};
+      const done = () => { savePrefs(); D.btcModel = null; renderBtc(); };
+      if (act === "cost") {
+        const td = b.closest("td");
+        td.innerHTML = `<span class="row" style="flex-wrap:nowrap"><input type="text" inputmode="decimal" placeholder="paid in € for these coins" style="width:170px"><button class="btn sm">OK</button></span>`;
+        const inp = td.querySelector("input"); inp.focus();
+        const ok = () => { const n = parseFloat(inp.value.replace(/\./g, "").replace(",", ".")); if (n >= 0) { D.prefs.dep[ref] = { cost: n }; done(); } };
+        td.querySelector("button").addEventListener("click", ok); inp.addEventListener("keydown", (e) => { if (e.key === "Enter") ok(); });
+        return;
+      }
+      if (act === "market") D.prefs.dep[ref] = "market"; else delete D.prefs.dep[ref];
+      done();
+    }));
     $("btcTx").querySelectorAll("[data-wx]").forEach((b) => b.addEventListener("click", () => {
       const txid = b.dataset.wx, act = b.dataset.act;
       D.prefs = D.prefs || {}; D.prefs.wtx = D.prefs.wtx || {};
@@ -1633,8 +1656,8 @@
     }
     const recv = M.tx.filter((r) => r.type === "Received" && !r.ignored);
     if (recv.length) ch.push(["warn", `${recv.length} wallet receipts not from Kraken`, "Counted as new coins at that day's price, because no matching Kraken withdrawal was found. If you know what you paid, set it under Transactions → Wallets; if it came from another wallet of yours, press “Not new coins”."]);
-    const unk = M.tx.filter((r) => r.type === "Deposit" && !r.matched).length;
-    if (unk) ch.push(["warn", `${unk} BTC deposits from elsewhere`, "Coins you sent to Kraken from another wallet aren't counted as bought, because their purchase price is unknown. If one of them is actually cashback, open Transactions → Transfers and press “Count as reward”."]);
+    const unk = M.tx.filter((r) => r.type === "Deposit" && !r.matched && !r.counted).length;
+    if (unk) ch.push(["warn", `${unk} BTC deposits from elsewhere`, "Coins you sent to Kraken from elsewhere aren't in the stack yet, because their purchase price is unknown. Under Transactions → Transfers press “Set price paid” if you know it, or “Count at that day's price”. If one is cashback, press “Count as reward”."]);
     if (cnt("Convert in") + cnt("Convert out")) ch.push(["ok", `${cnt("Convert in") + cnt("Convert out")} swaps with other coins`, "Valued at that day's BTC price."]);
     if (cnt("Internal")) ch.push(["ok", `${cnt("Internal")} internal moves ignored`, "Moves between Kraken's spot and earn wallets don't change the stack."]);
     M.warn.slice(0, 5).forEach((w) => ch.push(["warn", "Sold more than bought", w]));
