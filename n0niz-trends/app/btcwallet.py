@@ -327,10 +327,26 @@ def describe(spec):
 
 
 # --------------------------------------------------------------- Mempool ---
-def _get(base, path, timeout=30):
+def _short(path):
+    return re.sub(r"(bc1\w{6})\w+(\w{4})|([13]\w{5})\w{20,}(\w{4})", lambda m: (m.group(1) or m.group(3)) + "…" + (m.group(2) or m.group(4)), path)
+
+
+def _get(base, path, timeout=30, tries=3):
     req = urllib.request.Request(base.rstrip("/") + path, headers={"User-Agent": "spending-trends"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        body = r.read()
+    for n in range(tries):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                body = r.read()
+            break
+        except urllib.error.HTTPError as e:
+            # Mempool answers 500 while Electrs is busy or still indexing: wait and retry
+            if e.code < 500 or n == tries - 1:
+                why = e.read()[:160].decode(errors="replace").strip()
+                raise RuntimeError(f"Mempool {e.code} on {_short(path)}" + (f" ({why})" if why else "")) from None
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            if n == tries - 1:
+                raise RuntimeError(f"Mempool timeout/unreachable on {_short(path)}: {e}") from None
+        time.sleep(3 * (n + 1))
     try:
         return json.loads(body)
     except ValueError:
@@ -343,7 +359,7 @@ def find_backend(candidates):
         if not base:
             continue
         try:
-            h = _get(base, "/blocks/tip/height", timeout=8)
+            h = _get(base, "/blocks/tip/height", timeout=8, tries=1)
             if str(h).strip().isdigit():
                 return base.rstrip("/")
             errs.append(f"{base}: unexpected answer")
