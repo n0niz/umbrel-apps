@@ -176,6 +176,7 @@ def fetch_rows(cfg, start, end):
                         t["date"][:10],
                         (t.get("description") or "")[:120],
                         1 if ((t.get("destination_type") if out else t.get("source_type")) or "").lower() in LIAB_TYPES else 0,
+                        t.get("bill_name") or t.get("subscription_name") or "",
                     ])
             if not more_pages(res, page):
                 break
@@ -503,6 +504,22 @@ def agent_run(cfg, dry=False, days=None, auto=False):
     return True
 
 
+def fetch_bills(cfg, start, end):
+    """Firefly subscriptions (API name: bills) with the dates they were expected in this range."""
+    out, page = [], 1
+    while True:
+        res = firefly_get(cfg, "/api/v1/bills", {"start": start, "end": end, "page": page, "limit": 200})
+        for b in res.get("data", []):
+            a = b.get("attributes", {})
+            out.append({"name": a.get("name") or "?", "active": a.get("active", True) is not False,
+                        "min": float(a.get("amount_min") or 0), "max": float(a.get("amount_max") or 0),
+                        "freq": a.get("repeat_freq") or "", "pay_dates": [str(x)[:10] for x in (a.get("pay_dates") or [])],
+                        "paid": len(a.get("paid_dates") or []), "created": str(a.get("created_at") or "")[:10]})
+        if not more_pages(res, page):
+            return out
+        page += 1
+
+
 def news_for(cfg, month, refresh=False):
     NEWS_DIR.mkdir(parents=True, exist_ok=True)
     f = NEWS_DIR / f"{month}.json"
@@ -518,7 +535,11 @@ def news_for(cfg, month, refresh=False):
     end = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).isoformat()
     data = fetch_rows(cfg, start, end)
     cur = max(data["currencies"], key=data["currencies"].get) if data["currencies"] else "EUR"
-    fx = agent.facts(data["rows"], month, cur, upto_day=now.day if current else None)
+    try:
+        bills = fetch_bills(cfg, f"{y}-{m:02d}-01", end)
+    except Exception:  # noqa: BLE001 - news still works without them
+        bills = None
+    fx = agent.facts(data["rows"], month, cur, upto_day=now.day if current else None, bills=bills)
     llm = llm_for(cfg)
     text, lines = agent.news_text(fx, cfg.get("news_lang") or "en", llm[:2] if llm else None)
     out = {"month": month, "t": int(time.time()), "facts": fx, "headlines": lines, "text": text,

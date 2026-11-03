@@ -276,7 +276,7 @@ def _eur(v):
     return ("−" if v < 0 else "") + s + " €"
 
 
-def facts(rows, month, currency="EUR", upto_day=None):
+def facts(rows, month, currency="EUR", upto_day=None, bills=None):
     """rows: Spending Trends rows. month: 'YYYY-MM'. Exact numbers only."""
     y, m = map(int, month.split("-"))
     rows = [r for r in rows if r[7] == currency and not (len(r) > 11 and r[11])]
@@ -345,7 +345,29 @@ def facts(rows, month, currency="EUR", upto_day=None):
                 changed.append({"payee": p, "before": round(a1, 2), "now": round(a0, 2)})
         elif steady([a0, a1, a2]) and not series[3] and not series[4]:
             started.append({"payee": p, "amount": round(a0, 2)})
-    f["subscriptions_started"], f["subscriptions_stopped"], f["price_changes"] = started[:5], stopped[:5], changed[:5]
+    # Firefly subscriptions are the truth; the pattern search above only gives hints
+    # for payees that are not linked to a subscription in Firefly.
+    billed = {first_word(r[6]) for r in rows if len(r) > 12 and r[12]}
+    hint = lambda lst: [x for x in lst if first_word(x["payee"]) not in billed]  # noqa: E731
+    f["recurring_hint"] = hint(started)[:4]
+    f["subscriptions_started"] = f["subscriptions_stopped"] = []
+    f["price_changes"] = hint(changed)[:4]
+    f["bills"] = None
+    if bills is not None:
+        paid_now = defaultdict(float)
+        for r in rows:
+            if len(r) > 12 and r[12] and r[0] == month and r[1] == "e":
+                paid_now[r[12]] += r[2]
+        active = [b for b in bills if b["active"]]
+        due = [b for b in active if b["pay_dates"]]
+        missed = [b["name"] for b in due if not paid_now.get(b["name"]) and not f["partial"]]
+        over = [{"name": b["name"], "paid": round(paid_now[b["name"]], 2), "max": b["max"]}
+                for b in active if paid_now.get(b["name"]) and b["max"] and paid_now[b["name"]] > b["max"] + 0.01]
+        new = [b["name"] for b in bills if b["created"][:7] == month]
+        f["bills"] = {"active": len(active), "due": len(due), "paid": len(paid_now), "paid_sum": round(sum(paid_now.values()), 2),
+                      "missed": missed[:5], "over": over[:5], "new": new[:5]}
+    else:
+        f["subscriptions_stopped"] = stopped[:5]
     biggest.sort(reverse=True)
     f["biggest"] = [{"amount": round(a, 2), "payee": p, "category": c, "date": d} for a, p, c, d in biggest[:3]]
     tags = []
@@ -378,12 +400,23 @@ def headlines(f, lang="en"):
         out.append(f"{c['category']} stieg auf {_eur(c['now'])} (Schnitt {_eur(c['avg'])})." if de else f"{c['category']} up to {_eur(c['now'])} (usually {_eur(c['avg'])}).")
     for c in f["category_down"]:
         out.append(f"{c['category']} sank auf {_eur(c['now'])} (Schnitt {_eur(c['avg'])})." if de else f"{c['category']} down to {_eur(c['now'])} (usually {_eur(c['avg'])}).")
-    for s in f["subscriptions_started"]:
-        out.append(f"Neues Abo? {s['payee']} {_eur(s['amount'])} jetzt drei Monate in Folge." if de else f"New subscription? {s['payee']} {_eur(s['amount'])} three months in a row now.")
+    b = f.get("bills")
+    if b and b["active"]:
+        out.append((f"Abos in Firefly: {b['paid']} bezahlt, zusammen {_eur(b['paid_sum'])}." if de else f"Subscriptions in Firefly: {b['paid']} paid, {_eur(b['paid_sum'])} together."))
+        for n in b["missed"]:
+            out.append(f"Abo „{n}“ war fällig, wurde aber nicht bezahlt." if de else f"Subscription “{n}” was due but not paid.")
+        for o in b["over"]:
+            out.append(f"Abo „{o['name']}“ kostete {o['paid']:.2f} €, mehr als die eingetragenen {o['max']:.2f} €.".replace(".", ",").replace(",“", ".“") if de
+                       else f"Subscription “{o['name']}” cost {o['paid']:.2f} €, more than the {o['max']:.2f} € set in Firefly.")
+        for n in b["new"]:
+            out.append(f"Neu in Firefly angelegt: Abo „{n}“." if de else f"New subscription set up in Firefly: “{n}”.")
+    for s in f.get("recurring_hint", []):
+        out.append(f"Sieht regelmäßig aus: {s['payee']} {_eur(s['amount'])} drei Monate in Folge – in Firefly noch kein Abo." if de
+                   else f"Looks recurring: {s['payee']} {_eur(s['amount'])} three months in a row – not set up as a subscription in Firefly yet.")
     for s in f["subscriptions_stopped"]:
         out.append(f"{s['payee']} ({_eur(s['amount'])}/Monat) kam diesen Monat nicht – gekündigt?" if de else f"{s['payee']} ({_eur(s['amount'])}/month) did not charge this month – cancelled?")
     for s in f["price_changes"]:
-        out.append(f"Preisänderung: {s['payee']} von {s['before']:.2f} € auf {s['now']:.2f} €.".replace(".", ",").rstrip(",") + "." if de else f"Price change: {s['payee']} from {s['before']:.2f} € to {s['now']:.2f} €.")
+        out.append(f"Betrag geändert: {s['payee']} von {s['before']:.2f} € auf {s['now']:.2f} €.".replace(".", ",").rstrip(",") + "." if de else f"Price change: {s['payee']} from {s['before']:.2f} € to {s['now']:.2f} €.")
     if f["new_payees"]:
         names = ", ".join(f"{p['payee']} ({_eur(p['amount'])})" for p in f["new_payees"][:3])
         out.append(f"Zum ersten Mal bezahlt: {names}." if de else f"First payment to: {names}.")
