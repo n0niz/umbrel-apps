@@ -152,9 +152,11 @@
             <li>Method: <b>POST</b>.</li>
             <li>URL: copy this. It contains your secret key, so don't share it.
               <div class="copy"><code id="hookUrl">…</code><button class="btn small" data-copy="hookUrl">Copy</button></div>
-              <label style="margin-top:4px">Address your phone uses to reach this app. Use your <b>Tailscale name with port 4950</b>,
-                e.g. <code>http://umbrel.tailXXXX.ts.net:4950</code> (Tailscale admin → Machines → umbrel shows the full name).
+              <label style="margin-top:4px">Address the phone uses to reach this app. Use the Umbrel's <b>Tailscale IP with port 4950</b>,
+                e.g. <code>http://100.x.y.z:4950</code> (Tailscale app → Machines → umbrel shows the IP). Not <code>umbrel.local</code>:
+                that only works on your home Wi-Fi. The <code>.ts.net</code> name can fail over plain http.
                 <input type="text" id="base" spellcheck="false"></label>
+              <div class="note warn" id="baseWarn" hidden>This address only works at home. Enter the Tailscale IP (starts with 100.) so payments are also captured when you are out.</div>
               <div class="note">Quick check: open <code id="pingUrl">…</code> in your phone's browser with Tailscale on.
                 You should see <code>{"error": "wrong key"}</code>. That means the phone reaches Card Capture.
                 If you see the Umbrel login page instead, see “Troubleshooting” below.</div>
@@ -262,7 +264,8 @@
     if (keep && cfg.cards.some((c) => c.id === keep)) g.value = keep;
     let base = "";
     try { base = localStorage.getItem("cc:base") || ""; } catch {}
-    $("base").value = base || location.origin;
+    $("base").value = base || (/^100\.\d+\.\d+\.\d+$/.test(location.hostname) ? location.origin : "");
+    if (!$("base").value) $("base").placeholder = "http://100.x.y.z:4950";
     updateUrl();
     if (!cfg.token_set) show("guide");
   }
@@ -270,7 +273,8 @@
   function updateUrl() {
     const base = $("base").value.trim().replace(/\/+$/, "");
     const c = curCard();
-    $("hookUrl").textContent = `${base}/api/hook?key=${c.secret || "…"}`;
+    $("baseWarn").hidden = !/\.local\b|localhost|192\.168\.|10\.\d/.test(base);
+    $("hookUrl").textContent = `${base || "http://100.x.y.z:4950"}/api/hook?key=${c.secret || "…"}`;
     document.querySelectorAll(".gAcc").forEach((e) => (e.textContent = c.account));
     document.querySelectorAll(".gName").forEach((e) => (e.textContent = c.name));
     document.querySelectorAll(".gTag").forEach((e) => (e.textContent = c.tag || "–"));
