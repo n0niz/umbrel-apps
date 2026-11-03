@@ -140,7 +140,8 @@
           <ul>
             <li>MacroDroid → <b>Add macro</b>, name it <i><span class="gName">Card</span> to Firefly</i>. One macro per card.</li>
             <li><b>Triggers</b> → <b>+</b> → <b>Device events</b> → <b>Notification</b> → <b>Notification received</b>.</li>
-            <li>Select application(s): <b class="gApp">the card's app</b>. If the card is used through Google Wallet, add <b>Google Wallet</b> too, since the payment notification may come from there — but then only for this one card, otherwise two macros catch the same payment.</li>
+            <li>Select application(s): <b class="gApp">the card's app</b>, and <b>Google Wallet</b> (it may appear as <i>Google Services</i>) if the card is used for phone payments.
+              If every card has its <b>last 4 digits</b> set in Settings, one macro with all these apps is enough: notifications that name a card number go to the right card automatically, and the same payment reported by two apps is booked only once.</li>
             <li>Text content: <b>Any</b>.</li>
           </ul>
         </li>
@@ -288,6 +289,7 @@
           <label>Firefly account<input type="text" data-k="account" value="${esc(c.account)}"></label>
           <label>Currency<input type="text" data-k="currency" maxlength="3" value="${esc(c.currency || "EUR")}"></label>
           <label>Tag on every booking<input type="text" data-k="tag" value="${esc(c.tag || "")}"></label>
+          <label>Last 4 digits of the card<input type="text" data-k="digits" inputmode="numeric" value="${esc(c.digits || "")}" placeholder="e.g. 1018"></label>
           <label>Notifications come from app<input type="text" data-k="app" value="${esc(c.app || "")}" placeholder="e.g. Amex"></label>
           <label>Only accept matching (optional)<input type="text" data-k="require" spellcheck="false" value="${esc(c.require || "")}" placeholder="e.g. bezahlt|paid"></label>
           <label style="grid-column:1/-1">Ignore notifications containing (regular expression)<input type="text" data-k="ignore" spellcheck="false" value="${esc(c.ignore || "")}"></label>
@@ -358,6 +360,10 @@
           <label>Type<select class="fk"><option value="withdrawal">Payment</option><option value="deposit" ${p && p.kind === "deposit" ? "selected" : ""}>Refund</option></select></label>
           <button class="btn primary small" data-act="book">Book</button>
           <button class="btn small" data-act="ignore">Ignore</button>
+        </div>` : (e.status === "booked" && p && p.merchant === "Card payment") ? `
+        <div class="fix" data-id="${esc(e.id)}"><input type="hidden" class="fa" value="${p.amount}"><input type="hidden" class="fk" value="${p.kind}">
+          <label class="m">Merchant missing – who was it?<input type="text" class="fm" placeholder="e.g. REWE"></label>
+          <button class="btn primary small" data-act="merchant">Save</button>
         </div>` : "";
       return `<div class="ev">
         <div class="top"><span><span class="pill ${e.status}">${LABEL[e.status] || e.status}</span> <span class="cpill">${esc(cardName(e.card))}</span> <span class="sub">${when}</span> <b>${esc(p ? p.merchant : "")}</b></span><span class="amt">${amt}</span></div>

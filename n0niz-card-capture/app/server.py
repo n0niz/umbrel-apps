@@ -54,14 +54,15 @@ TEMPLATES = {
              "ignore": BASE_IGNORE + r"|geldeingang|zahlungseingang|überweisung|kontostand|saldo|freigabe|push.?tan|dauerauftrag"},
     "other": {"name": "Card", "account": "Card", "tag": "card", "app": "", "ignore": BASE_IGNORE},
 }
-CARD_KEYS = ("name", "account", "currency", "tag", "require", "ignore", "app")
+CARD_KEYS = ("name", "account", "currency", "tag", "require", "ignore", "app", "digits")
+MERGE_SECONDS = 5 * 60
 
 lock = threading.Lock()
 
 
 def new_card(template="other", **over):
     t = TEMPLATES.get(template, TEMPLATES["other"])
-    c = {"id": secrets.token_hex(4), "template": template, "currency": "EUR", "require": "",
+    c = {"id": secrets.token_hex(4), "template": template, "currency": "EUR", "require": "", "digits": "",
          "secret": secrets.token_urlsafe(18), **t}
     c.update({k: v for k, v in over.items() if v is not None})
     return c
@@ -127,6 +128,8 @@ REFUND = re.compile(r"refund|erstatt|gutschrift|returned|zurückerstatt|reversal
 GENERIC_TITLES = re.compile(r"^(krak|kraken|payment|zahlung|card payment|kartenzahlung|transaction|"
                             r"transaktion|purchase|einkauf|google wallet|wallet|neue? zahlung)\b", re.I)
 MERCHANT_PATTERNS = [
+    # DKB: "1,09 EUR (1,09 EUR), GOOGLE *Google Play Ap, Visa Kreditkarte ****9281"
+    re.compile(r"^\s*(?:\([^)]*\))?\s*,\s*(.+?)\s*,\s*(?:visa|master|maestro|debit|kredit|giro|karte|card)\b", re.I),
     re.compile(r"\b(?:at|bei|an|to|für|for|from|von|@|merchant:|händler:)\s+(.+?)(?=\s+(?:for|für|with|mit|on|am|was|wurde|via|using|um|bezahlt|gezahlt|getätigt|abgebucht|paid|spent)\b|[.!,;(]|$)", re.I),
     re.compile(r"^(.+?)\s*[:\-–]\s*$"),
 ]
@@ -162,8 +165,19 @@ def find_amount(text):
     return None, None, None
 
 
+CARD_DIGITS = re.compile(r"(?:[*•·x]{2,}|\.\.|endet auf|ending(?: in)?|karte)\s*(\d{4})\b", re.I)
+
+
+def card_digits(text):
+    return CARD_DIGITS.findall(text or "")
+
+
 def clean_merchant(s):
     s = re.sub(r"\s+", " ", s.replace('"', "")).strip(" \t-–:.,;'")
+    if "*" in s:                      # "PAYPAL *STEAM", "GOOGLE *Google Play" -> the part after the star
+        tail = s.split("*", 1)[1].strip()
+        if len(tail) >= 3:
+            s = tail
     s = re.sub(r"\b(?:successful(?:ly)?|erfolgreich|approved|genehmigt)\b", "", s, flags=re.I).strip(" -–:.,")
     return s[:80]
 
@@ -255,8 +269,52 @@ def try_book(cfg, card, ev):
 
 
 # --------------------------------------------------------------- handling ---
+def route_card(cfg, card, full):
+    """A notification that names a card number goes to the card with those digits,
+    whichever address it was sent to (one Google Wallet macro can serve all cards)."""
+    found = card_digits(full)
+    if not found:
+        return card, ""
+    for c in cfg["cards"]:
+        mine = {d.strip() for d in re.split(r"[,\s]+", c.get("digits") or "") if d.strip()}
+        if mine & set(found):
+            return c, ""
+    known = any((c.get("digits") or "").strip() for c in cfg["cards"])
+    return (None, f"card ••{found[0]} is not set up here") if known else (card, "")
+
+
+def merge_duplicate(cfg, events, card, ev):
+    """Same card and amount within 5 minutes = the same payment seen by two apps
+    (e.g. Google Wallet and the bank app). Keep one booking, keep the better merchant."""
+    p = ev.get("parsed")
+    if not p:
+        return False
+    for old in reversed(events[-60:]):
+        op = old.get("parsed")
+        if (old.get("card") == card["id"] and old.get("status") == "booked" and op and op["kind"] == p["kind"]
+                and abs(op["amount"] - p["amount"]) < 0.005
+                and abs(datetime.fromisoformat(ev["received"]).timestamp() - datetime.fromisoformat(old["received"]).timestamp()) < MERGE_SECONDS):
+            ev["status"], ev["reason"] = "duplicate", "same payment as an earlier notification from another app"
+            if op["merchant"] == "Card payment" and p["merchant"] != "Card payment" and old.get("firefly_id"):
+                try:
+                    res = ff(cfg, "GET", f"/api/v1/transactions/{old['firefly_id']}")
+                    j = res["data"]["attributes"]["transactions"][0]
+                    upd = {"transaction_journal_id": j["transaction_journal_id"], "description": p["merchant"]}
+                    upd["destination_name" if p["kind"] == "withdrawal" else "source_name"] = p["merchant"]
+                    ff(cfg, "PUT", f"/api/v1/transactions/{old['firefly_id']}", {"apply_rules": True, "transactions": [upd]})
+                    op["merchant"] = p["merchant"]
+                    ev["reason"] += f" · merchant “{p['merchant']}” added to the booking"
+                except Exception as e:  # noqa: BLE001
+                    ev["reason"] += f" · could not add the merchant: {e}"
+            return True
+    return False
+
+
 def handle_notification(card, title, text, app=""):
     cfg = load_config()
+    card, why = route_card(cfg, card, f"{title}\n{text}")
+    if not card:
+        return {"status": "ignored", "reason": why}
     now = datetime.now(timezone.utc).astimezone()
     fingerprint = hashlib.sha256(f"{card['id']}|{title}|{text}".encode()).hexdigest()[:16]
     ev = {"id": f"{int(time.time() * 1000)}-{fingerprint[:6]}", "received": now.isoformat(timespec="seconds"),
@@ -279,7 +337,7 @@ def handle_notification(card, title, text, app=""):
                     ev["status"], ev["reason"] = "review", f"paid in {ev['parsed']['currency']}, enter the {card['currency']} amount"
                 elif not cfg["token"]:
                     ev["status"], ev["reason"] = "review", "no Firefly token set yet"
-                else:
+                elif not merge_duplicate(cfg, events, card, ev):
                     try_book(cfg, card, ev)
             except ValueError as e:
                 # payment notifications always carry an amount; without one it is most
@@ -386,7 +444,21 @@ class Handler(BaseHTTPRequestHandler):
                 ev = next((e for e in events if e["id"] == data.get("id")), None)
                 if not ev:
                     return self._json(404, {"error": "event not found"})
-                if data.get("action") == "ignore":
+                if data.get("action") == "merchant":
+                    name = (data.get("merchant") or "").strip()[:80]
+                    if not name or ev.get("status") != "booked" or not ev.get("firefly_id"):
+                        return self._json(400, {"error": "Enter a merchant for a booked payment."})
+                    try:
+                        res = ff(cfg, "GET", f"/api/v1/transactions/{ev['firefly_id']}")
+                        j = res["data"]["attributes"]["transactions"][0]
+                        upd = {"transaction_journal_id": j["transaction_journal_id"], "description": name}
+                        upd["destination_name" if ev["parsed"]["kind"] == "withdrawal" else "source_name"] = name
+                        ff(cfg, "PUT", f"/api/v1/transactions/{ev['firefly_id']}", {"apply_rules": True, "transactions": [upd]})
+                    except Exception as e:  # noqa: BLE001
+                        return self._json(502, {"error": f"Firefly: {e}"})
+                    ev["parsed"]["merchant"] = name
+                    ev["reason"] = "merchant added by you"
+                elif data.get("action") == "ignore":
                     ev["status"], ev["reason"] = "ignored", "ignored by you"
                 else:
                     try:
