@@ -30,7 +30,7 @@ CONFIG_FILE = DATA_DIR / "config.json"
 EVENTS_FILE = DATA_DIR / "events.json"
 PORT = int(os.environ.get("PORT", "8080"))
 MAX_EVENTS = 1000
-DEDUP_SECONDS = 15 * 60
+DEDUP_SECONDS = 60          # Android sometimes posts the same notification twice within seconds
 
 DEFAULTS = {
     "firefly_url": os.environ.get("FIREFLY_URL", "http://firefly-iii_server_1:8080"),
@@ -55,7 +55,7 @@ TEMPLATES = {
     "other": {"name": "Card", "account": "Card", "tag": "card", "app": "", "ignore": BASE_IGNORE},
 }
 CARD_KEYS = ("name", "account", "currency", "tag", "require", "ignore", "app", "digits")
-MERGE_SECONDS = 5 * 60
+MERGE_SECONDS = 2 * 60
 
 lock = threading.Lock()
 
@@ -284,15 +284,20 @@ def route_card(cfg, card, full):
 
 
 def merge_duplicate(cfg, events, card, ev):
-    """Same card and amount within 5 minutes = the same payment seen by two apps
-    (e.g. Google Wallet and the bank app). Keep one booking, keep the better merchant."""
+    """The same payment seen by two apps (e.g. Google Wallet and the card's own app):
+    same card, same amount, within 2 minutes, from two DIFFERENT apps, and at most one
+    of them names a merchant. Two notifications from the same app are always two payments."""
     p = ev.get("parsed")
     if not p:
         return False
     for old in reversed(events[-60:]):
         op = old.get("parsed")
+        apps = (old.get("app") or "").strip().lower(), (ev.get("app") or "").strip().lower()
+        merchants_fit = "Card payment" in (op or {}).get("merchant", "") + "|" + p["merchant"] or (op or {}).get("merchant") == p["merchant"]
         if (old.get("card") == card["id"] and old.get("status") == "booked" and op and op["kind"] == p["kind"]
                 and abs(op["amount"] - p["amount"]) < 0.005
+                and all(apps) and apps[0] != apps[1]        # same app twice = two real payments
+                and merchants_fit
                 and abs(datetime.fromisoformat(ev["received"]).timestamp() - datetime.fromisoformat(old["received"]).timestamp()) < MERGE_SECONDS):
             ev["status"], ev["reason"] = "duplicate", "same payment as an earlier notification from another app"
             if op["merchant"] == "Card payment" and p["merchant"] != "Card payment" and old.get("firefly_id"):
@@ -323,10 +328,14 @@ def handle_notification(card, title, text, app=""):
         events = load_events()
         recent = [e for e in events[-50:] if e.get("fp") == fingerprint
                   and time.time() - datetime.fromisoformat(e["received"]).timestamp() < DEDUP_SECONDS]
-        if recent:
-            return {"status": "repeat", "reason": "same notification within 15 minutes, ignored"}
         full = f"{title}\n{text}"
-        if card["require"] and not re.search(card["require"], full, re.I):
+        if recent:
+            ev["status"], ev["reason"] = "repeat", "identical notification within a minute – usually Android repeating it. If it really was a second payment, book it here."
+            try:
+                ev["parsed"] = parse(title, text)
+            except ValueError:
+                pass
+        elif card["require"] and not re.search(card["require"], full, re.I):
             ev["status"], ev["reason"] = "ignored", "does not match the required pattern"
         elif card["ignore"] and re.search(card["ignore"], full, re.I):
             ev["status"], ev["reason"] = "ignored", "matches an ignore word"

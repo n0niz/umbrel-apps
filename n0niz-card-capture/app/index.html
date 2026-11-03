@@ -201,7 +201,7 @@
       <h2>Good to know</h2>
       <ul style="margin:0;padding-left:18px">
         <li><b>Needs review</b>: notifications where no safe booking was possible, e.g. payments in a foreign currency (enter the € amount) or text the parser didn't understand. Fix them in the Activity tab.</li>
-        <li><b>Duplicates</b>: Android sometimes shows the same notification twice; identical notifications within 15 minutes are ignored.</li>
+        <li><b>Duplicates</b>: Android sometimes shows the same notification twice. An identical one within a minute is kept as <i>repeated</i> and not booked – if it really was a second payment (two coffees), press <b>Book</b> on it. The same payment reported by two different apps (Google Wallet and the card app) is booked once.</li>
         <li><b>Missed payments</b>: if the phone was off, Tailscale disconnected or notifications were silenced, a payment can be missing. Compare with the Krak app now and then.</li>
         <li><b>Troubleshooting – Umbrel login page instead of the app</b>: the receiving address is meant to bypass Umbrel's login
           (it is protected by your secret key instead). If your umbrelOS version still asks for a login, MacroDroid can't get through.
@@ -338,7 +338,7 @@
 
   /* ---------- activity ---------- */
   const cardName = (id) => ((cfg.cards || []).find((c) => c.id === id) || (cfg.cards || [])[0] || { name: "" }).name;
-  const LABEL = { booked: "booked", review: "needs review", error: "error", ignored: "ignored", duplicate: "duplicate" };
+  const LABEL = { booked: "booked", review: "needs review", error: "error", ignored: "ignored", duplicate: "same payment", repeat: "repeated" };
   async function loadEvents() {
     const evs = await (await fetch("api/events")).json();
     const f = $("filter").value;
@@ -353,7 +353,7 @@
       const p = e.parsed;
       const when = new Date(e.received).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
       const amt = p ? `${p.kind === "deposit" ? "+" : "−"}${p.amount.toFixed(2)} ${esc(p.currency)}` : "";
-      const fix = (e.status === "review" || e.status === "error") ? `
+      const fix = (e.status === "review" || e.status === "error" || e.status === "repeat") ? `
         <div class="fix" data-id="${esc(e.id)}">
           <label>Amount (€)<input type="text" inputmode="decimal" class="fa" value="${p ? p.amount : ""}"></label>
           <label class="m">Merchant<input type="text" class="fm" value="${esc(p ? p.merchant : "")}"></label>
