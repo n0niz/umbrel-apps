@@ -196,6 +196,37 @@
   .catalog .mini { height: 38px; display: grid; place-items: center; }
   .catalog b { display: block; font-weight: 600; }
   .catalog small { color: var(--muted); }
+  .paper { background: #f3eee3; color: #1d1b17; border-radius: 6px; padding: 18px 20px 14px; font-family: Georgia, "Times New Roman", Times, serif; }
+  .paper a { color: #1d1b17; text-decoration: underline; }
+  .paper .mast { text-align: center; border-bottom: 3px double #1d1b17; padding-bottom: 6px; margin-bottom: 12px; }
+  .paper .mast-top, .paper .mast-bar { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: #4a453b; }
+  .paper .mast-title { font-size: clamp(28px, 5vw, 46px); line-height: 1.05; margin: 6px 0 8px; font-weight: 700; letter-spacing: .01em; font-family: "Old English Text MT", "UnifrakturMaguntia", Georgia, serif; }
+  .paper .mast-bar { border-top: 1px solid #1d1b17; padding-top: 5px; align-items: center; }
+  .paper .pseg { display: inline-flex; border: 1px solid #1d1b17; border-radius: 3px; overflow: hidden; }
+  .paper .pseg button { background: transparent; border: 0; padding: 3px 10px; font: inherit; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; color: #1d1b17; }
+  .paper .pseg button + button { border-left: 1px solid #1d1b17; }
+  .paper .pseg button.on { background: #1d1b17; color: #f3eee3; }
+  .paper .pgrid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 0 22px; }
+  .paper .pgrid > .side { border-left: 1px solid #b9b2a3; padding-left: 20px; display: grid; gap: 14px; align-content: start; }
+  .paper .side .story + .story { border-top: 1px solid #b9b2a3; padding-top: 12px; }
+  .paper .kicker { font-family: system-ui, sans-serif; font-size: 10.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .paper .kicker.good { color: #1e6b34; } .paper .kicker.bad { color: #a3271f; }
+  .paper h3 { font-size: 19px; line-height: 1.2; margin: 3px 0 5px; font-weight: 700; }
+  .paper .lead h3 { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.12; margin: 4px 0 8px; }
+  .paper .deck { font-style: italic; font-size: 15px; line-height: 1.4; margin: 0 0 8px; color: #35312a; }
+  .paper .lead .deck { font-size: 17px; }
+  .paper .story p { margin: 0 0 6px; font-size: 14px; line-height: 1.5; }
+  .paper .lead p.body:first-of-type::first-letter { float: left; font-size: 42px; line-height: .9; padding: 3px 6px 0 0; font-weight: 700; }
+  .paper .spark { width: 100%; height: 70px; display: block; margin: 6px 0 2px; }
+  .paper .spark-cap { font-family: system-ui, sans-serif; font-size: 10.5px; color: #6b6558; display: flex; justify-content: space-between; }
+  .paper .brief { border-top: 3px double #1d1b17; margin-top: 14px; padding-top: 8px; }
+  .paper .brief h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; }
+  .paper .brief .lede { font-size: 15px; margin: 0 0 6px; }
+  .paper .brief ul { columns: 2 260px; column-gap: 24px; margin: 0; padding-left: 16px; font-size: 13.5px; }
+  .paper .brief li { break-inside: avoid; margin-bottom: 4px; }
+  .paper .pmeta { font-family: system-ui, sans-serif; font-size: 11px; color: #6b6558; margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
+  .paper .pempty { padding: 30px 0; text-align: center; font-style: italic; color: #4a453b; }
+  @media (max-width: 760px) { .paper { padding: 14px 14px 12px; } .paper .pgrid { grid-template-columns: 1fr; } .paper .pgrid > .side { border-left: 0; padding-left: 0; border-top: 1px solid #b9b2a3; padding-top: 12px; margin-top: 10px; } }
   .news ul { margin: 6px 0 10px; padding-left: 18px; display: grid; gap: 6px; }
   .news li { line-height: 1.45; }
   .news .meta { color: var(--muted); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
@@ -1714,6 +1745,7 @@
     const load = async (refresh) => api(`api/news?month=${m}${refresh ? "&refresh=1" : ""}`);
     let d = await load(false);
     const draw = () => {
+      if (mode === "full" && d.papers) return drawPaper();
       const f = d.facts, [y, mm] = d.month.split("-");
       const lines = d.headlines, summary = typeof d.text === "string" ? d.text : null;
       const vs = f.spent_avg12 ? (f.spent - f.spent_avg12) / f.spent_avg12 : null;
@@ -1725,8 +1757,48 @@
         try { d = await load(true); draw(); } catch (er) { toast(er.message); }
       });
     };
+    const drawPaper = () => {
+      const de = d.lang === "de", f = d.facts, [y, mm] = d.month.split("-");
+      const ML = de ? ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"] : MONTH_LONG;
+      const MS = de ? ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"] : ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const mk = (k) => `${MS[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}`;
+      const per = String(NEWS.period || 12), paper = d.papers[per] || { stories: [] }, st = paper.stories || [];
+      const L = de ? { title: "Haushalts-Rundschau", ed: "Ausgabe", per: { 1: "Letzter Monat", 6: "6 Monate", 12: "12 Monate" }, vs: "verglichen mit", avg: "Schnitt", brief: "Kurz notiert", good: "Gute Nachricht", bad: "Mehr Kosten", none: "Für diesen Zeitraum gibt es keine großen Veränderungen – oder noch zu wenig Verlauf.", calc: "alle Zahlen exakt aus Firefly berechnet", sum: "Zusammenfassung von", rw: "neu schreiben", top: "Die drei größten Veränderungen", now: "jetzt", before: "davor" }
+        : { title: "The Household Times", ed: "Edition", per: { 1: "Last month", 6: "6 months", 12: "12 months" }, vs: "compared with", avg: "average of", brief: "In brief", good: "Good news", bad: "Costs up", none: "No big changes in this period — or not enough history yet.", calc: "all figures calculated exactly from Firefly", sum: "summary by", rw: "rewrite", top: "The three biggest changes", now: "now", before: "before" };
+      const span = (w) => w[0] === w[1] ? mk(w[0]) : `${mk(w[0])} – ${mk(w[1])}`;
+      const win = paper.window ? `${span(paper.window)} ${L.vs} ${per === "1" ? `${L.avg} ` : ""}${span(paper.before)}` : "";
+      const spark = (s, lead) => {
+        const v = s.series || [], n = v.length; if (n < 2) return "";
+        const nb = n - (+per), W = 600, H = lead ? 150 : 70;
+        const ab = s.before, an = s.now;
+        const lo = Math.min(...v, ab, an), hi = Math.max(...v, ab, an, 1), pad = (hi - lo) * 0.12 || hi * 0.1;
+        const x = (i) => (i / (n - 1)) * W, yy = (val) => H - 4 - ((val - (lo - pad)) / (hi - lo + 2 * pad)) * (H - 10);
+        const pts = v.map((val, i) => `${x(i).toFixed(1)},${yy(val).toFixed(1)}`).join(" ");
+        const col = s.good ? "#1e6b34" : "#a3271f", xs = Math.max(0, x(nb) - (per === "1" ? 10 : 0));
+        return `<svg class="spark" style="height:${H}px" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><rect x="${xs}" y="0" width="${W - xs}" height="${H}" fill="#1d1b17" opacity=".06"/>
+          <line x1="0" x2="${x(nb)}" y1="${yy(ab)}" y2="${yy(ab)}" stroke="#6b6558" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke"/>
+          <line x1="${xs}" x2="${W}" y1="${yy(an)}" y2="${yy(an)}" stroke="${col}" stroke-dasharray="4 4" stroke-width="1.4" vector-effect="non-scaling-stroke"/>
+          <polyline points="${pts}" fill="none" stroke="#1d1b17" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>
+          <div class="spark-cap"><span>${mk(paper.months[0])} · ${L.before} ${eur(ab)}</span><span>${L.now} ${eur(an)} · ${mk(paper.months[n - 1])}</span></div>`;
+      };
+      const story = (s, lead) => `<div class="story${lead ? " lead" : ""}"><div class="kicker ${s.good ? "good" : "bad"}">${s.good ? L.good : L.bad}${s.category && s.category !== s.name ? ` · ${esc(s.category)}` : ""}</div>
+        <h3>${esc(s.headline)}</h3><p class="deck">${esc(s.deck)}</p>${(s.body || []).map((b) => `<p class="body">${esc(b)}</p>`).join("")}${spark(s, lead)}</div>`;
+      const vol = +y - 2023;
+      host.innerHTML = `<div class="paper"><div class="mast"><div class="mast-top"><span>${de ? "Jahrgang" : "Vol."} ${vol} · No. ${+mm}</span><span>${L.top}</span><span>${ML[+mm - 1]} ${y}${d.partial ? (de ? " (läuft)" : " (so far)") : ""}</span></div>
+          <div class="mast-title">${L.title}</div>
+          <div class="mast-bar"><span class="pseg">${[1, 6, 12].map((p) => `<button data-p="${p}" class="${String(p) === per ? "on" : ""}">${L.per[p]}</button>`).join("")}</span><span>${esc(win)}</span></div></div>
+        ${st.length ? `<div class="pgrid"><div>${story(st[0], true)}</div><div class="side">${st.slice(1).map((s) => story(s, false)).join("") || ""}</div></div>` : `<div class="pempty">${L.none}</div>`}
+        <div class="brief"><h4>${L.brief} · ${ML[+mm - 1]} ${y}</h4>${typeof d.text === "string" && d.text ? `<p class="lede">${esc(d.text)}</p>` : ""}<ul>${(d.headlines || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+        <div class="pmeta"><span>${d.text ? `${L.sum} ${esc(d.model)} · ${L.calc}` : d.llm_error ? `${L.calc} · ${esc(d.llm_error.slice(0, 100))}` : L.calc}</span><a href="#" data-rw>${L.rw}</a></div></div>`;
+      host.querySelectorAll("[data-p]").forEach((b) => b.addEventListener("click", () => { NEWS.period = +b.dataset.p; try { localStorage.setItem("newsPeriod", b.dataset.p); } catch (e) { /* ignore */ } drawPaper(); }));
+      host.querySelector("[data-rw]").addEventListener("click", async (e) => {
+        e.preventDefault(); host.querySelector(".pmeta span").textContent = "…";
+        try { d = await load(true); draw(); } catch (er) { toast(er.message); }
+      });
+    };
     draw();
   }
+  const NEWS = { period: (() => { try { return +(localStorage.getItem("newsPeriod") || 12); } catch (e) { return 12; } })() };
 
   /* ============================================================ agent */
   const AG = { tab: "need", poll: null };

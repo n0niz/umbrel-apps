@@ -527,8 +527,8 @@ def news_for(cfg, month, refresh=False):
     now = berlin_now()
     current = month == now.strftime("%Y-%m")
     old = read_json(f, None)
-    if old and isinstance(old.get("text"), list):
-        old = None                                      # written by 2.2.0, before summaries
+    if old and (isinstance(old.get("text"), list) or "papers" not in old):
+        old = None                                      # written before summaries (2.2.0) or before the front page (2.5.0)
     if old and not refresh and (not current or time.time() - old.get("t", 0) < 3600) and (old.get("text") or time.time() - old.get("t", 0) < 6 * 3600):
         return old
     y, m = map(int, month.split("-"))
@@ -542,9 +542,18 @@ def news_for(cfg, month, refresh=False):
         bills = None
     fx = agent.facts(data["rows"], month, cur, upto_day=now.day if current else None, bills=bills,
                      savings=[c for c in (cfg.get("savings_categories") or []) if c != "-"])
+    lang = cfg.get("news_lang") or "en"
+    sav = [c for c in (cfg.get("savings_categories") or []) if c != "-"]
+    papers = {}
+    for per in (1, 6, 12):
+        p = agent.year_stories(data["rows"], month, cur, partial=current, savings=sav, period=per) or {"stories": [], "period": per}
+        for s in p["stories"]:
+            s.update(agent.story_text(s, lang))
+        papers[str(per)] = p
+    paper = papers["12"] if papers["12"]["stories"] else papers["6"]
     llm = llm_for(cfg)
-    text, lines = agent.news_text(fx, cfg.get("news_lang") or "en", llm[:2] if llm else None)
-    out = {"month": month, "t": int(time.time()), "facts": fx, "headlines": lines, "text": text,
+    text, lines = agent.news_text(fx, lang, llm[:2] if llm else None, paper["stories"])
+    out = {"month": month, "t": int(time.time()), "facts": fx, "headlines": lines, "text": text, "papers": papers, "lang": lang,
            "model": llm[1] if (llm and text) else "", "llm_error": "" if llm else llm_cache["err"], "partial": current}
     write_json(f, out)
     return out

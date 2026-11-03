@@ -447,10 +447,206 @@ def headlines(f, lang="en"):
     return out
 
 
-def news_text(f, lang, llm):
+def _last_full_month(month, partial):
+    y, m = map(int, month.split("-"))
+    return _mkey(y, m - 1) if partial else month
+
+
+def year_stories(rows, month, currency="EUR", partial=False, savings=(), top=3, period=12):
+    """The biggest changes, as newspaper stories. period = 12 (the last 12 finished months
+    against the 12 before), 6 (6 against 6) or 1 (the last finished month against the
+    average of the 12 months before it). Kinds:
+      cat      a spending category got dearer or cheaper (with the payee that drove it,
+               and for shopping-type categories whether it was more trips or a bigger basket)
+      payee    a regular payment changed (rent, energy, insurance, salary …)
+      new      a cost that did not exist before and now comes back every month
+      gone     a regular cost that stopped
+      income   income went up or down
+    Scored by the change in euros per month; exact figures only."""
+    end = _last_full_month(month, partial)
+    y, m = map(int, end.split("-"))
+    n = period if period in (1, 6, 12) else 12
+    nb = 12 if n == 1 else n
+    now_w = [_mkey(y, m - i) for i in range(n - 1, -1, -1)]           # oldest .. newest
+    before_w = [_mkey(y, m - n - i) for i in range(nb - 1, -1, -1)]
+    span = before_w + now_w
+    sav = set(savings or ())
+    rows = [r for r in rows if r[7] == currency and not (len(r) > 11 and r[11]) and r[3] not in sav and r[0] in span]
+    have = {r[0] for r in rows}
+    if sum(1 for k in before_w if k in have) < max(1, nb // 2) or sum(1 for k in now_w if k in have) < max(1, n // 2):
+        return []
+    fw = lambda name: (payee_key(name).split() or [""])[0]       # noqa: E731
+    cat_m = defaultdict(lambda: defaultdict(float))
+    cat_n = defaultdict(lambda: defaultdict(int))
+    pay_m = defaultdict(lambda: defaultdict(float))
+    pay_name, pay_cat, pay_kind = defaultdict(Counter), defaultdict(Counter), {}
+    inc_m = defaultdict(float)
+    for r in rows:
+        k = fw(r[6] or r[10])
+        if r[1] == "e":
+            c = r[3] or "(no category)"
+            cat_m[c][r[0]] += r[2]
+            cat_n[c][r[0]] += 1
+        else:
+            inc_m[r[0]] += r[2]
+        if k:
+            key = (r[1], k)
+            pay_m[key][r[0]] += r[2]
+            pay_name[key][r[6] or r[10]] += 1
+            pay_cat[key][r[3] or ""] += 1
+    pm = lambda d, w: sum(d.get(k, 0) for k in w) / len(w)                       # noqa: E731
+    active = lambda d, w: sum(1 for k in w if d.get(k))                            # noqa: E731
+    series = lambda d: [round(d.get(k, 0), 2) for k in span]                       # noqa: E731
+    cands = []
+    for (kind, k), d in pay_m.items():
+        name = pay_name[(kind, k)].most_common(1)[0][0]
+        cat = pay_cat[(kind, k)].most_common(1)[0][0]
+        a_now, a_bef = active(d, now_w), active(d, before_w)
+        last3 = [d.get(x, 0) for x in now_w[-3:]]
+        reg_b, reg_n = max(2, round(nb * 2 / 3)), max(1, round(n * 2 / 3))
+        base = {"name": name, "key": k, "category": cat, "series": series(d), "income": kind == "i"}
+        if n >= 3 and a_bef == 0 and a_now >= 3 and sum(1 for v in last3 if v) >= 2 and kind == "e":
+            run = sum(last3) / sum(1 for v in last3 if v)
+            first = next(x for x in now_w if d.get(x))
+            cands.append({**base, "kind": "new", "score": run, "now": round(run, 2), "before": 0, "since": first,
+                          "year_total": round(sum(d.get(x, 0) for x in now_w), 2)})
+        elif a_bef >= max(nb // 2, 5 if n == 1 else 0) and not any(last3) and kind == "e" and (n >= 3 or a_bef >= 10):
+            run = sum(d.get(x, 0) for x in before_w) / a_bef
+            last = max(x for x in span if d.get(x))
+            cands.append({**base, "kind": "gone", "score": run, "now": 0, "before": round(run, 2), "last": last})
+        elif a_bef >= reg_b and a_now >= reg_n:                             # regular payment, compare per month paid
+            now_v = sum(d.get(x, 0) for x in now_w) / a_now
+            bef_v = sum(d.get(x, 0) for x in before_w) / a_bef
+            dpm = pm(d, now_w) - pm(d, before_w)
+            if abs(now_v - bef_v) >= 5 and abs(now_v - bef_v) / max(bef_v, 1) >= 0.05:
+                cands.append({**base, "kind": "payee", "score": abs(dpm), "now": round(now_v, 2), "before": round(bef_v, 2),
+                              "delta_pm": round(dpm, 2)})
+    for c, d in cat_m.items():
+        now_v, bef_v = pm(d, now_w), pm(d, before_w)
+        dlt = now_v - bef_v
+        if abs(dlt) < 15 or abs(dlt) / max(bef_v, 1) < 0.10:
+            continue
+        if n == 1 and (active(d, before_w) < 8 or not d.get(now_w[0])):
+            continue                                                    # one month: only categories you pay every month
+        drivers = []
+        for (kind, k), pdm in pay_m.items():
+            if kind == "e" and pay_cat[(kind, k)].most_common(1)[0][0] == (c if c != "(no category)" else ""):
+                pd = pm(pdm, now_w) - pm(pdm, before_w)
+                if pd * dlt > 0:
+                    drivers.append((abs(pd), pay_name[(kind, k)].most_common(1)[0][0], k, round(pm(pdm, now_w), 2), round(pm(pdm, before_w), 2)))
+        drivers.sort(reverse=True)
+        n_now, n_bef = sum(cat_n[c].get(x, 0) for x in now_w) / len(now_w), sum(cat_n[c].get(x, 0) for x in before_w) / len(before_w)
+        cands.append({"kind": "cat", "name": c, "category": c, "score": abs(dlt), "now": round(now_v, 2), "before": round(bef_v, 2),
+                      "delta_pm": round(dlt, 2), "series": series(d), "income": False,
+                      "drivers": [{"name": n, "key": k, "now": a, "before": b, "share": round(s / abs(dlt), 2)} for s, n, k, a, b in drivers[:2]],
+                      "trips_now": round(n_now, 1), "trips_before": round(n_bef, 1),
+                      "basket_now": round(now_v / n_now, 2) if n_now else 0, "basket_before": round(bef_v / n_bef, 2) if n_bef else 0})
+    inc_now, inc_bef = pm(inc_m, now_w), pm(inc_m, before_w)
+    if abs(inc_now - inc_bef) >= 50 and abs(inc_now - inc_bef) / max(inc_bef, 1) >= 0.03:
+        cands.append({"kind": "income", "name": "Income", "category": "", "score": abs(inc_now - inc_bef) * 0.9, "now": round(inc_now, 2),
+                      "before": round(inc_bef, 2), "delta_pm": round(inc_now - inc_bef, 2), "series": series(inc_m), "income": True})
+    cands.sort(key=lambda s: -s["score"])
+    picked, used_keys, used_cats = [], set(), set()
+    for s in cands:
+        if s["kind"] == "cat":
+            main = s["drivers"][0] if s["drivers"] else None
+            if s["category"] in used_cats or (main and main["key"] in used_keys and main["share"] >= 0.6):
+                continue
+            used_cats.add(s["category"])
+            used_keys.update(dv["key"] for dv in s["drivers"][:1])
+        elif s["kind"] == "income":
+            if "income" in used_cats:
+                continue
+            used_cats.add("income")
+        else:
+            if s["key"] in used_keys:
+                continue
+            used_keys.add(s["key"])
+            if s["income"]:
+                used_cats.add("income")
+        picked.append(s)
+        if len(picked) == top:
+            break
+    for s in picked:
+        s["good"] = (s.get("delta_pm", s["now"] - s["before"]) > 0) == s["income"]
+        s.pop("key", None)
+        for dv in s.get("drivers", []):
+            dv.pop("key", None)
+    for s in picked:
+        s["period"] = n
+    return {"stories": picked, "window": [now_w[0], now_w[-1]], "before": [before_w[0], before_w[-1]], "months": span, "period": n}
+
+
+def story_text(s, lang="en"):
+    """Deterministic headline, deck and copy for one story."""
+    de = lang == "de"
+    mon = lambda k: (MONATE if de else MONTHS)[int(k[5:7]) - 1] + " " + k[:4]                   # noqa: E731
+    e = lambda v: _eur(v).replace(" €", " €")                                                   # noqa: E731
+    pct = lambda a, b: f"{(a - b) / b * 100:+.0f} %" if b else ""                               # noqa: E731
+    n, k = s["name"], s["kind"]
+    yr = abs(s.get("delta_pm", s["now"] - s["before"])) * 12
+    if k == "cat":
+        up = s["delta_pm"] > 0
+        head = (f"{n}: {e(s['delta_pm'])} mehr im Monat" if up else f"{n}: {e(-s['delta_pm'])} weniger im Monat") if de else \
+               (f"{n} costs {e(s['delta_pm'])} more a month" if up else f"{n} costs {e(-s['delta_pm'])} less a month")
+        deck = (f"Im Schnitt {e(s['now'])} statt {e(s['before'])} pro Monat ({pct(s['now'], s['before'])}), aufs Jahr {e(yr)} {'mehr' if up else 'weniger'}." if de else
+                f"On average {e(s['now'])} instead of {e(s['before'])} a month ({pct(s['now'], s['before'])}), {e(yr)} {'more' if up else 'less'} over a year.")
+        body = []
+        if s.get("trips_before") and s.get("trips_now"):
+            more_trips = s["trips_now"] > s["trips_before"] * 1.08
+            bigger = s["basket_now"] > s["basket_before"] * 1.08
+            fewer_trips = s["trips_now"] < s["trips_before"] * 0.92
+            smaller = s["basket_now"] < s["basket_before"] * 0.92
+            t = (f"{s['trips_now']:.0f} statt {s['trips_before']:.0f} Buchungen im Monat, im Schnitt {s['basket_now']:.2f} € statt {s['basket_before']:.2f} € pro Einkauf".replace(".", ",") if de else
+                 f"{s['trips_now']:.0f} instead of {s['trips_before']:.0f} bookings a month, {s['basket_now']:.2f} € instead of {s['basket_before']:.2f} € each on average")
+            why = ""
+            if up and bigger and not more_trips:
+                why = " – nicht öfter, sondern teurer eingekauft." if de else " – not more often, but each time costs more."
+            elif up and more_trips and not bigger:
+                why = " – öfter, nicht teurer." if de else " – more often, not dearer."
+            elif not up and smaller and not fewer_trips:
+                why = " – gleich oft, aber günstiger." if de else " – just as often, but cheaper each time."
+            elif not up and fewer_trips and not smaller:
+                why = " – seltener, nicht billiger." if de else " – less often, not cheaper."
+            body.append(t + (why or "."))
+        for dv in s.get("drivers", [])[:2]:
+            if dv["share"] >= 0.25:
+                body.append((f"Treiber: {dv['name']} mit {e(dv['now'])} statt {e(dv['before'])} im Monat." if de else
+                             f"Main driver: {dv['name']}, {e(dv['now'])} instead of {e(dv['before'])} a month."))
+    elif k == "payee":
+        up = s["now"] > s["before"]
+        if s["income"]:
+            head = (f"{n} zahlt {e(abs(s['now'] - s['before']))} {'mehr' if up else 'weniger'}" if de else f"{n} pays {e(abs(s['now'] - s['before']))} {'more' if up else 'less'}")
+        else:
+            head = (f"{n} {'teurer' if up else 'günstiger'}: {e(s['now'])} statt {e(s['before'])}" if de else f"{n} {'up' if up else 'down'}: {e(s['now'])} instead of {e(s['before'])}")
+        deck = (f"Regelmäßige Zahlung, im Schnitt pro Monat {pct(s['now'], s['before'])} – aufs Jahr {e(yr)} {'mehr' if up else 'weniger'}." if de else
+                f"A regular payment, {pct(s['now'], s['before'])} per month on average – {e(yr)} {'more' if up else 'less'} over a year.")
+        body = [f"Kategorie: {s['category']}." if de else f"Category: {s['category']}."] if s.get("category") else []
+    elif k == "new":
+        head = (f"Neuer Kostenpunkt: {n}" if de else f"New cost: {n}")
+        deck = (f"Seit {mon(s['since'])} jeden Monat, zuletzt rund {e(s['now'])} im Monat – im Zeitraum davor gab es das noch nicht." if de else
+                f"Every month since {mon(s['since'])}, lately about {e(s['now'])} a month – it did not exist in the period before.")
+        body = [(f"Bisher {e(s['year_total'])} insgesamt" + (f", Kategorie {s['category']}." if s.get("category") else ".")) if de else
+                (f"{e(s['year_total'])} so far" + (f", category {s['category']}." if s.get("category") else "."))]
+    elif k == "gone":
+        head = (f"{n} fällt weg" if de else f"{n} has stopped")
+        deck = (f"Früher rund {e(s['before'])} im Monat, zuletzt bezahlt im {mon(s['last'])} – spart etwa {e(s['before'] * 12)} im Jahr." if de else
+                f"Used to be about {e(s['before'])} a month, last paid in {mon(s['last'])} – that saves about {e(s['before'] * 12)} a year.")
+        body = [f"Kategorie: {s['category']}." if de else f"Category: {s['category']}."] if s.get("category") else []
+    else:  # income
+        up = s["delta_pm"] > 0
+        head = (f"Einnahmen {'steigen' if up else 'sinken'} um {e(abs(s['delta_pm']))} im Monat" if de else f"Income {'up' if up else 'down'} {e(abs(s['delta_pm']))} a month")
+        deck = (f"Im Schnitt {e(s['now'])} statt {e(s['before'])} pro Monat ({pct(s['now'], s['before'])})." if de else
+                f"On average {e(s['now'])} instead of {e(s['before'])} a month ({pct(s['now'], s['before'])}).")
+        body = []
+    return {"headline": head, "deck": deck, "body": body}
+
+
+def news_text(f, lang, llm, stories=()):
     """Bullets always come straight from the exact facts. The model only writes a
     one- or two-sentence summary on top, so it cannot relabel or invent figures."""
     lines = headlines(f, lang)
+    year = [f"{t['headline']}. {t['deck']}" for t in stories]
     if not llm:
         return None, lines
     de = lang == "de"
@@ -460,6 +656,9 @@ def news_text(f, lang, llm):
               if de else
               ("Sum up a household's month in ONE or TWO short, friendly sentences. Only the most important point, "
                "no new numbers, no list, do not reinterpret anything (a new payee is not a subscription). No advice.\n\nFacts:\n")) + "\n".join("- " + x for x in lines)
+    if year:
+        prompt += ("\n\nDie drei größten Veränderungen im Jahresvergleich (dürfen erwähnt werden):\n" if de else
+                   "\n\nThe three biggest changes over the year (you may mention them):\n") + "\n".join("- " + x for x in year)
     if f["partial"]:
         prompt += "\n(" + ("Der Monat läuft noch." if de else "The month is not over yet.") + ")"
     try:
