@@ -319,11 +319,16 @@ def facts(rows, month, currency="EUR", upto_day=None):
     f["category_up"] = [x for x in movers if x["change"] > 0][:3]
     f["category_down"] = [x for x in movers if x["change"] < 0][:3]
     f["top_categories"] = sorted(({"category": c, "amount": round(d.get(month, 0), 2)} for c, d in by_cat.items() if d.get(month)), key=lambda x: -x["amount"])[:5]
-    # new payees: nothing in the 12 months before
+    # new payees: never seen in the months before, compared by the first real word of the
+    # name so "Vodafone GmbH" and "Vodafone West GmbH" count as the same payee.
+    # Only reported once there are at least 3 earlier months to compare with.
+    first_word = lambda name: (payee_key(name).split() or [""])[0]  # noqa: E731
+    seen_before = {first_word(p) for p, d in by_payee.items() if any(d.get(k) for k in last12)}
     newp = []
-    for p, d in by_payee.items():
-        if d.get(month) and not any(d.get(k) for k in last12):
-            newp.append({"payee": p, "amount": round(sum(d[month]), 2), "count": len(d[month])})
+    if len(have12) >= 3:
+        for p, d in by_payee.items():
+            if d.get(month) and first_word(p) and first_word(p) not in seen_before:
+                newp.append({"payee": p, "amount": round(sum(d[month]), 2), "count": len(d[month])})
     f["new_payees"] = sorted(newp, key=lambda x: -x["amount"])[:5]
     # subscriptions: same payee, similar amount, 3 months in a row
     started, stopped, changed = [], [], []
@@ -381,7 +386,7 @@ def headlines(f, lang="en"):
         out.append(f"Preisänderung: {s['payee']} von {s['before']:.2f} € auf {s['now']:.2f} €.".replace(".", ",").rstrip(",") + "." if de else f"Price change: {s['payee']} from {s['before']:.2f} € to {s['now']:.2f} €.")
     if f["new_payees"]:
         names = ", ".join(f"{p['payee']} ({_eur(p['amount'])})" for p in f["new_payees"][:3])
-        out.append(f"Neu dabei: {names}." if de else f"New this month: {names}.")
+        out.append(f"Zum ersten Mal bezahlt: {names}." if de else f"First payment to: {names}.")
     if f["biggest"]:
         b = f["biggest"][0]
         out.append(f"Größte Ausgabe: {b['payee']} {_eur(b['amount'])}." if de else f"Biggest expense: {b['payee']} {_eur(b['amount'])}.")
