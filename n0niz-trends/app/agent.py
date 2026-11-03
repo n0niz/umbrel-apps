@@ -113,6 +113,10 @@ def payee_key(name):
     return " ".join(words[:2])
 
 
+def first_word(name):
+    return (payee_key(name).split() or [""])[0]
+
+
 def update(put, gid, j, category=None, tags=None, note=None):
     payload = {"transaction_journal_id": j["transaction_journal_id"]}
     if tags is not None:
@@ -464,3 +468,81 @@ def news_text(f, lang, llm):
         return (txt[:400] or None), lines
     except Exception:  # noqa: BLE001
         return None, lines
+
+
+# ------------------------------------------------------------- subscriptions ---
+SUB_TAGS = {"subscription", "subscriptions", "abo", "abos", "abonnement"}
+FREQ_MONTHS = {"weekly": 0.25, "monthly": 1, "quarterly": 3, "half-year": 6, "yearly": 12}
+
+
+def subscriptions(rows, bills=None, today=None, currency="EUR", savings=()):
+    """Everything that looks like a subscription: Firefly subscriptions, bookings tagged
+    Subscription/Abo, and payees charging a similar amount at a regular interval.
+    Savings categories (e.g. a BTC savings plan) are left out."""
+    today = today or date.today()
+    sav = set(savings or ())
+    rows = [r for r in rows if r[7] == currency and r[1] == "e" and not (len(r) > 11 and r[11]) and r[3] not in sav]
+    by_payee = defaultdict(list)
+    for r in rows:
+        by_payee[first_word(r[6]) or r[6]].append(r)
+    out = {}
+
+    def entry(key, name, hits, source, freq=None, expected=None, bill=None):
+        hits = sorted(hits, key=lambda r: r[9])
+        last = hits[-1] if hits else None
+        months = sorted({r[0] for r in hits})
+        if not freq:
+            gaps = []
+            ds = [date.fromisoformat(r[9]) for r in hits]
+            for a, b in zip(ds, ds[1:]):
+                if (b - a).days > 3:
+                    gaps.append((b - a).days)
+            g = sorted(gaps)[len(gaps) // 2] if gaps else 30
+            freq = "yearly" if g > 300 else "half-year" if g > 150 else "quarterly" if g > 75 else "weekly" if g < 10 else "monthly"
+        amount = last[2] if last else (bill["max"] if bill else 0)
+        per_month = amount / FREQ_MONTHS.get(freq, 1)
+        if last:
+            step = {"weekly": 7, "monthly": 31, "quarterly": 92, "half-year": 183, "yearly": 366}.get(freq, 31)
+            nxt = expected or (date.fromisoformat(last[9]) + timedelta(days=step)).isoformat()
+            overdue = (today - date.fromisoformat(last[9])).days > step + 10
+        else:
+            nxt, overdue = expected, False
+        prev = hits[-2][2] if len(hits) > 1 else None
+        out[key] = {"name": name, "payee": last[6] if last else name, "source": source, "freq": freq,
+                    "amount": round(amount, 2), "per_month": round(per_month, 2), "per_year": round(per_month * 12, 2),
+                    "last": last[9] if last else None, "next": nxt, "count": len(hits), "months": len(months),
+                    "category": last[3] if last else "", "account": last[8] if last else "",
+                    "changed": round(amount - prev, 2) if prev is not None and abs(amount - prev) > max(0.5, 0.04 * prev) else 0,
+                    "active": not overdue and (bool(last) or source == "firefly"),
+                    "range": [bill["min"], bill["max"]] if bill else None}
+
+    # 1) Firefly subscriptions: the bookings Firefly linked to them
+    for b in bills or []:
+        if not b.get("active", True):
+            continue
+        hits = [r for r in rows if len(r) > 12 and r[12] == b["name"]]
+        exp = sorted(b.get("pay_dates") or [])
+        entry("bill:" + b["name"], b["name"], hits, "firefly", b.get("freq") or None, exp[0] if exp else None, b)
+    linked = {first_word(r[6]) for r in rows if len(r) > 12 and r[12]}
+    # 2) tagged by you
+    for key, hits in by_payee.items():
+        tagged = [r for r in hits if {t.lower() for t in r[5]} & SUB_TAGS]
+        if tagged and key not in linked:
+            entry("tag:" + key, tagged[-1][6], tagged, "tag")
+    # 3) pattern: similar amount in at least 3 of the last 6 months, or once a year twice
+    six = {f"{(today.replace(day=1) - timedelta(days=31 * i)).strftime('%Y-%m')}" for i in range(0, 7)}
+    for key, hits in by_payee.items():
+        if key in linked or ("tag:" + key) in out or not key:
+            continue
+        recent = sorted([r for r in hits if r[0] in six], key=lambda r: r[9])
+        if len({r[0] for r in recent}) >= 3:
+            amts = [r[2] for r in recent]
+            steady = lambda xs: len(xs) >= 3 and max(xs) - min(xs) <= max(1.0, 0.1 * max(xs))  # noqa: E731
+            # steady over the last 3 payments, or steady before and the latest one changed price (by at most half)
+            price_change = steady(amts[-4:-1]) and abs(amts[-1] - amts[-2]) <= 0.5 * amts[-2]
+            if (steady(amts[-3:]) or price_change) and len(recent) <= len({r[0] for r in recent}) + 1:
+                entry("pat:" + key, recent[-1][6], recent, "pattern")
+    items = sorted(out.values(), key=lambda x: (not x["active"], -x["per_month"]))
+    act = [x for x in items if x["active"]]
+    return {"items": items, "per_month": round(sum(x["per_month"] for x in act), 2),
+            "per_year": round(sum(x["per_year"] for x in act), 2), "active": len(act)}

@@ -850,6 +850,27 @@ class Handler(BaseHTTPRequestHandler):
             if not re.fullmatch(r"\d{4}-\d{2}", month):
                 return self._json(400, {"error": "month must look like 2026-10"})
             return self._firefly(lambda cfg: news_for(cfg, month, refresh="refresh" in q))
+        if p == "/api/subscriptions":
+            def subs(cfg):
+                today = berlin_now().date()
+                start = (today - timedelta(days=430)).isoformat()
+                data = fetch_rows(cfg, start, today.isoformat())
+                try:
+                    bills = fetch_bills(cfg, today.replace(day=1).isoformat(), (today + timedelta(days=62)).isoformat())
+                except Exception:  # noqa: BLE001
+                    bills = []
+                cur = max(data["currencies"], key=data["currencies"].get) if data["currencies"] else "EUR"
+                sav = [c for c in (cfg.get("savings_categories") or []) if c != "-"]
+                res = agent.subscriptions(data["rows"], bills, today, cur, savings=sav)
+                # income of the last full month (salary and the like), to set fixed costs against
+                last = (today.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+                inc = [r for r in data["rows"] if r[1] == "i" and r[7] == cur and r[0] == last
+                       and r[3] not in sav and not (len(r) > 11 and r[11])]
+                res["income_avg"] = round(sum(r[2] for r in inc), 2)
+                res["income_months"] = [last]
+                res["firefly_subscriptions"] = len(bills)
+                return res
+            return self._firefly(subs)
         if p.startswith("/api/store/"):
             name = p.rsplit("/", 1)[-1]
             if name not in STORES:
