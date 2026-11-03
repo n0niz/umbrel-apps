@@ -58,6 +58,7 @@ DEFAULTS = {
     "ollama_url": "",
     "ollama_model": "",
     "news_lang": "en",
+    "savings_categories": ["Crypto"],
 }
 
 cache = {}
@@ -539,7 +540,8 @@ def news_for(cfg, month, refresh=False):
         bills = fetch_bills(cfg, f"{y}-{m:02d}-01", end)
     except Exception:  # noqa: BLE001 - news still works without them
         bills = None
-    fx = agent.facts(data["rows"], month, cur, upto_day=now.day if current else None, bills=bills)
+    fx = agent.facts(data["rows"], month, cur, upto_day=now.day if current else None, bills=bills,
+                     savings=[c for c in (cfg.get("savings_categories") or []) if c != "-"])
     llm = llm_for(cfg)
     text, lines = agent.news_text(fx, cfg.get("news_lang") or "en", llm[:2] if llm else None)
     out = {"month": month, "t": int(time.time()), "facts": fx, "headlines": lines, "text": text,
@@ -799,6 +801,7 @@ class Handler(BaseHTTPRequestHandler):
                 wl.append(item)
             return self._json(200, {"firefly_url": cfg["firefly_url"], "token_set": bool(cfg["token"]),
                                     "wallets": wl, "mempool_url": cfg.get("mempool_url", ""),
+                                    "savings_categories": cfg.get("savings_categories") or [],
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
                                     "history_start": history_start(cfg)})
         if p == "/api/data":
@@ -950,6 +953,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(400, {"error": f"bad value for {k}"})
                 if k in ("ollama_url", "ollama_model"):
                     llm_cache["t"] = 0
+        if isinstance(body.get("savings_categories"), list):
+            cfg["savings_categories"] = [str(x) for x in body["savings_categories"]] or ["-"]
+            with cache_lock:
+                for k in [k for k in cache if k[0] == "news"]:
+                    del cache[k]
         if "mempool_url" in body:
             cfg["mempool_url"] = (body.get("mempool_url") or "").strip()
         if body.get("kraken_remove"):

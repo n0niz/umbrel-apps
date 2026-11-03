@@ -276,10 +276,17 @@ def _eur(v):
     return ("−" if v < 0 else "") + s + " €"
 
 
-def facts(rows, month, currency="EUR", upto_day=None, bills=None):
-    """rows: Spending Trends rows. month: 'YYYY-MM'. Exact numbers only."""
+def facts(rows, month, currency="EUR", upto_day=None, bills=None, savings=()):
+    """rows: Spending Trends rows. month: 'YYYY-MM'. Exact numbers only.
+    savings: categories that count as saving/investing (e.g. Crypto), not as spending or income."""
     y, m = map(int, month.split("-"))
     rows = [r for r in rows if r[7] == currency and not (len(r) > 11 and r[11])]
+    sav = set(savings or ())
+    saved = defaultdict(float)
+    for r in rows:
+        if r[3] in sav and not (upto_day and r[0] == month and int(r[9][8:10]) > upto_day):
+            saved[r[0]] += r[2] if r[1] == "e" else -r[2]
+    rows = [r for r in rows if r[3] not in sav]
     exp, inc = defaultdict(float), defaultdict(float)
     by_cat, by_payee, by_tag = defaultdict(lambda: defaultdict(float)), defaultdict(lambda: defaultdict(list)), defaultdict(lambda: defaultdict(float))
     biggest = []
@@ -306,6 +313,9 @@ def facts(rows, month, currency="EUR", upto_day=None, bills=None):
          "net": round(inc[month] - exp[month], 2), "spent_prev": round(exp.get(prev, 0), 2), "spent_last_year": round(exp.get(ly, 0), 2),
          "spent_avg12": round(avg(exp), 2), "months_of_history": len(have12)}
     f["savings_rate"] = round(f["net"] / f["income"], 3) if f["income"] else None
+    f["saved"] = round(saved.get(month, 0), 2)
+    f["saved_avg12"] = round(sum(saved.get(k, 0) for k in last12) / len(have12), 2) if have12 else 0
+    f["savings_categories"] = sorted(sav)
     ytd = sum(v for k, v in exp.items() if k[:4] == str(y) and k <= month)
     ytd_ly = sum(v for k, v in exp.items() if k[:4] == str(y - 1) and k <= _mkey(y - 1, m))
     f["ytd"], f["ytd_last_year"] = round(ytd, 2), round(ytd_ly, 2)
@@ -394,6 +404,10 @@ def headlines(f, lang="en"):
     if f["income"]:
         rate = f" ({f['savings_rate'] * 100:.0f} %)" if f["savings_rate"] is not None else ""
         out.append(f"Einnahmen {_eur(f['income'])}, übrig {_eur(f['net'])}{rate}." if de else f"Income {_eur(f['income'])}, left over {_eur(f['net'])}{rate}.")
+    if f.get("saved"):
+        cats = ", ".join(f["savings_categories"])
+        avg_s = f" (Schnitt {_eur(f['saved_avg12'])})" if de and f.get("saved_avg12") else f" (usually {_eur(f['saved_avg12'])})" if f.get("saved_avg12") else ""
+        out.append(f"Gespart und angelegt ({cats}): {_eur(f['saved'])}{avg_s}." if de else f"Saved and invested ({cats}): {_eur(f['saved'])}{avg_s}.")
     if f["spent_last_year"]:
         out.append(f"Vor einem Jahr: {_eur(f['spent_last_year'])} ({pct(f['spent'], f['spent_last_year'])})." if de else f"Same month last year: {_eur(f['spent_last_year'])} ({pct(f['spent'], f['spent_last_year'])}).")
     for c in f["category_up"]:

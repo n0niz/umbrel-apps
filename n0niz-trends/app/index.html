@@ -298,6 +298,9 @@
     <label>Firefly III URL<input type="text" id="ffUrl" required></label>
     <label>Personal access token<input type="password" id="ffToken" autocomplete="off"></label>
     <label>Load history from<input type="date" id="ffHist"></label>
+    <h3>Saving, not spending</h3>
+    <div class="sub" style="margin-top:4px">Bookings in these categories (e.g. BTC purchases) are shown as saved and invested, not as expenses or income.</div>
+    <div id="savPick" style="margin-top:8px"></div>
     <h3>Kraken (for the Bitcoin page)</h3>
     <div class="sub" style="margin-top:4px">Use a read-only key with only <b>Query Funds</b> and <b>Query Ledger Entries</b>. The key from your Kraken importer works.</div>
     <label>API key<input type="password" id="krKey" autocomplete="off"></label>
@@ -437,7 +440,10 @@
     if (spec.period === "custom") { const r = periodRange(spec); return `${r.from} – ${r.to}`; }
     return PERIOD_NAME[spec.period] || PERIOD_NAME["12m"];
   }
+  const savCats = () => new Set(((D.cfg && D.cfg.savings_categories) || []).filter((c) => c !== "-"));
+  const isSav = (r) => savCats().has(r[3]);
   function filterRows(spec, range, kind) {
+    const sv = savCats();
     range = range || periodRange(spec);
     kind = kind || spec.kind || "both";
     const q = (spec.q || "").toLowerCase().trim();
@@ -445,6 +451,7 @@
     const vals = spec.fdim && spec.fvalues && spec.fvalues.length ? new Set(spec.fvalues) : null;
     return D.rows.filter((r) => r[7] === D.cur && r[9] >= range.from && r[9] <= range.to
       && (spec.loans || !r[11])
+      && (spec.savings || !sv.has(r[3]))
       && (kind === "both" || r[1] === kind)
       && (!acc || acc.has(r[8]))
       && (!vals || keysOf(r, spec.fdim).some((k) => vals.has(k)))
@@ -726,24 +733,30 @@
   }
 
   function rIncExp(host, spec, mode) {
-    const range = periodRange(spec), rows = filterRows(spec, range), months = monthKeys(range.from, range.to);
-    const I = months.map(() => 0), E = months.map(() => 0), pos = new Map(months.map((k, i) => [k, i]));
-    for (const r of rows) { const i = pos.get(r[0]); if (i == null) continue; if (r[1] === "i") I[i] += r[2]; else E[i] += r[2]; }
-    const N = months.map((_, i) => I[i] - E[i]), ti = sum(I), te = sum(E);
+    const range = periodRange(spec), months = monthKeys(range.from, range.to);
+    const all = filterRows({ ...spec, savings: true }, range), rows = all.filter((r) => !isSav(r));
+    const I = months.map(() => 0), E = months.map(() => 0), Sv = months.map(() => 0), pos = new Map(months.map((k, i) => [k, i]));
+    for (const r of all) {
+      const i = pos.get(r[0]); if (i == null) continue;
+      if (isSav(r)) Sv[i] += r[1] === "e" ? r[2] : -r[2];
+      else if (r[1] === "i") I[i] += r[2]; else E[i] += r[2];
+    }
+    const N = months.map((_, i) => I[i] - E[i]), ti = sum(I), te = sum(E), ts = sum(Sv);
     const kind = spec.kind || "both";
-    host.innerHTML = `<div class="sumline">${kind !== "e" ? stat("Income", eur(ti), "pos") : ""}${kind !== "i" ? stat("Expenses", eur(te), "neg") : ""}${kind === "both" ? stat("Left over", eur(ti - te), ti - te >= 0 ? "pos" : "neg") : ""}${kind === "both" && ti > 0 ? stat("Savings rate", pct((ti - te) / ti, 0)) : ""}${months.length > 1 ? stat(kind === "i" ? "Ø income / month" : "Ø spent / month", eur((kind === "i" ? ti : te) / months.length)) : ""}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
+    host.innerHTML = `<div class="sumline">${kind !== "e" ? stat("Income", eur(ti), "pos") : ""}${kind !== "i" ? stat("Expenses", eur(te), "neg") : ""}${kind === "both" ? stat("Left over", eur(ti - te), ti - te >= 0 ? "pos" : "neg") : ""}${ts ? stat(`of which saved (${[...savCats()].join(", ")})`, eur(ts)) : ""}${kind === "both" && ti > 0 ? stat("Savings rate", pct((ti - te) / ti, 0)) : ""}${months.length > 1 ? stat(kind === "i" ? "Ø income / month" : "Ø spent / month", eur((kind === "i" ? ti : te) / months.length)) : ""}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
     const groups = [];
     if (kind !== "e") groups.push({ name: "Income", color: C.inc, values: I });
     if (kind !== "i") groups.push({ name: "Expenses", color: C.exp, values: E });
+    if (kind === "both" && ts) groups.push({ name: "Saved", color: C.btc, values: Sv });
     const line = kind === "both" ? { name: "Left over", color: C.net, values: N } : null;
     barChart(host.querySelector(".cb"), months, groups, { line, labelFmt: monthLabel, height: mode === "full" ? 300 : 220,
       onClick: mode === "full" ? (i) => drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)) : null });
     host.querySelector(".legend").innerHTML = legendHtml(groups.concat(line ? [line] : []));
     if (mode !== "full") return;
-    let html = `<div class="tablewrap"><table><thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Left over</th><th>Savings rate</th></tr></thead><tbody>`;
-    for (let i = months.length - 1; i >= 0; i--) html += `<tr class="click" data-i="${i}"><td>${monthLabel(months[i], true)}</td><td>${eur2(I[i])}</td><td>${eur2(E[i])}</td><td class="${N[i] >= 0 ? "pos" : "neg"}">${eur2(N[i])}</td><td>${I[i] > 0 ? pct(N[i] / I[i], 0) : "–"}</td></tr>`;
-    html += `<tr class="total"><td>Total</td><td>${eur2(ti)}</td><td>${eur2(te)}</td><td>${eur2(ti - te)}</td><td>${ti > 0 ? pct((ti - te) / ti, 0) : "–"}</td></tr>`;
-    html += `<tr><td class="sub">Ø per month</td><td>${eur2(ti / months.length)}</td><td>${eur2(te / months.length)}</td><td>${eur2((ti - te) / months.length)}</td><td></td></tr></tbody></table></div>`;
+    let html = `<div class="tablewrap"><table><thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Left over</th>${ts ? "<th>of which saved</th>" : ""}<th>Savings rate</th></tr></thead><tbody>`;
+    for (let i = months.length - 1; i >= 0; i--) html += `<tr class="click" data-i="${i}"><td>${monthLabel(months[i], true)}</td><td>${eur2(I[i])}</td><td>${eur2(E[i])}</td><td class="${N[i] >= 0 ? "pos" : "neg"}">${eur2(N[i])}</td>${ts ? `<td>${eur2(Sv[i])}</td>` : ""}<td>${I[i] > 0 ? pct(N[i] / I[i], 0) : "–"}</td></tr>`;
+    html += `<tr class="total"><td>Total</td><td>${eur2(ti)}</td><td>${eur2(te)}</td><td>${eur2(ti - te)}</td>${ts ? `<td>${eur2(ts)}</td>` : ""}<td>${ti > 0 ? pct((ti - te) / ti, 0) : "–"}</td></tr>`;
+    html += `<tr><td class="sub">Ø per month</td><td>${eur2(ti / months.length)}</td><td>${eur2(te / months.length)}</td><td>${eur2((ti - te) / months.length)}</td>${ts ? `<td>${eur2(ts / months.length)}</td>` : ""}<td></td></tr></tbody></table></div>`;
     const tbl = host.querySelector(".tbl"); tbl.innerHTML = html;
     tbl.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", () => { const i = +tr.dataset.i; drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)); }));
   }
@@ -1119,6 +1132,10 @@
       if (spec.fdim) el.appendChild(msel({ category: "Categories", tag: "Tags", budget: "Budgets", payee: "Payees" }[spec.fdim], optionsFor(spec.fdim), spec.fvalues, (v) => { spec.fvalues = v; change(); }, "none picked"));
       const lc = add(`<label class="chk"><input type="checkbox"> Count loan repayments as spending</label>`).querySelector("input");
       lc.checked = !!spec.loans; lc.addEventListener("change", () => { spec.loans = lc.checked; change(); });
+      if (spec.type !== "incexp" && savCats().size) {
+        const sc = add(`<label class="chk"><input type="checkbox"> Include savings (${esc([...savCats()].join(", "))})</label>`).querySelector("input");
+        sc.checked = !!spec.savings; sc.addEventListener("change", () => { spec.savings = sc.checked; change(); });
+      }
       const q = add(`<label class="f">Text contains<input type="search" placeholder="e.g. Bäcker, REWE, Netflix"></label>`).querySelector("input");
       q.value = spec.q || "";
       let qt; q.addEventListener("input", () => { clearTimeout(qt); qt = setTimeout(() => { spec.q = q.value; change(); }, 300); });
@@ -1318,7 +1335,7 @@
   function tAggregate() {
     const byItem = new Map();
     for (const r of D.rows) {
-      if (r[1] !== T.type || r[7] !== D.cur || r[11]) continue;
+      if (r[1] !== T.type || r[7] !== D.cur || r[11] || isSav(r)) continue;
       const y = +r[0].slice(0, 4);
       if (y < T.from || y > T.to) continue;
       for (const k of keysOf(r, T.dim)) {
@@ -1748,6 +1765,9 @@
     $("krSecret").placeholder = c.kraken_set ? "set · leave empty to keep" : "paste private key";
     $("krRemoveWrap").style.display = c.kraken_set ? "flex" : "none";
     $("mpUrl").value = c.mempool_url || "";
+    D.savDraft = (c.savings_categories || []).filter((x) => x !== "-");
+    await loadRows().catch(() => null);
+    $("savPick").replaceChildren(msel("Categories", uniq([...optionsFor("category"), ...D.savDraft]), D.savDraft, (v) => (D.savDraft = v), "none"));
     D.wdraft = (c.wallets || []).map((w) => ({ ...w, desc: "" }));
     drawWallets();
     $("settingsMsg").textContent = "";
@@ -1777,7 +1797,7 @@
     try {
       await put("api/config", { firefly_url: $("ffUrl").value, token: $("ffToken").value, history_start: $("ffHist").value,
         kraken_key: $("krKey").value, kraken_secret: $("krSecret").value, kraken_remove: $("krRemove").checked,
-        mempool_url: $("mpUrl").value, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
+        mempool_url: $("mpUrl").value, savings_categories: D.savDraft || [], wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
     } catch (er) { $("settingsMsg").textContent = er.message; return; }
     $("settings").close();
     D.p = {}; D.btcModel = null; D.rows = null;
