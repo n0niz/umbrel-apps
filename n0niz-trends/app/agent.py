@@ -392,22 +392,23 @@ def headlines(f, lang="en"):
 
 
 def news_text(f, lang, llm):
+    """Bullets always come straight from the exact facts. The model only writes a
+    one- or two-sentence summary on top, so it cannot relabel or invent figures."""
     lines = headlines(f, lang)
     if not llm:
         return None, lines
     de = lang == "de"
-    prompt = (("Schreibe einen kurzen, lockeren Monats-Newsflash über die Finanzen eines Haushalts. "
-               "4 bis 6 Stichpunkte, jeder eine Zeile, beginnend mit '- '. Nutze NUR diese Fakten, erfinde keine Zahlen, "
-               "keine Ratschläge außer offensichtlichen (z. B. ein vermutlich gekündigtes Abo prüfen). Das Wichtigste zuerst.\n\nFakten:\n")
+    prompt = (("Fasse den Monat eines Haushalts in EINEM oder ZWEI kurzen, lockeren Sätzen zusammen. "
+               "Nur das Wichtigste, keine neuen Zahlen, keine Aufzählung, nichts umdeuten (ein neuer Zahlungsempfänger ist kein Abo). "
+               "Keine Ratschläge.\n\nFakten:\n")
               if de else
-              ("Write a short, friendly monthly money news flash for a household. 4 to 6 bullet points, one line each, "
-               "each starting with '- '. Use ONLY these facts, never invent numbers, no advice beyond the obvious "
-               "(e.g. check a subscription that seems cancelled). Most important first.\n\nFacts:\n")) + "\n".join("- " + x for x in lines)
+              ("Sum up a household's month in ONE or TWO short, friendly sentences. Only the most important point, "
+               "no new numbers, no list, do not reinterpret anything (a new payee is not a subscription). No advice.\n\nFacts:\n")) + "\n".join("- " + x for x in lines)
     if f["partial"]:
         prompt += "\n(" + ("Der Monat läuft noch." if de else "The month is not over yet.") + ")"
     try:
-        txt = chat(llm[0], llm[1], prompt).strip()
-        bullets = [ln.strip()[2:].strip() for ln in txt.splitlines() if ln.strip().startswith(("- ", "• ", "* "))]
-        return (bullets or [txt]), lines
+        txt = " ".join(chat(llm[0], llm[1], prompt).strip().split())
+        txt = txt.lstrip("-•* ").strip('"')
+        return (txt[:400] or None), lines
     except Exception:  # noqa: BLE001
         return None, lines

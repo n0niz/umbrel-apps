@@ -509,6 +509,8 @@ def news_for(cfg, month, refresh=False):
     now = berlin_now()
     current = month == now.strftime("%Y-%m")
     old = read_json(f, None)
+    if old and isinstance(old.get("text"), list):
+        old = None                                      # written by 2.2.0, before summaries
     if old and not refresh and (not current or time.time() - old.get("t", 0) < 3600) and (old.get("text") or time.time() - old.get("t", 0) < 6 * 3600):
         return old
     y, m = map(int, month.split("-"))

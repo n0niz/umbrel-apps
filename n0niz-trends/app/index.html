@@ -1634,11 +1634,11 @@
     let d = await load(false);
     const draw = () => {
       const f = d.facts, [y, mm] = d.month.split("-");
-      const lines = d.text || d.headlines;
+      const lines = d.headlines, summary = typeof d.text === "string" ? d.text : null;
       const vs = f.spent_avg12 ? (f.spent - f.spent_avg12) / f.spent_avg12 : null;
       host.innerHTML = `<div class="news"><div class="sumline">${stat(`${MONTH_LONG[+mm - 1]} ${y}${d.partial ? " so far" : ""}`, eur(f.spent))}${vs != null ? stat("vs. average", `<span class="${vs > 0 ? "neg" : "pos"}">${pct(vs, 0)}</span>`) : ""}${f.income ? stat("Left over", eur(f.net), f.net >= 0 ? "pos" : "neg") : ""}${f.spent_last_year ? stat("Last year", eur(f.spent_last_year)) : ""}</div>
-        <ul>${lines.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
-        <div class="meta"><span>${d.text ? `written by ${esc(d.model)} on your server · numbers calculated exactly` : d.llm_error ? `facts only — ${esc(d.llm_error.slice(0, 120))}` : "facts only"}</span><a href="#" data-rw>rewrite</a></div></div>`;
+        ${summary ? `<p style="margin:4px 0 6px;font-size:14.5px">${esc(summary)}</p>` : ""}<ul>${lines.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+        <div class="meta"><span>${d.text ? `summary by ${esc(d.model)} on your server · all figures calculated exactly` : d.llm_error ? `facts only — ${esc(d.llm_error.slice(0, 120))}` : "facts only"}</span><a href="#" data-rw>rewrite</a></div></div>`;
       host.querySelector("[data-rw]").addEventListener("click", async (e) => {
         e.preventDefault(); host.querySelector(".meta span").textContent = "writing…";
         try { d = await load(true); draw(); } catch (er) { toast(er.message); }
