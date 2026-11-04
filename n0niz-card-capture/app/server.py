@@ -126,10 +126,10 @@ AMOUNT_PATTERNS = [
 REFUND = re.compile(r"refund|erstatt|gutschrift|returned|zurückerstatt|reversal|storniert", re.I)
 # note: Krak adds "…Bitcoin-Cashback erhalten" to every payment, so cashback must NOT mean refund
 GENERIC_TITLES = re.compile(r"^(krak|kraken|payment|zahlung|card payment|kartenzahlung|transaction|"
-                            r"transaktion|purchase|einkauf|google wallet|wallet|neue? zahlung)\b", re.I)
+                            r"transaktion|purchase|einkauf|google wallet|google pay|wallet|neue? zahlung|dkb|zahlung erfolgreich)\b", re.I)
 MERCHANT_PATTERNS = [
     # DKB: "1,09 EUR (1,09 EUR), GOOGLE *Google Play Ap, Visa Kreditkarte ****9281"
-    re.compile(r"^\s*(?:\([^)]*\))?\s*,\s*(.+?)\s*,\s*(?:visa|master|maestro|debit|kredit|giro|karte|card)\b", re.I),
+    re.compile(r"^\s*(?:zahlung erfolgreich|payment successful)?\s*(?:\([^)]*\))?\s*,\s*(.+?)\s*,\s*(?:visa|master|maestro|debit|kredit|giro|karte|card)\b", re.I),
     re.compile(r"\b(?:at|bei|an|to|für|for|from|von|@|merchant:|händler:)\s+(.+?)(?=\s+(?:for|für|with|mit|on|am|was|wurde|via|using|um|bezahlt|gezahlt|getätigt|abgebucht|paid|spent)\b|[.!,;(]|$)", re.I),
     re.compile(r"^(.+?)\s*[:\-–]\s*$"),
 ]
@@ -242,18 +242,83 @@ def ensure_account(cfg, card):
     return "created"
 
 
+# ------------------------------------------------------------ payee names ---
+# Chains as Firefly already knows them from the imports, so a notification and an
+# imported statement end up on the same expense account ("LIDL 1603" -> "Lidl").
+CANON = [(r"^LIDL\b", "Lidl"), (r"^EDEKA DRILLER", "Edeka Driller"), (r"^EDEKA\b", "Edeka"), (r"^KAUFLAND\b", "Kaufland"),
+         (r"^ALDI\b", "Aldi"), (r"^REWE\b", "REWE"), (r"^NETTO\b", "Netto"), (r"^PENNY\b", "Penny"), (r"^ROSSMANN\b", "Rossmann"),
+         (r"^DM[- ]?DROGERIE|^DM\b", "dm-drogerie markt"), (r"^MUELLER \d|^MÜLLER \d", "Müller"), (r"^IKEA\b", "IKEA Dortmund"),
+         (r"ZALANDO", "Zalando"), (r"VINTED", "Vinted"), (r"^(AMZN|AMAZON)(?! ?KIDS| ?PRIME)", "Amazon"), (r"AMAZON ?KIDS", "Amazon Kids+"),
+         (r"AMZNPRIME|AMAZON ?PRIME", "Amazon Prime"), (r"SATURN", "Saturn"), (r"MEDIA ?MARKT", "MediaMarkt"), (r"^THALIA\b", "Thalia"),
+         (r"HENNES|^H&M\b|^HM\.COM", "H&M"), (r"^DEICHMANN", "Deichmann"), (r"^NORDSEE", "Nordsee"), (r"MC ?DONALD", "McDonald's"),
+         (r"BURGER KING", "Burger King"), (r"^ARAL\b|^ARAL-", "Aral"), (r"^SHELL\b", "Shell"), (r"PLAYSTATION", "PlayStation Store"),
+         (r"HUMBLE ?BUNDLE", "Humble Bundle"), (r"GOOGLE PLAY", "Google Play"), (r"GOOGLE ONE", "Google One"), (r"STEAM", "Steam"),
+         (r"CLAUDE|ANTHROPIC", "Claude.ai"), (r"NETFLIX", "Netflix"), (r"SPOTIFY", "Spotify"), (r"LIEFERANDO", "Lieferando"),
+         (r"FRANZL", "Franzl Kiosk (Tierpark)"), (r"HORSTHEMKE", "Bäckerei Horsthemke"), (r"MALZERS", "Malzers Backstube"),
+         (r"TREFF BOCHUM", "Treff Bochum"), (r"HAARSTARK", "Haarstark"), (r"DOCMORRIS", "DocMorris"), (r"L.?OSTERIA", "L'Osteria")]
+_acct_cache = {"t": 0, "names": []}
+
+
+def _norm(s):
+    return " ".join(w for w in re.sub(r"[^a-z0-9äöüß&+ ]", " ", s.lower()).split() if not any(ch.isdigit() for ch in w))
+
+
+def known_names(cfg):
+    """Expense and revenue account names already in Firefly (cached for an hour)."""
+    if time.time() - _acct_cache["t"] < 3600:
+        return _acct_cache["names"]
+    names = []
+    for typ in ("expense", "revenue"):
+        page = 1
+        while page <= 20:
+            res = ff(cfg, "GET", "/api/v1/accounts", params={"type": typ, "limit": 200, "page": page})
+            names += [a["attributes"]["name"] for a in res.get("data", [])]
+            if page >= int(res.get("meta", {}).get("pagination", {}).get("total_pages") or 1):
+                break
+            page += 1
+    _acct_cache.update(t=time.time(), names=names)
+    return names
+
+
+def payee_name(cfg, raw):
+    """Tidy a notification merchant into the name Firefly already uses."""
+    if not raw or raw == "Card payment":
+        return raw
+    try:
+        names = known_names(cfg)
+    except Exception:  # noqa: BLE001 - names are a nicety, booking must not fail on them
+        names = []
+    tidy = re.sub(r"(\s+[A-Z]?\d[\dA-Z\-/]{2,})+$", "", raw.strip()).strip(" *-")   # store numbers at the end
+    n = _norm(tidy)
+    exact = [x for x in names if n and _norm(x) == n]
+    if exact:                                                   # Firefly already has exactly this payee
+        return exact[0]
+    up = raw.upper().strip()
+    for pat, name in CANON:
+        if re.search(pat, up):
+            return name
+    if n:
+        pre = [x for x in names if _norm(x) and (n + " ").startswith(_norm(x) + " ") and len(_norm(x)) >= 4]
+        if pre:
+            return max(pre, key=lambda x: len(_norm(x)))       # "KAUFLAND BOCHUM" -> existing "Kaufland"
+    return tidy.title() if tidy.isupper() and len(tidy) > 3 else tidy
+
+
 def book(cfg, card, ev):
     p = ev["parsed"]
+    name = payee_name(cfg, p["merchant"])
+    if name != p["merchant"]:
+        ev["booked_as"] = name
     base = {
         "type": p["kind"], "date": ev["received"], "amount": f"{p['amount']:.2f}",
-        "description": p["merchant"], "currency_code": card["currency"],
+        "description": name, "currency_code": card["currency"],
         "tags": [card["tag"]] if card["tag"] else [], "external_id": "cc-" + ev["id"],
         "notes": f"{ev.get('title', '')}\n{ev.get('text', '')}".strip()[:1000],
     }
     if p["kind"] == "withdrawal":
-        base.update(source_name=card["account"], destination_name=p["merchant"])
+        base.update(source_name=card["account"], destination_name=name)
     else:
-        base.update(source_name=p["merchant"], destination_name=card["account"])
+        base.update(source_name=name, destination_name=card["account"])
     res = ff(cfg, "POST", "/api/v1/transactions",
              {"error_if_duplicate_hash": True, "apply_rules": True, "fire_webhooks": True, "transactions": [base]})
     return res.get("data", {}).get("id")
@@ -315,11 +380,12 @@ def merge_duplicate(cfg, events, card, ev):
                 try:
                     res = ff(cfg, "GET", f"/api/v1/transactions/{old['firefly_id']}")
                     j = res["data"]["attributes"]["transactions"][0]
-                    upd = {"transaction_journal_id": j["transaction_journal_id"], "description": p["merchant"]}
-                    upd["destination_name" if p["kind"] == "withdrawal" else "source_name"] = p["merchant"]
+                    nm = payee_name(cfg, p["merchant"])
+                    upd = {"transaction_journal_id": j["transaction_journal_id"], "description": nm}
+                    upd["destination_name" if p["kind"] == "withdrawal" else "source_name"] = nm
                     ff(cfg, "PUT", f"/api/v1/transactions/{old['firefly_id']}", {"apply_rules": True, "transactions": [upd]})
                     op["merchant"] = p["merchant"]
-                    ev["reason"] += f" · merchant “{p['merchant']}” added to the booking"
+                    ev["reason"] += f" · merchant “{nm}” added to the booking"
                 except Exception as e:  # noqa: BLE001
                     ev["reason"] += f" · could not add the merchant: {e}"
             return True

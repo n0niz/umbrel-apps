@@ -370,7 +370,7 @@
           <button class="btn primary small" data-act="merchant">Save</button>
         </div>` : "";
       return `<div class="ev">
-        <div class="top"><span><span class="pill ${e.status}">${LABEL[e.status] || e.status}</span> <span class="cpill">${esc(cardName(e.card))}</span> <span class="sub">${when}</span> <b>${esc(p ? p.merchant : "")}</b></span><span class="amt">${amt}</span></div>
+        <div class="top"><span><span class="pill ${e.status}">${LABEL[e.status] || e.status}</span> <span class="cpill">${esc(cardName(e.card))}</span> <span class="sub">${when}</span> <b>${esc(p ? (e.booked_as || p.merchant) : "")}</b>${e.booked_as && p && e.booked_as !== p.merchant ? ` <span class="sub">(${esc(p.merchant)})</span>` : ""}</span><span class="amt">${amt}</span></div>
         <div class="raw">${esc([e.title, e.text].filter(Boolean).join(" — "))}${e.reason ? ` · <i>${esc(e.reason)}</i>` : ""}</div>${fix}</div>`;
     }).join("");
   }
