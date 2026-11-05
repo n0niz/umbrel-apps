@@ -329,7 +329,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.7.3</footer>
+  <footer class="appver">Spending Trends v2.7.4</footer>
 </div>
 
 <dialog id="settings">
@@ -433,13 +433,24 @@
     D.prefs = pr.value || {}; D.btcModel = null; return d;
   });
   const savePrefs = () => put("api/store/prefs", { value: D.prefs }).catch((e) => toast("Could not save: " + e.message));
+  // If the server could not be read (e.g. while the app restarts), nothing may be saved: saving would
+  // write the empty stand-in over your real reports or home layout.
+  const FAILED = {};
   async function loadReports() {
-    if (D.reports) return D.reports;
-    const r = await api("api/store/reports").catch(() => ({}));
-    return (D.reports = Array.isArray(r.value) ? r.value : []);
+    if (D.reports && !FAILED.reports) return D.reports;
+    try { const r = await api("api/store/reports"); D.reports = Array.isArray(r.value) ? r.value : []; delete FAILED.reports; }
+    catch { D.reports = D.reports || []; FAILED.reports = true; toast("Saved reports could not be loaded – reload the page."); }
+    return D.reports;
   }
-  const saveReports = () => put("api/store/reports", { value: D.reports }).catch((e) => toast("Could not save: " + e.message));
-  const saveLayout = () => put("api/store/layout", { value: D.layout }).catch((e) => toast("Could not save: " + e.message));
+  async function loadLayout() {
+    if (D.layout && !FAILED.layout) return D.layout;
+    try { const r = await api("api/store/layout"); D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT); delete FAILED.layout; }
+    catch { D.layout = D.layout || clone(DEFAULT_LAYOUT); FAILED.layout = true; }
+    return D.layout;
+  }
+  const blocked = (what) => { toast(`Not saved: your ${what} could not be loaded from the server. Reload the page and try again.`); return Promise.resolve(); };
+  const saveReports = () => (FAILED.reports ? blocked("saved reports") : put("api/store/reports", { value: D.reports }).catch((e) => toast("Could not save: " + e.message)));
+  const saveLayout = () => (FAILED.layout ? blocked("home layout") : put("api/store/layout", { value: D.layout }).catch((e) => toast("Could not save: " + e.message)));
 
   function keysOf(r, dim) {
     switch (dim) {
@@ -1233,10 +1244,9 @@
   let editing = false;
   async function renderHome() {
     const v = $("v-home");
-    if (!D.layout) {
+    if (!D.layout || FAILED.layout) {
       v.innerHTML = `<div class="empty">Loading…</div>`;
-      const r = await api("api/store/layout").catch(() => ({}));
-      D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT);
+      await loadLayout();
       await loadReports();
     }
     v.innerHTML = `<div class="homebar"><h2>Home</h2><span class="sub">${now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}</span><span class="spacer"></span>
@@ -1355,7 +1365,7 @@
     v.querySelectorAll("[data-pin]").forEach((b) => b.addEventListener("click", () => pinSaved(b.dataset.pin)));
   }
   async function pinSaved(id) {
-    if (!D.layout) { const r = await api("api/store/layout").catch(() => ({})); D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT); }
+    await loadLayout();
     D.layout.push({ id: uid(), type: "saved", ref: id, size: "m" }); saveLayout(); toast("Pinned to Home");
   }
   async function reportView(v, spec, saved) {
@@ -1389,7 +1399,7 @@
     }
     $("rpPin").addEventListener("click", async () => {
       if (saved) return pinSaved(saved.id);
-      if (!D.layout) { const r = await api("api/store/layout").catch(() => ({})); D.layout = Array.isArray(r.value) ? r.value : clone(DEFAULT_LAYOUT); }
+      await loadLayout();
       const w = { ...clone(spec), id: uid(), size: "m" }; if (spec.name) w.title = spec.name; delete w.name; delete w.comment;
       D.layout.push(w); saveLayout(); toast("Pinned to Home");
     });

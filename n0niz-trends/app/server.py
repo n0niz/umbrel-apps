@@ -949,7 +949,19 @@ class Handler(BaseHTTPRequestHandler):
             name = self.path.rsplit("/", 1)[-1]
             if name not in STORES:
                 return self._json(404, {"error": "unknown store"})
-            write_json(DATA_DIR / f"store_{name}.json", body.get("value"))
+            f = DATA_DIR / f"store_{name}.json"
+            old, new = read_json(f, None), body.get("value")
+            # an empty list never replaces several saved entries in one go (that is a failed load
+            # on the page, not you deleting them one by one)
+            if isinstance(old, list) and len(old) >= 2 and isinstance(new, list) and not new:
+                return self._json(409, {"error": f"refusing to replace {len(old)} saved entries with an empty list – reload the page"})
+            if f.exists():                                   # keep the last 30 versions in data/backups/
+                bdir = DATA_DIR / "backups"
+                bdir.mkdir(parents=True, exist_ok=True)
+                (bdir / f"store_{name}-{time.strftime('%Y%m%d-%H%M%S')}.json").write_bytes(f.read_bytes())
+                for b in sorted(bdir.glob(f"store_{name}-*.json"))[:-30]:
+                    b.unlink(missing_ok=True)
+            write_json(f, new)
             return self._json(200, {"ok": True})
         if self.path != "/api/config":
             return self._json(404, {"error": "not found"})
