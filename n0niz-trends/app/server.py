@@ -515,7 +515,10 @@ def fetch_bills(cfg, start, end):
             out.append({"name": a.get("name") or "?", "active": a.get("active", True) is not False,
                         "min": float(a.get("amount_min") or 0), "max": float(a.get("amount_max") or 0),
                         "freq": a.get("repeat_freq") or "", "pay_dates": [str(x)[:10] for x in (a.get("pay_dates") or [])],
-                        "paid": len(a.get("paid_dates") or []), "created": str(a.get("created_at") or "")[:10]})
+                        "paid": len(a.get("paid_dates") or []), "created": str(a.get("created_at") or "")[:10],
+                        "skip": int(a.get("skip") or 0), "next": str(a.get("next_expected_match") or "")[:10],
+                        "group": a.get("object_group_title") or "",
+                        "paid_dates": [str(x.get("date") or "")[:10] for x in (a.get("paid_dates") or []) if isinstance(x, dict)]})
         if not more_pages(res, page):
             return out
         page += 1
@@ -851,6 +854,22 @@ class Handler(BaseHTTPRequestHandler):
                                     "config": {k: cfg.get(k) for k in ("agent_auto", "agent_hour", "agent_days", "agent_min_conf", "ollama_url", "ollama_model", "news_lang")},
                                     "llm": {"ok": bool(llm), "base": llm[0] if llm else "", "model": llm[1] if llm else "",
                                             "models": llm[2] if llm else [], "error": "" if llm else llm_cache["err"]}})
+        if p == "/api/subcal":
+            # the year as Firefly sees it: every expected date of every active subscription
+            # (repeat, skip and start date applied by Firefly) plus the dates it found paid
+            try:
+                year = int((q.get("year") or [""])[0] or berlin_now().year)
+            except ValueError:
+                return self._json(400, {"error": "year must be a number"})
+
+            def subcal(cfg):
+                bills = fetch_bills(cfg, f"{year}-01-01", f"{year}-12-31")
+                items = [{"name": b["name"], "group": b["group"], "freq": b["freq"], "skip": b["skip"],
+                          "amount": round((b["min"] + b["max"]) / 2, 2), "range": [b["min"], b["max"]],
+                          "pay_dates": sorted(b["pay_dates"]), "paid_dates": sorted(b["paid_dates"]), "next": b["next"]}
+                         for b in bills if b["active"]]
+                return {"year": year, "items": items}
+            return self._firefly(subcal)
         if p == "/api/news":
             now = berlin_now()
             month = (q.get("month") or [""])[0] or (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")

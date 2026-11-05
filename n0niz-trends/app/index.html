@@ -238,6 +238,7 @@
   .subcal td:first-child, .subcal th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
   .subcal .curm { background: var(--panel2); }
   .subcal td.pastm { opacity: .55; }
+  .subcal td.late { color: #f5d27a; }
   .subcal tr.tot td { border-top: 1px solid var(--line); padding-top: 8px; }
   .agtable select { max-width: 190px; padding: 4px 6px; }
   .pill.ai { color: #d2a8ff; } .pill.history { color: var(--accent); } .pill.unsure, .pill.check { color: #f5d27a; } .pill.tags { color: var(--inc); } .pill.error { color: var(--up); }
@@ -325,7 +326,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.6.2</footer>
+  <footer class="appver">Spending Trends v2.7.0</footer>
 </div>
 
 <dialog id="settings">
@@ -699,7 +700,7 @@
     networth: { name: "Net worth", desc: "Everything you own minus loans and debts, over time.", period: "24m", btc: true },
     balances: { name: "Account balances", desc: "What each account holds, and what you still owe.", btc: true },
     subscriptions: { name: "Subscriptions", desc: "Every running subscription with amount, interval and the next payment." },
-    subcal: { name: "Subscription calendar", desc: "Subscriptions by next payment, and what is due each month from January to December." },
+    subcal: { name: "Subscription calendar", desc: "Your Firefly subscriptions by next payment, and what is due each month from January to December." },
     recent: { name: "Latest transactions", desc: "The newest bookings, filtered the way you like.", period: "90d", kind: "both", rows: true, kinds: true },
   };
   const HOME_TYPES = {
@@ -1755,56 +1756,55 @@
   }
 
   /* ============================================================ subscription calendar */
-  // payment dates of one subscription inside [from, to], stepped from its next due date
-  // (backwards too, but never before its first known payment)
+  // straight from Firefly's Subscriptions page: its expected dates (repeat + skip applied by Firefly)
+  // and the dates it saw paid; nothing guessed from repeating payments
   const isoD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  function payDates(x, from, to) {
-    if (!x.next) return [];
-    const STEP = { monthly: 1, quarterly: 3, "half-year": 6, yearly: 12 };
-    const [y, m, dd] = x.next.split("-").map(Number);
-    const at = (k) => {                                   // k-th payment from the next one (k may be negative)
-      if (x.freq === "weekly") return new Date(y, m - 1, dd + 7 * k);
-      const mm = m - 1 + k * (STEP[x.freq] || 1), last = new Date(y, mm + 1, 0).getDate();
-      return new Date(y, mm, Math.min(dd, last));
-    };
-    const floor = x.first && x.first > from ? x.first : from, out = [];
-    for (let k = 0; k > -600; k--) { const d = isoD(at(k)); if (d < floor) break; if (d <= to) out.push(d); }
-    for (let k = 1; k < 600; k++) { const d = isoD(at(k)); if (d > to) break; if (d >= floor) out.push(d); }
-    return out.sort();
-  }
   async function rSubCal(host, spec, mode) {
-    const d = await once("subs", () => api("api/subscriptions"));
-    // only what you told Firefly: a subscription created there, or bookings tagged Subscription/Abo;
-    // payments that merely repeat (a restaurant you go to often) stay out
-    const act = d.items.filter((x) => x.active && x.next && x.source !== "pattern");
-    if (!act.length) return emptyIn(host, "No subscriptions yet. Tag the bookings Subscription or Abo, or create them in Firefly under Subscriptions.");
     const now = new Date(), today = isoD(now);
     const year = now.getFullYear() + (spec.year === "next" ? 1 : 0), cm = year === now.getFullYear() ? now.getMonth() : -1;
-    const subs = act.map((x) => {
-      const dates = payDates(x, `${year}-01-01`, `${year}-12-31`), months = Array(12).fill(0);
-      for (const dt of dates) months[+dt.slice(5, 7) - 1] += x.amount;
-      const upcoming = dates.find((dt) => dt >= today) || x.next;
-      return { ...x, months, upcoming, total: sum(months), left: dates.filter((dt) => dt >= today).length * x.amount };
-    }).sort((a, b) => (a.upcoming < b.upcoming ? -1 : a.upcoming > b.upcoming ? 1 : b.amount - a.amount));
+    const d = await once(`subcal${year}`, () => api(`api/subcal?year=${year}`));
+    if (!d.items.length) return emptyIn(host, "No active subscriptions in Firefly yet. Create them under Subscriptions in Firefly.");
+    const ym = (s) => s.slice(0, 7);
+    const subs = d.items.map((x) => {
+      const months = Array(12).fill(0), paid = Array(12).fill(false), due = Array(12).fill(false);
+      for (const dt of x.pay_dates) { const i = +dt.slice(5, 7) - 1; months[i] += x.amount; due[i] = true; }
+      for (const dt of x.paid_dates) if (dt.startsWith(String(year))) paid[+dt.slice(5, 7) - 1] = true;
+      return { ...x, months, paid, due, upcoming: x.pay_dates.find((dt) => dt >= today) || (x.next >= today ? x.next : ""), total: sum(months), left: x.pay_dates.filter((dt) => dt >= today).length * x.amount };
+    }).sort((a, b) => ((a.upcoming || "9") < (b.upcoming || "9") ? -1 : (a.upcoming || "9") > (b.upcoming || "9") ? 1 : b.amount - a.amount));
     const mt = MONTHS.map((_, i) => sum(subs.map((x) => x.months[i])));
     const yt = sum(mt), rest = sum(subs.map((x) => x.left));
-    const soon = subs.filter((x) => x.upcoming >= today).sort((a, b) => (a.upcoming < b.upcoming ? -1 : 1));
+    const soon = subs.filter((x) => x.upcoming && x.upcoming >= today);
+    // expected in the last 45 days and Firefly has seen no payment that month (Firefly: "Expected 6 days ago")
+    const ago45 = isoD(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 45));
+    for (const x of subs) x.overdue = x.pay_dates.find((dt) => dt < today && dt >= ago45 && !x.paid_dates.some((p) => ym(p) === ym(dt))) || "";
+    const key = (x) => x.overdue || x.upcoming || "9";
+    subs.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : b.amount - a.amount));  // overdue first, then by next payment
+    const late = subs.filter((x) => x.overdue);
     const chart = (h) => barChart(host.querySelector(".cb"), MONTHS.map((_, i) => `${year}-${String(i + 1).padStart(2, "0")}`),
       [{ name: "Due", color: PAL[0], values: mt }], { labelFmt: (k) => MONTHS[+k.slice(5) - 1], height: h });
     const dueLine = (x) => `<tr><td class="l">${ddmm(x.upcoming)}</td><td class="l wr"><b>${esc(x.name)}</b></td><td>${eur2(x.amount)}</td></tr>`;
     if (mode !== "full") {
       host.innerHTML = `<div class="sumline">${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) : stat(`${year} total`, eur(yt))}${soon[0] ? stat("Next", `${esc(soon[0].name)} <span class="sub">${ddmm(soon[0].upcoming)}</span>`) : ""}</div>
+        ${late.length ? `<div class="sub" style="color:#f5d27a;margin:-4px 0 6px">Expected but not paid yet: ${late.map((x) => esc(x.name)).join(", ")}</div>` : ""}
         <div class="tablewrap"><table class="agtable"><tbody>${soon.slice(0, 6).map(dueLine).join("")}</tbody></table></div><div class="cb"></div>`;
       return chart(150);
     }
     const n2 = NF({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const cell = (v, i) => `<td class="${i === cm ? "curm" : i < cm ? "pastm" : ""}">${v ? n2.format(v) : ""}</td>`;
-    host.innerHTML = `<div class="sumline">${stat(`${year} total`, eur(yt))}${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) + stat("Still to pay this year", eur(rest)) : ""}${stat("Ø per month", eur(yt / 12))}${stat("Running", subs.length)}</div>
+    const cell = (x, i) => {
+      const v = x.months[i];
+      if (!v) return `<td class="${i === cm ? "curm" : ""}"></td>`;
+      const past = cm > i || (cm === i && !x.pay_dates.some((dt) => ym(dt) === `${year}-${String(i + 1).padStart(2, "0")}` && dt >= today));
+      const cls = [i === cm ? "curm" : "", past && x.paid[i] ? "pastm" : "", past && !x.paid[i] ? "late" : ""].join(" ");
+      return `<td class="${cls}" title="${past ? (x.paid[i] ? "paid" : "expected, not paid yet") : "expected"}">${n2.format(v)}</td>`;
+    };
+    const tcell = (v, i) => `<td class="${i === cm ? "curm" : ""}"><b>${v ? n2.format(v) : ""}</b></td>`;
+    const rep = (x) => (x.skip ? `${FREQ[x.freq] || x.freq}, skips ${x.skip}` : FREQ[x.freq] || x.freq);
+    host.innerHTML = `<div class="sumline">${stat(`${year} total`, eur(yt))}${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) + stat("Still to pay this year", eur(rest)) : ""}${stat("Ø per month", eur(yt / 12))}${stat("Subscriptions", subs.length)}</div>
       <div class="cb" style="margin-bottom:10px"></div>
       <div class="tablewrap"><table class="agtable subcal"><thead><tr><th class="l">Subscription</th><th>Next</th><th>Amount</th>${MONTHS.map((m, i) => `<th class="${i === cm ? "curm" : ""}">${m}</th>`).join("")}<th>Year</th></tr></thead>
-      <tbody>${subs.map((x) => `<tr><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc([FREQ[x.freq] || x.freq, x.category].filter(Boolean).join(" · "))}</div></td><td>${ddmm(x.upcoming)}</td><td>${eur2(x.amount)}</td>${x.months.map(cell).join("")}<td><b>${n2.format(x.total)}</b></td></tr>`).join("")}
-      <tr class="tot"><td class="l" colspan="3"><b>Total per month</b></td>${mt.map((v, i) => cell(v, i).replace(/>([^<]*)<\/td>$/, "><b>$1</b></td>")).join("")}<td><b>${eur2(yt)}</b></td></tr></tbody></table></div>
-      <div class="sub" style="margin-top:8px">Sorted by the next payment. Months are worked out from each subscription's interval and next due date${cm > 0 ? "; earlier months of the year are the schedule, counted from the first payment Firefly knows" : ""}. Only subscriptions created in Firefly or tagged Subscription/Abo; ones that look stopped are left out.</div>`;
+      <tbody>${subs.map((x) => `<tr><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc([rep(x), x.group].filter(Boolean).join(" · "))}</div></td><td${x.overdue ? ' class="late" title="expected, not paid yet"' : ""}>${x.overdue ? ddmm(x.overdue) : x.upcoming ? ddmm(x.upcoming) : "–"}</td><td>${x.range && x.range[0] !== x.range[1] ? "~" : ""}${eur2(x.amount)}</td>${MONTHS.map((_, i) => cell(x, i)).join("")}<td><b>${n2.format(x.total)}</b></td></tr>`).join("")}
+      <tr class="tot"><td class="l" colspan="3"><b>Total per month</b></td>${mt.map(tcell).join("")}<td><b>${n2.format(yt)}</b></td></tr></tbody></table></div>
+      <div class="sub" style="margin-top:8px">From Firefly → Subscriptions: its expected dates and amounts (middle of min–max). Dimmed = paid, <span style="color:#f5d27a">yellow</span> = expected but not paid yet (a yellow Next date is overdue).</div>`;
     chart(260);
   }
 
