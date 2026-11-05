@@ -329,7 +329,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.7.4</footer>
+  <footer class="appver">Spending Trends v2.8.0</footer>
 </div>
 
 <dialog id="settings">
@@ -695,6 +695,7 @@
       case "trend": return box(`<path d="M8 44 L24 36 L40 40 L56 24 L72 28 L88 14" fill="none" stroke="${PAL[0]}" stroke-width="2.5"/><path d="M8 50 L24 46 L40 30 L56 38 L72 34 L88 30" fill="none" stroke="${PAL[1]}" stroke-width="2.5"/>`);
       case "networth": case "btcchart": return box(`<path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16 L88 54 L8 54Z" fill="${type === "btcchart" ? C.btc : PAL[0]}" opacity=".18"/><path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16" fill="none" stroke="${type === "btcchart" ? C.btc : PAL[0]}" stroke-width="2.5"/>`);
       case "subscriptions": return box(`${[0, 1, 2, 3].map((i) => `<rect x="10" y="${9 + i * 11}" width="8" height="8" rx="2" fill="${PAL[i]}"/><rect x="24" y="${11 + i * 11}" width="${34 - i * 4}" height="4" rx="1" fill="#5b6475"/><rect x="70" y="${11 + i * 11}" width="16" height="4" rx="1" fill="#93a0b2"/>`).join("")}`);
+      case "undiscovered": return box(`<circle cx="40" cy="27" r="13" fill="none" stroke="${PAL[0]}" stroke-width="4"/><line x1="49" y1="37" x2="60" y2="48" stroke="${PAL[0]}" stroke-width="5" stroke-linecap="round"/><rect x="66" y="14" width="22" height="4" rx="1" fill="#5b6475"/><rect x="66" y="25" width="16" height="4" rx="1" fill="#5b6475"/><rect x="66" y="36" width="19" height="4" rx="1" fill="#5b6475"/>`);
       case "subcal": return box(`${[0, 1, 2, 3].map((r) => [0, 1, 2, 3, 4, 5].map((c) => `<rect x="${10 + c * 13}" y="${10 + r * 11}" width="10" height="8" rx="2" fill="${(r + c) % 3 ? "#26303d" : PAL[r]}"/>`).join("")).join("")}`);
       case "news": return box(`<rect x="8" y="10" width="80" height="40" rx="5" fill="#26303d"/><rect x="14" y="16" width="34" height="5" rx="1" fill="${PAL[0]}"/>${[0, 1, 2].map((i) => `<circle cx="17" cy="${29 + i * 8}" r="1.6" fill="#93a0b2"/><rect x="22" y="${27 + i * 8}" width="${58 - i * 12}" height="3" rx="1" fill="#5b6475"/>`).join("")}`);
       case "recent": return box([0, 1, 2, 3, 4].map((i) => `<rect x="10" y="${8 + i * 10}" width="40" height="4" rx="1" fill="#3a4352"/><rect x="${68 + (i % 2) * 6}" y="${8 + i * 10}" width="${18 - (i % 2) * 6}" height="4" rx="1" fill="${i % 3 ? C.exp : C.inc}"/>`).join(""));
@@ -715,6 +716,7 @@
     networth: { name: "Net worth", desc: "Everything you own minus loans and debts, over time.", period: "24m", btc: true },
     balances: { name: "Account balances", desc: "What each account holds, and what you still owe.", btc: true },
     subscriptions: { name: "Subscriptions", desc: "Every running subscription with amount, interval and the next payment." },
+    undiscovered: { name: "Undiscovered subscriptions", desc: "Payments that came back at a steady interval and amount in the last 12 months but are not a Firefly subscription yet." },
     subcal: { name: "Subscription calendar", desc: "Your Firefly subscriptions by next payment, and what is due each month from January to December." },
     recent: { name: "Latest transactions", desc: "The newest bookings, filtered the way you like.", period: "90d", kind: "both", rows: true, kinds: true },
   };
@@ -761,6 +763,7 @@
         case "news": return await rNews(host, spec, mode);
         case "subscriptions": return await rSubs(host, spec, mode);
         case "subcal": return await rSubCal(host, spec, mode);
+        case "undiscovered": return await rUndiscovered(host, spec, mode);
         case "saved": {
           await loadReports();
           const s = D.reports.find((r) => r.id === spec.ref);
@@ -1148,7 +1151,7 @@
       s.addEventListener("change", () => { spec.month = s.value; change(); });
       return el;
     }
-    if (spec.type === "subscriptions") return el;
+    if (spec.type === "subscriptions" || spec.type === "undiscovered") return el;
     if (spec.type === "subcal") {
       const s = add(`<label class="f">Year<select><option value="this">This year</option><option value="next">Next year</option></select></label>`).querySelector("select");
       s.value = spec.year || "this";
@@ -1857,6 +1860,52 @@
       th.addEventListener("click", () => { pinned = pinned === i ? null : i; mark(pinned); });
     });
     chart(260);
+  }
+
+  /* ============================================================ undiscovered subscriptions */
+  async function rUndiscovered(host, spec, mode) {
+    const [d, ig] = await Promise.all([once("undisc", () => api("api/undiscovered")), api("api/store/subignore").catch(() => null)]);
+    const ignoreOk = !!ig, ignored = new Set((ig && Array.isArray(ig.value) && ig.value) || []);
+    const all = d.items, items = all.filter((x) => !ignored.has(x.key)), hidden = all.filter((x) => ignored.has(x.key));
+    const per = sum(items.map((x) => x.per_year));
+    if (!all.length) return emptyIn(host, "Nothing found: every payment that came back regularly in the last 12 months is already a Firefly subscription.");
+    const fq = (x) => FREQ[x.freq] || x.freq;
+    const amt = (x) => (x.max - x.min > 0.01 ? `~${eur2(x.typical)}` : eur2(x.typical));
+    if (mode !== "full") {
+      if (!items.length) return emptyIn(host, `All ${hidden.length} found payments are marked as not a subscription.`);
+      host.innerHTML = `<div class="sumline">${stat("Found", items.length)}${stat("Together per year", eur(per))}</div>
+        <div class="tablewrap"><table class="agtable"><tbody>${items.slice(0, 6).map((x) => `<tr><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${fq(x)} · ${x.count} payments</div></td><td>${amt(x)}</td></tr>`).join("")}</tbody></table></div>`;
+      return;
+    }
+    const setIgnore = async (key, on) => {
+      if (!ignoreOk) return toast("Not saved: the list of hidden payments could not be loaded. Reload the page.");
+      on ? ignored.add(key) : ignored.delete(key);
+      try { await put("api/store/subignore", { value: [...ignored] }); } catch (e) { return toast("Could not save: " + e.message); }
+      rUndiscovered(host, spec, mode);
+    };
+    const add = async (x, btn) => {
+      if (!confirm(`Create the Firefly subscription “${x.name}”, ${fq(x)}, ${eur2(x.min)}–${eur2(x.max)}, next on ${ddmm(x.next)}?`)) return;
+      btn.disabled = true;
+      try {
+        await api("api/undiscovered/add", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: x.name, amount_min: x.min, amount_max: x.max, date: x.next, repeat_freq: x.freq, currency: d.currency }) });
+        toast(`“${x.name}” created in Firefly`);
+        delete D.p.undisc; Object.keys(D.p).filter((k) => k.startsWith("subcal") || k === "subs").forEach((k) => delete D.p[k]);
+        rUndiscovered(host, spec, mode);
+      } catch (e) { btn.disabled = false; toast(e.message); }
+    };
+    const row = (x, i, hid) => `<tr${hid ? ' class="done"' : ""}><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc(x.category || "no category")} · ${esc(x.account)}</div></td>
+      <td class="l">${fq(x)}</td><td>${amt(x)}${x.max - x.min > 0.01 ? `<div class="sub">${eur2(x.min)}–${eur2(x.max)}</div>` : ""}</td>
+      <td>${x.count}<div class="sub">since ${ddmm(x.first)}</div></td><td>${ddmm(x.last)}</td><td>${ddmm(x.next)}</td><td><b>${eur(x.per_year)}</b></td>
+      <td class="l" style="white-space:nowrap">${hid ? `<button class="btn sm" data-un="${i}">Show again</button>` : `<button class="btn sm primary" data-add="${i}">Add to Firefly</button> <button class="btn sm" data-ig="${i}">Not a subscription</button>`}</td></tr>`;
+    host.innerHTML = `<div class="sumline">${stat("Found", items.length)}${stat("Together per month", eur(per / 12))}${stat("Per year", eur(per))}${stat("Already in Firefly", d.firefly_subscriptions)}</div>
+      ${items.length ? `<div class="tablewrap"><table class="agtable"><thead><tr><th class="l">Payee</th><th class="l">Interval</th><th>Amount</th><th>Payments</th><th>Last</th><th>Next expected</th><th>Per year</th><th class="l"></th></tr></thead>
+      <tbody>${items.map((x, i) => row(x, i, false)).join("")}</tbody></table></div>` : `<div class="empty">Nothing new – the rest is marked as not a subscription.</div>`}
+      ${hidden.length ? `<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">${hidden.length} marked as not a subscription</summary><div class="tablewrap"><table class="agtable"><tbody>${hidden.map((x, i) => row(x, i, true)).join("")}</tbody></table></div></details>` : ""}
+      <div class="sub" style="margin-top:8px">Same payee at a steady interval (weekly to yearly) with a steady amount (±10 %), at least 3 times (twice for half-yearly and yearly), and still running. Payments linked to a Firefly subscription, or matching one by payee and amount, are left out. “Add to Firefly” creates the subscription; to link future payments to it, add a rule in Firefly (or open the subscription there and use “Run rules again”).</div>`;
+    host.querySelectorAll("[data-add]").forEach((b) => b.addEventListener("click", () => add(items[+b.dataset.add], b)));
+    host.querySelectorAll("[data-ig]").forEach((b) => b.addEventListener("click", () => setIgnore(items[+b.dataset.ig].key, true)));
+    host.querySelectorAll("[data-un]").forEach((b) => b.addEventListener("click", () => setIgnore(hidden[+b.dataset.un].key, false)));
   }
 
   /* ============================================================ news flash */

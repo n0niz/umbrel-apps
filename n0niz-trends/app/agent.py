@@ -364,6 +364,22 @@ def facts(rows, month, currency="EUR", upto_day=None, bills=None, savings=()):
     billed = {first_word(r[6]) for r in rows if len(r) > 12 and r[12]}
     hint = lambda lst: [x for x in lst if first_word(x["payee"]) not in billed]  # noqa: E731
     f["recurring_hint"] = hint(started)[:4]
+    # newly found subscriptions that are not in Firefly yet: detectable at the end of this month,
+    # not yet at the end of last month
+    f["undiscovered_new"] = []
+    if bills is not None:
+        end = date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
+        if upto_day:
+            end = date(y, m, upto_day)
+        prev_end = date(y, m, 1) - timedelta(days=1)
+        allr = [r for r in rows if r[9] <= end.isoformat()]
+        now_found = undiscovered(allr, bills, end, currency, savings)
+        before = {x["key"] for x in undiscovered([r for r in allr if r[9] <= prev_end.isoformat()], bills, prev_end, currency, savings)}
+        f["undiscovered_new"] = [{"payee": x["name"], "amount": x["typical"], "freq": x["freq"], "count": x["count"], "first": x["first"]}
+                                 for x in now_found if x["key"] not in before][:4]
+        if f["undiscovered_new"]:
+            new_keys = {first_word(x["payee"]) for x in f["undiscovered_new"]}
+            f["recurring_hint"] = [x for x in f["recurring_hint"] if first_word(x["payee"]) not in new_keys]
     f["subscriptions_started"] = f["subscriptions_stopped"] = []
     f["price_changes"] = hint(changed)[:4]
     f["bills"] = None
@@ -428,6 +444,12 @@ def headlines(f, lang="en"):
                        else f"Subscription “{o['name']}” cost {o['paid']:.2f} €, more than the {o['max']:.2f} € set in Firefly.")
         for n in b["new"]:
             out.append(f"Neu in Firefly angelegt: Abo „{n}“." if de else f"New subscription set up in Firefly: “{n}”.")
+    FQ = {"weekly": ("wöchentlich", "weekly"), "monthly": ("monatlich", "monthly"), "quarterly": ("vierteljährlich", "quarterly"),
+          "half-year": ("halbjährlich", "every six months"), "yearly": ("jährlich", "yearly")}
+    for s in f.get("undiscovered_new", []):
+        fq = FQ.get(s["freq"], (s["freq"], s["freq"]))
+        out.append(f"Unentdecktes Abo: {s['payee']} bucht {fq[0]} etwa {_eur(s['amount'])} ({s['count']} Zahlungen seit {s['first'][8:10]}.{s['first'][5:7]}.) – in Firefly noch kein Abo." if de
+                   else f"Undiscovered subscription: {s['payee']} charges about {_eur(s['amount'])} {fq[1]} ({s['count']} payments since {s['first']}) – not set up in Firefly yet.")
     for s in f.get("recurring_hint", []):
         out.append(f"Sieht regelmäßig aus: {s['payee']} {_eur(s['amount'])} drei Monate in Folge – in Firefly noch kein Abo." if de
                    else f"Looks recurring: {s['payee']} {_eur(s['amount'])} three months in a row – not set up as a subscription in Firefly yet.")
@@ -667,6 +689,76 @@ def news_text(f, lang, llm, stories=()):
         return (txt[:400] or None), lines
     except Exception:  # noqa: BLE001
         return None, lines
+
+
+# ----------------------------------------------------- undiscovered subscriptions ---
+# interval classes: (name, median gap in days, allowed deviation per gap in days)
+_CLASSES = [("weekly", 7, 2), ("monthly", 30.4, 6), ("quarterly", 91, 12), ("half-year", 182, 20), ("yearly", 365, 30)]
+
+
+def undiscovered(rows, bills=None, today=None, currency="EUR", savings=(), months=12):
+    """Payments that come back at a steady interval with a steady amount over the last `months`
+    months, but are not set up as a Firefly subscription yet. Strict on purpose: a restaurant you
+    visit often has uneven gaps and amounts and stays out."""
+    today = today or date.today()
+    start = (today - timedelta(days=int(months * 30.5) + 20)).isoformat()
+    sav = set(savings or ())
+    exp = [r for r in rows if r[7] == currency and r[1] == "e" and r[9] >= start and r[9] <= today.isoformat()
+           and not (len(r) > 11 and r[11]) and r[3] not in sav]
+    # what Firefly already knows: per subscription the payee words and its amount range
+    known = []
+    for b in bills or []:
+        keys = {first_word(b["name"])} | {first_word(r[6]) for r in rows if len(r) > 12 and r[12] == b["name"]}
+        known.append((keys - {""}, b.get("min") or 0, b.get("max") or 0))
+    linked = {first_word(r[6]) for r in rows if len(r) > 12 and r[12]}
+    groups = defaultdict(list)
+    for r in exp:
+        if len(r) > 12 and r[12]:
+            continue                                         # already linked to a subscription
+        k = first_word(r[6]) or first_word(r[10])
+        if k:
+            groups[k].append(r)
+    out = []
+    for k, hits in groups.items():
+        hits.sort(key=lambda r: r[9])
+        # one payment per day at most (a split booking is one charge)
+        days = {}
+        for r in hits:
+            days[r[9]] = days.get(r[9], 0) + r[2]
+        ds = sorted(days)
+        if len(ds) < 2:
+            continue
+        dd = [date.fromisoformat(x) for x in ds]
+        gaps = [(b - a).days for a, b in zip(dd, dd[1:])]
+        g = sorted(gaps)[len(gaps) // 2]
+        cls = next((c for c in _CLASSES if abs(g - c[1]) <= c[2] * 1.5), None)
+        if not cls:
+            continue
+        name, step, tol = cls
+        need = {"weekly": 6, "monthly": 3, "quarterly": 3, "half-year": 2, "yearly": 2}[name]
+        if len(ds) < need:
+            continue
+        regular = sum(abs(x - step) <= tol for x in gaps) / len(gaps)
+        amts = [days[x] for x in ds]
+        med = sorted(amts)[len(amts) // 2]
+        steady = sum(abs(a - med) <= max(1.0, 0.1 * med) for a in amts) / len(amts)
+        if regular < 0.75 or steady < 0.75 or med < 1:
+            continue
+        last = dd[-1]
+        if (today - last).days > step + max(tol * 2, 10):
+            continue                                         # stopped
+        if any(k in keys and (not mx or mn * 0.85 <= med <= mx * 1.15) for keys, mn, mx in known):
+            continue                                         # same payee and amount as a Firefly subscription
+        cur = amts[-1]
+        nxt = (last + timedelta(days=round(step))).isoformat()
+        per_month = med / FREQ_MONTHS[name]
+        out.append({"key": k, "name": hits[-1][6], "freq": name, "amount": round(cur, 2), "typical": round(med, 2),
+                    "min": round(min(amts), 2), "max": round(max(amts), 2), "count": len(ds), "first": ds[0], "last": ds[-1],
+                    "next": nxt, "per_month": round(per_month, 2), "per_year": round(per_month * 12, 2),
+                    "category": hits[-1][3], "account": hits[-1][8], "dates": ds,
+                    "also_linked": k in linked, "score": round((regular + steady) / 2, 2)})
+    out.sort(key=lambda x: -x["per_year"])
+    return out
 
 
 # ------------------------------------------------------------- subscriptions ---

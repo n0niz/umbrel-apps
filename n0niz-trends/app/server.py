@@ -37,7 +37,7 @@ PORT = int(os.environ.get("PORT", "8080"))
 CACHE_SECONDS = 600
 KRAKEN_API = os.environ.get("KRAKEN_API", "https://api.kraken.com")
 BINANCE_API = os.environ.get("BINANCE_API", "https://api.binance.com")
-STORES = {"layout", "reports", "prefs"}
+STORES = {"layout", "reports", "prefs", "subignore"}
 AGENT_FILE = DATA_DIR / "agent.json"
 NEWS_DIR = DATA_DIR / "news"
 SYNC_EVERY = 6 * 3600
@@ -120,6 +120,14 @@ def firefly_put(cfg, path, body):
     req = urllib.request.Request(cfg["firefly_url"].rstrip("/") + path, method="PUT", data=json.dumps(body).encode(),
                                  headers={"Authorization": f"Bearer {cfg['token']}", "Accept": "application/vnd.api+json",
                                           "Content-Type": "application/json", "User-Agent": "spending-trends/2.2"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read() or b"{}")
+
+
+def firefly_post(cfg, path, body):
+    req = urllib.request.Request(cfg["firefly_url"].rstrip("/") + path, method="POST", data=json.dumps(body).encode(),
+                                 headers={"Authorization": f"Bearer {cfg['token']}", "Accept": "application/vnd.api+json",
+                                          "Content-Type": "application/json", "User-Agent": "spending-trends/2.8"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.loads(r.read() or b"{}")
 
@@ -855,6 +863,17 @@ class Handler(BaseHTTPRequestHandler):
                                     "config": {k: cfg.get(k) for k in ("agent_auto", "agent_hour", "agent_days", "agent_min_conf", "ollama_url", "ollama_model", "news_lang")},
                                     "llm": {"ok": bool(llm), "base": llm[0] if llm else "", "model": llm[1] if llm else "",
                                             "models": llm[2] if llm else [], "error": "" if llm else llm_cache["err"]}})
+        if p == "/api/undiscovered":
+            def und(cfg):
+                today = berlin_now().date()
+                start = (today - timedelta(days=420)).isoformat()
+                data = fetch_rows(cfg, start, today.isoformat())
+                bills = [b for b in fetch_bills(cfg, start, today.isoformat()) if b["active"]]
+                cur = max(data["currencies"], key=data["currencies"].get) if data["currencies"] else "EUR"
+                sav = [c for c in (cfg.get("savings_categories") or []) if c != "-"]
+                return {"items": agent.undiscovered(data["rows"], bills, today, cur, savings=sav), "currency": cur,
+                        "firefly_subscriptions": len(bills)}
+            return self._firefly(und)
         if p == "/api/subcal":
             # every active Firefly subscription with its schedule (start date, repeat, skip, end)
             # and the dates Firefly linked a payment to it in that year
@@ -933,6 +952,28 @@ class Handler(BaseHTTPRequestHandler):
                         a["final"] = body.get("category")
             write_json(AGENT_FILE, st)
             return self._json(200, {"ok": True})
+        if self.path == "/api/undiscovered/add":
+            # set a found payment up as a Firefly subscription
+            cfg = load_config()
+            b = self._body() or {}
+            if not cfg.get("token"):
+                return self._json(400, {"error": "No Firefly token set yet. Open Settings."})
+            try:
+                mn, mx = float(b["amount_min"]), float(b["amount_max"])
+                if b.get("repeat_freq") not in ("weekly", "monthly", "quarterly", "half-year", "yearly") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", b.get("date", "")):
+                    raise ValueError("bad interval or date")
+                res = firefly_post(cfg, "/api/v1/bills", {"name": str(b["name"])[:255], "amount_min": f"{mn:.2f}", "amount_max": f"{max(mn, mx):.2f}",
+                                                         "date": b["date"], "repeat_freq": b["repeat_freq"], "skip": 0, "active": True,
+                                                         "currency_code": b.get("currency") or "EUR"})
+            except urllib.error.HTTPError as e:
+                return self._json(502, {"error": f"Firefly error {e.code}: {e.read().decode(errors='replace')[:300]}"})
+            except (KeyError, ValueError) as e:
+                return self._json(400, {"error": f"invalid request: {e}"})
+            except Exception as e:  # noqa: BLE001
+                return self._json(502, {"error": f"Cannot reach Firefly: {e}"})
+            with cache_lock:
+                cache.clear()
+            return self._json(200, {"ok": True, "id": (res.get("data") or {}).get("id")})
         if self.path == "/api/btc/sync":
             cfg = load_config()
             if not cfg.get("kraken_key"):
