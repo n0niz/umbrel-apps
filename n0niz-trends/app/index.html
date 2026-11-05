@@ -329,7 +329,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.7.2</footer>
+  <footer class="appver">Spending Trends v2.7.3</footer>
 </div>
 
 <dialog id="settings">
@@ -863,15 +863,19 @@
     const y = now.getFullYear(), m = now.getMonth();
     const key = (yy, mm) => { const d = new Date(yy, mm, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
     const cur = key(y, m), prev = key(y, m - 1);
-    const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 12)}-01`, to: TODAY, kind: "both" });
-    const tot = (k, t) => sum(base.filter((r) => r[0] === k && r[1] === t).map((r) => r[2]));
+    const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 13)}-01`, to: TODAY, kind: "both" });
+    // income booked from the salary day on (default the 20th) pays for the NEXT month:
+    // the salary at the end of October is November's income
+    const pd = spec.payday === "off" ? 0 : +(spec.payday || 20);
+    const incKey = (r) => (pd && +String(r[9] || "").slice(8, 10) >= pd ? key(+r[0].slice(0, 4), +r[0].slice(5, 7)) : r[0]);
+    const tot = (k, t) => sum(base.filter((r) => r[1] === t && (t === "i" ? incKey(r) : r[0]) === k).map((r) => r[2]));
     const avg = (t) => { let s = 0; for (let i = 1; i <= 12; i++) s += tot(key(y, m - i), t); return s / 12; };
     const ci = tot(cur, "i"), ce = tot(cur, "e"), pi = tot(prev, "i"), pe = tot(prev, "e"), ai = avg("i"), ae = avg("e");
     const day = now.getDate(), dim = new Date(y, m + 1, 0).getDate();
     const cmp = (a, b, goodUp) => { if (!b) return ""; const p = (a - b) / b; const good = goodUp ? p >= 0 : p <= 0; return `<span class="${good ? "pos" : "neg"}">${pct(p, 0)}</span>`; };
     const cats = groupBy(base.filter((r) => r[0] === cur && r[1] === "e"), "category").slice(0, 3);
     host.innerHTML = `<div class="tiles">
-      <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
+      <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>${pd ? `incl. salary from ${pd}. ${MONTHS[(m + 11) % 12]} · ` : ""}last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
       <div class="tile"><span>Spent ${MONTHS[m]}</span><b>${eur(ce)}</b><small>${cmp(ce, pe * (day / dim))} vs same point last month · Ø ${eur(ae)}</small></div>
       <div class="tile"><span>Left over</span><b class="${ci - ce >= 0 ? "pos" : "neg"}">${eur(ci - ce)}</b><small>last month ${eur(pi - pe)}</small></div>
       <div class="tile"><span>Spending pace</span><b>${eur((ce / day) * dim)}</b><small>projected for ${MONTHS[m]} at day ${day} of ${dim}</small></div>
@@ -1141,7 +1145,12 @@
       return el;
     }
     if (spec.type === "btc" || spec.type === "kpi") {
-      if (spec.type === "kpi") el.appendChild(accountsField());
+      if (spec.type === "kpi") {
+        el.appendChild(accountsField());
+        const s = add(`<label class="f">Salary counts for the next month from day<select><option value="off">Off – calendar month</option>${[15, 18, 20, 22, 24, 25, 26, 27, 28].map((d) => `<option value="${d}">${d}.</option>`).join("")}</select></label>`).querySelector("select");
+        s.value = String(spec.payday || 20);
+        s.addEventListener("change", () => { spec.payday = s.value === "off" ? "off" : +s.value; change(); });
+      }
       return el;
     }
 
