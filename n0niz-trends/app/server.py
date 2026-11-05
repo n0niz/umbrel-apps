@@ -518,6 +518,7 @@ def fetch_bills(cfg, start, end):
                         "paid": len(a.get("paid_dates") or []), "created": str(a.get("created_at") or "")[:10],
                         "skip": int(a.get("skip") or 0), "next": str(a.get("next_expected_match") or "")[:10],
                         "group": a.get("object_group_title") or "",
+                        "date": str(a.get("date") or "")[:10], "end_date": str(a.get("end_date") or "")[:10],
                         "paid_dates": [str(x.get("date") or "")[:10] for x in (a.get("paid_dates") or []) if isinstance(x, dict)]})
         if not more_pages(res, page):
             return out
@@ -855,8 +856,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "llm": {"ok": bool(llm), "base": llm[0] if llm else "", "model": llm[1] if llm else "",
                                             "models": llm[2] if llm else [], "error": "" if llm else llm_cache["err"]}})
         if p == "/api/subcal":
-            # the year as Firefly sees it: every expected date of every active subscription
-            # (repeat, skip and start date applied by Firefly) plus the dates it found paid
+            # every active Firefly subscription with its schedule (start date, repeat, skip, end)
+            # and the dates Firefly linked a payment to it in that year
             try:
                 year = int((q.get("year") or [""])[0] or berlin_now().year)
             except ValueError:
@@ -865,6 +866,7 @@ class Handler(BaseHTTPRequestHandler):
             def subcal(cfg):
                 bills = fetch_bills(cfg, f"{year}-01-01", f"{year}-12-31")
                 items = [{"name": b["name"], "group": b["group"], "freq": b["freq"], "skip": b["skip"],
+                          "date": b["date"], "end_date": b["end_date"],
                           "amount": round((b["min"] + b["max"]) / 2, 2), "range": [b["min"], b["max"]],
                           "pay_dates": sorted(b["pay_dates"]), "paid_dates": sorted(b["paid_dates"]), "next": b["next"]}
                          for b in bills if b["active"]]

@@ -237,8 +237,13 @@
   .subcal th, .subcal td { white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: 13px; }
   .subcal td:first-child, .subcal th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
   .subcal .curm { background: var(--panel2); }
-  .subcal td.pastm { opacity: .55; }
-  .subcal td.late { color: #f5d27a; }
+  .subcal .st-paid { opacity: .55; }
+  .subcal .st-late { color: #f5d27a; }
+  .subcal .st-before { font-style: italic; opacity: .8; }
+  .subcal th.mh { cursor: pointer; }
+  .subcal .selm { background: rgba(110, 168, 254, .18) !important; opacity: 1; }
+  .subcal th.selm { color: var(--accent); }
+  .subcal tr.hitr td:first-child b { color: var(--accent); }
   .subcal tr.tot td { border-top: 1px solid var(--line); padding-top: 8px; }
   .agtable select { max-width: 190px; padding: 4px 6px; }
   .pill.ai { color: #d2a8ff; } .pill.history { color: var(--accent); } .pill.unsure, .pill.check { color: #f5d27a; } .pill.tags { color: var(--inc); } .pill.error { color: var(--up); }
@@ -326,7 +331,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.7.0</footer>
+  <footer class="appver">Spending Trends v2.7.1</footer>
 </div>
 
 <dialog id="settings">
@@ -614,10 +619,11 @@
     svg.addEventListener("pointermove", (ev) => {
       const [i, rect] = idx(ev);
       hl.setAttribute("x", m.l + bw * i); hl.setAttribute("opacity", 0.6);
+      if (o.onHover) o.onHover(i);
       const rows = groups.map((g) => tipRow(g.color, g.name, tF(g.values[i]))).join("") + (line ? tipRow(line.color, line.name, tF(line.values[i])) : "");
-      placeTip(tip, host, (X(i) / W) * rect.width, `<b>${esc(lF(labels[i], true))}</b>${rows}${o.tipExtra ? o.tipExtra(i) : ""}${o.onClick ? `<div class="sub" style="margin-top:4px">Click for the bookings</div>` : ""}`);
+      placeTip(tip, host, (X(i) / W) * rect.width, `<b>${esc(lF(labels[i], true))}</b>${rows}${o.tipExtra ? o.tipExtra(i) : ""}${o.onClick ? `<div class="sub" style="margin-top:4px">${esc(o.clickHint || "Click for the bookings")}</div>` : ""}`);
     });
-    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; hl.setAttribute("opacity", 0); });
+    svg.addEventListener("pointerleave", () => { tip.style.display = "none"; hl.setAttribute("opacity", 0); if (o.onHover) o.onHover(null); });
     if (o.onClick) { svg.style.cursor = "pointer"; svg.addEventListener("click", (ev) => o.onClick(idx(ev)[0])); }
   }
 
@@ -1756,55 +1762,90 @@
   }
 
   /* ============================================================ subscription calendar */
-  // straight from Firefly's Subscriptions page: its expected dates (repeat + skip applied by Firefly)
-  // and the dates it saw paid; nothing guessed from repeating payments
+  // every active Firefly subscription, laid out on its own schedule (start date, repeat, skip, end date)
+  // across the whole year; Firefly's linked payments say which past dates were paid
   const isoD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const dayDiff = (a, b) => Math.abs((new Date(a) - new Date(b)) / 864e5);
+  function schedule(x, from, to) {
+    const anchor = x.date || x.next;
+    if (!anchor) return [];
+    const STEP = { monthly: 1, quarterly: 3, "half-year": 6, yearly: 12 };
+    const per = (x.skip || 0) + 1;
+    const [y, m, dd] = anchor.split("-").map(Number);
+    const at = (k) => {
+      if (x.freq === "weekly") return isoD(new Date(y, m - 1, dd + 7 * per * k));
+      const mm = m - 1 + k * (STEP[x.freq] || 1) * per, last = new Date(y, mm + 1, 0).getDate();
+      return isoD(new Date(y, mm, Math.min(dd, last)));
+    };
+    const end = x.end_date && x.end_date < to ? x.end_date : to, out = [];
+    let k = 0;
+    while (at(k) > from && k > -2000) k--;                 // step back to just before the range
+    for (; k < 5000; k++) { const d = at(k); if (d > end) break; if (d >= from) out.push(d); }
+    return out;
+  }
   async function rSubCal(host, spec, mode) {
     const now = new Date(), today = isoD(now);
     const year = now.getFullYear() + (spec.year === "next" ? 1 : 0), cm = year === now.getFullYear() ? now.getMonth() : -1;
     const d = await once(`subcal${year}`, () => api(`api/subcal?year=${year}`));
     if (!d.items.length) return emptyIn(host, "No active subscriptions in Firefly yet. Create them under Subscriptions in Firefly.");
-    const ym = (s) => s.slice(0, 7);
-    const subs = d.items.map((x) => {
-      const months = Array(12).fill(0), paid = Array(12).fill(false), due = Array(12).fill(false);
-      for (const dt of x.pay_dates) { const i = +dt.slice(5, 7) - 1; months[i] += x.amount; due[i] = true; }
-      for (const dt of x.paid_dates) if (dt.startsWith(String(year))) paid[+dt.slice(5, 7) - 1] = true;
-      return { ...x, months, paid, due, upcoming: x.pay_dates.find((dt) => dt >= today) || (x.next >= today ? x.next : ""), total: sum(months), left: x.pay_dates.filter((dt) => dt >= today).length * x.amount };
-    }).sort((a, b) => ((a.upcoming || "9") < (b.upcoming || "9") ? -1 : (a.upcoming || "9") > (b.upcoming || "9") ? 1 : b.amount - a.amount));
-    const mt = MONTHS.map((_, i) => sum(subs.map((x) => x.months[i])));
-    const yt = sum(mt), rest = sum(subs.map((x) => x.left));
-    const soon = subs.filter((x) => x.upcoming && x.upcoming >= today);
-    // expected in the last 45 days and Firefly has seen no payment that month (Firefly: "Expected 6 days ago")
     const ago45 = isoD(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 45));
-    for (const x of subs) x.overdue = x.pay_dates.find((dt) => dt < today && dt >= ago45 && !x.paid_dates.some((p) => ym(p) === ym(dt))) || "";
-    const key = (x) => x.overdue || x.upcoming || "9";
-    subs.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : b.amount - a.amount));  // overdue first, then by next payment
+    const inFive = isoD(new Date(now.getFullYear() + 5, now.getMonth(), now.getDate()));
+    const subs = d.items.map((x) => {
+      const dates = schedule(x, `${year}-01-01`, `${year}-12-31`);
+      const paidOn = (dt) => x.paid_dates.some((p) => dayDiff(p, dt) <= 10);
+      // per payment: "paid", "late" (expected since the start in Firefly, no payment linked), "before" (before
+      // the subscription's start date in Firefly), "due" (still to come)
+      const pays = dates.map((dt) => ({ dt, st: dt >= today ? "due" : x.date && dt < x.date ? "before" : paidOn(dt) ? "paid" : "late" }));
+      const months = Array.from({ length: 12 }, () => []);
+      for (const p of pays) months[+p.dt.slice(5, 7) - 1].push(p);
+      const next = schedule(x, today, inFive)[0] || "";
+      const overdue = (pays.find((p) => p.st === "late" && p.dt >= ago45) || {}).dt || "";
+      return { ...x, pays, months, next, overdue, total: pays.length * x.amount, left: pays.filter((p) => p.st === "due").length * x.amount };
+    });
+    const key = (x) => x.overdue || x.next || "9";
+    subs.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : b.amount - a.amount));   // overdue first, then by next payment
+    const mt = MONTHS.map((_, i) => sum(subs.map((x) => x.months[i].length * x.amount)));
+    const yt = sum(mt), rest = sum(subs.map((x) => x.left));
     const late = subs.filter((x) => x.overdue);
+    const soon = subs.filter((x) => x.next).sort((a, b) => (a.next < b.next ? -1 : 1));
+    const inMonth = (i) => subs.filter((x) => x.months[i].length).map((x) => ({ x, p: x.months[i] }));
+    const tipList = (i) => inMonth(i).map(({ x, p }) => `<div><span>${ddmm(p[0].dt)} · ${esc(x.name.length > 34 ? x.name.slice(0, 33) + "…" : x.name)}</span><span>${eur2(x.amount * p.length)}</span></div>`).join("");
+    let pinned = null;
+    const mark = (i) => {
+      host.querySelectorAll("[data-m]").forEach((e) => e.classList.toggle("selm", i !== null && +e.dataset.m === i));
+      host.querySelectorAll("tr[data-r]").forEach((tr) => tr.classList.toggle("hitr", i !== null && subs[+tr.dataset.r].months[i].length > 0));
+    };
     const chart = (h) => barChart(host.querySelector(".cb"), MONTHS.map((_, i) => `${year}-${String(i + 1).padStart(2, "0")}`),
-      [{ name: "Due", color: PAL[0], values: mt }], { labelFmt: (k) => MONTHS[+k.slice(5) - 1], height: h });
-    const dueLine = (x) => `<tr><td class="l">${ddmm(x.upcoming)}</td><td class="l wr"><b>${esc(x.name)}</b></td><td>${eur2(x.amount)}</td></tr>`;
+      [{ name: "Due", color: PAL[0], values: mt }], { labelFmt: (k) => MONTHS[+k.slice(5) - 1], height: h, tipExtra: (i) => tipList(i),
+        onHover: (i) => mark(i === null ? pinned : i), clickHint: "Click to keep this month marked", onClick: (i) => { pinned = pinned === i ? null : i; mark(pinned); } });
+    const dueLine = (x) => `<tr><td class="l">${ddmm(x.next)}</td><td class="l wr"><b>${esc(x.name)}</b></td><td>${eur2(x.amount)}</td></tr>`;
     if (mode !== "full") {
-      host.innerHTML = `<div class="sumline">${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) : stat(`${year} total`, eur(yt))}${soon[0] ? stat("Next", `${esc(soon[0].name)} <span class="sub">${ddmm(soon[0].upcoming)}</span>`) : ""}</div>
+      host.innerHTML = `<div class="sumline">${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) : stat(`${year} total`, eur(yt))}${soon[0] ? stat("Next", `${esc(soon[0].name)} <span class="sub">${ddmm(soon[0].next)}</span>`) : ""}</div>
         ${late.length ? `<div class="sub" style="color:#f5d27a;margin:-4px 0 6px">Expected but not paid yet: ${late.map((x) => esc(x.name)).join(", ")}</div>` : ""}
         <div class="tablewrap"><table class="agtable"><tbody>${soon.slice(0, 6).map(dueLine).join("")}</tbody></table></div><div class="cb"></div>`;
       return chart(150);
     }
     const n2 = NF({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const TITLE = { paid: "paid", late: "expected, no payment linked in Firefly", before: "before the subscription starts in Firefly", due: "expected" };
     const cell = (x, i) => {
-      const v = x.months[i];
-      if (!v) return `<td class="${i === cm ? "curm" : ""}"></td>`;
-      const past = cm > i || (cm === i && !x.pay_dates.some((dt) => ym(dt) === `${year}-${String(i + 1).padStart(2, "0")}` && dt >= today));
-      const cls = [i === cm ? "curm" : "", past && x.paid[i] ? "pastm" : "", past && !x.paid[i] ? "late" : ""].join(" ");
-      return `<td class="${cls}" title="${past ? (x.paid[i] ? "paid" : "expected, not paid yet") : "expected"}">${n2.format(v)}</td>`;
+      const p = x.months[i];
+      if (!p.length) return `<td data-m="${i}" class="${i === cm ? "curm" : ""}"></td>`;
+      const st = p.some((q) => q.st === "late") ? "late" : p.every((q) => q.st === "paid") ? "paid" : p.every((q) => q.st === "before") ? "before" : "due";
+      return `<td data-m="${i}" class="${i === cm ? "curm" : ""} st-${st}" title="${p.map((q) => `${ddmm(q.dt)}: ${TITLE[q.st]}`).join("&#10;")}">${n2.format(x.amount * p.length)}</td>`;
     };
-    const tcell = (v, i) => `<td class="${i === cm ? "curm" : ""}"><b>${v ? n2.format(v) : ""}</b></td>`;
     const rep = (x) => (x.skip ? `${FREQ[x.freq] || x.freq}, skips ${x.skip}` : FREQ[x.freq] || x.freq);
     host.innerHTML = `<div class="sumline">${stat(`${year} total`, eur(yt))}${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) + stat("Still to pay this year", eur(rest)) : ""}${stat("Ø per month", eur(yt / 12))}${stat("Subscriptions", subs.length)}</div>
       <div class="cb" style="margin-bottom:10px"></div>
-      <div class="tablewrap"><table class="agtable subcal"><thead><tr><th class="l">Subscription</th><th>Next</th><th>Amount</th>${MONTHS.map((m, i) => `<th class="${i === cm ? "curm" : ""}">${m}</th>`).join("")}<th>Year</th></tr></thead>
-      <tbody>${subs.map((x) => `<tr><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc([rep(x), x.group].filter(Boolean).join(" · "))}</div></td><td${x.overdue ? ' class="late" title="expected, not paid yet"' : ""}>${x.overdue ? ddmm(x.overdue) : x.upcoming ? ddmm(x.upcoming) : "–"}</td><td>${x.range && x.range[0] !== x.range[1] ? "~" : ""}${eur2(x.amount)}</td>${MONTHS.map((_, i) => cell(x, i)).join("")}<td><b>${n2.format(x.total)}</b></td></tr>`).join("")}
-      <tr class="tot"><td class="l" colspan="3"><b>Total per month</b></td>${mt.map(tcell).join("")}<td><b>${n2.format(yt)}</b></td></tr></tbody></table></div>
-      <div class="sub" style="margin-top:8px">From Firefly → Subscriptions: its expected dates and amounts (middle of min–max). Dimmed = paid, <span style="color:#f5d27a">yellow</span> = expected but not paid yet (a yellow Next date is overdue).</div>`;
+      <div class="tablewrap"><table class="agtable subcal"><thead><tr><th class="l">Subscription</th><th>Next</th><th>Amount</th>${MONTHS.map((m, i) => `<th data-m="${i}" class="mh ${i === cm ? "curm" : ""}">${m}</th>`).join("")}<th>Year</th></tr></thead>
+      <tbody>${subs.map((x, r) => `<tr data-r="${r}"><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc([rep(x), x.group].filter(Boolean).join(" · "))}</div></td><td${x.overdue ? ' class="st-late" title="expected, no payment linked yet"' : ""}>${x.overdue ? ddmm(x.overdue) : x.next ? ddmm(x.next) : "–"}</td><td>${x.range && x.range[0] !== x.range[1] ? "~" : ""}${eur2(x.amount)}</td>${MONTHS.map((_, i) => cell(x, i)).join("")}<td><b>${n2.format(x.total)}</b></td></tr>`).join("")}
+      <tr class="tot"><td class="l" colspan="3"><b>Total per month</b></td>${mt.map((v, i) => `<td data-m="${i}" class="${i === cm ? "curm" : ""}"><b>${v ? n2.format(v) : ""}</b></td>`).join("")}<td><b>${n2.format(yt)}</b></td></tr></tbody></table></div>
+      <div class="sub" style="margin-top:8px">From Firefly → Subscriptions, laid out on each one's schedule (repeat and skip applied). Next = the next date after today, even if it falls in a later year. Dimmed = paid · <span style="color:#f5d27a">yellow</span> = expected, but Firefly has no payment linked to it · <i>italic</i> = before the subscription's start date in Firefly. Hover or click a month to mark its payments.</div>`;
+    host.querySelectorAll("th.mh").forEach((th) => {
+      const i = +th.dataset.m;
+      th.addEventListener("mouseenter", () => mark(i));
+      th.addEventListener("mouseleave", () => mark(pinned));
+      th.addEventListener("click", () => { pinned = pinned === i ? null : i; mark(pinned); });
+    });
     chart(260);
   }
 
