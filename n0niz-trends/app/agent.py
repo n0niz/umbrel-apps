@@ -709,7 +709,7 @@ def subscriptions(rows, bills=None, today=None, currency="EUR", savings=()):
         prev = hits[-2][2] if len(hits) > 1 else None
         out[key] = {"name": name, "payee": last[6] if last else name, "source": source, "freq": freq,
                     "amount": round(amount, 2), "per_month": round(per_month, 2), "per_year": round(per_month * 12, 2),
-                    "last": last[9] if last else None, "next": nxt, "count": len(hits), "months": len(months),
+                    "first": hits[0][9] if hits else None, "last": last[9] if last else None, "next": nxt, "count": len(hits), "months": len(months),
                     "category": last[3] if last else "", "account": last[8] if last else "",
                     "changed": round(amount - prev, 2) if prev is not None and abs(amount - prev) > max(0.5, 0.04 * prev) else 0,
                     "active": not overdue and (bool(last) or source == "firefly"),

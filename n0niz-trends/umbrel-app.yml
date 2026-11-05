@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.5.0"
+version: "2.6.0"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,8 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  New Agent tab: sorts uncategorised bookings with your history and local
-  Ollama, adds the tags you usually use, flags odd categories, and a monthly
-  news flash widget for Home.
+  New report and home widget "Subscription calendar": subscriptions sorted by
+  their next payment, with what is due in each month from January to December.
 dependencies:
   - firefly-iii
 path: ""

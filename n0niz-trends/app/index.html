@@ -233,6 +233,11 @@
   .agtable td { vertical-align: top; }
   .agtable td.wr { min-width: 180px; }
   .agtable tr.done td { opacity: .55; }
+  .subcal th, .subcal td { white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: 13px; }
+  .subcal td:first-child, .subcal th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
+  .subcal .curm { background: var(--panel2); }
+  .subcal td.pastm { opacity: .55; }
+  .subcal tr.tot td { border-top: 1px solid var(--line); padding-top: 8px; }
   .agtable select { max-width: 190px; padding: 4px 6px; }
   .pill.ai { color: #d2a8ff; } .pill.history { color: var(--accent); } .pill.unsure, .pill.check { color: #f5d27a; } .pill.tags { color: var(--inc); } .pill.error { color: var(--up); }
   .toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #22314a; border: 1px solid #34507a; padding: 9px 16px; border-radius: 10px; font-size: 13px; z-index: 50; display: none; }
@@ -672,6 +677,7 @@
       case "trend": return box(`<path d="M8 44 L24 36 L40 40 L56 24 L72 28 L88 14" fill="none" stroke="${PAL[0]}" stroke-width="2.5"/><path d="M8 50 L24 46 L40 30 L56 38 L72 34 L88 30" fill="none" stroke="${PAL[1]}" stroke-width="2.5"/>`);
       case "networth": case "btcchart": return box(`<path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16 L88 54 L8 54Z" fill="${type === "btcchart" ? C.btc : PAL[0]}" opacity=".18"/><path d="M8 48 L20 46 L32 40 L44 42 L56 30 L68 26 L80 18 L88 16" fill="none" stroke="${type === "btcchart" ? C.btc : PAL[0]}" stroke-width="2.5"/>`);
       case "subscriptions": return box(`${[0, 1, 2, 3].map((i) => `<rect x="10" y="${9 + i * 11}" width="8" height="8" rx="2" fill="${PAL[i]}"/><rect x="24" y="${11 + i * 11}" width="${34 - i * 4}" height="4" rx="1" fill="#5b6475"/><rect x="70" y="${11 + i * 11}" width="16" height="4" rx="1" fill="#93a0b2"/>`).join("")}`);
+      case "subcal": return box(`${[0, 1, 2, 3].map((r) => [0, 1, 2, 3, 4, 5].map((c) => `<rect x="${10 + c * 13}" y="${10 + r * 11}" width="10" height="8" rx="2" fill="${(r + c) % 3 ? "#26303d" : PAL[r]}"/>`).join("")).join("")}`);
       case "news": return box(`<rect x="8" y="10" width="80" height="40" rx="5" fill="#26303d"/><rect x="14" y="16" width="34" height="5" rx="1" fill="${PAL[0]}"/>${[0, 1, 2].map((i) => `<circle cx="17" cy="${29 + i * 8}" r="1.6" fill="#93a0b2"/><rect x="22" y="${27 + i * 8}" width="${58 - i * 12}" height="3" rx="1" fill="#5b6475"/>`).join("")}`);
       case "recent": return box([0, 1, 2, 3, 4].map((i) => `<rect x="10" y="${8 + i * 10}" width="40" height="4" rx="1" fill="#3a4352"/><rect x="${68 + (i % 2) * 6}" y="${8 + i * 10}" width="${18 - (i % 2) * 6}" height="4" rx="1" fill="${i % 3 ? C.exp : C.inc}"/>`).join(""));
       case "kpi": return box([0, 1, 2].map((i) => `<rect x="${6 + i * 30}" y="14" width="26" height="32" rx="4" fill="#26303d"/><rect x="${10 + i * 30}" y="20" width="12" height="3" rx="1" fill="#5b6475"/><rect x="${10 + i * 30}" y="29" width="17" height="6" rx="1" fill="${[C.inc, C.exp, PAL[0]][i]}"/>`).join(""));
@@ -691,6 +697,7 @@
     networth: { name: "Net worth", desc: "Everything you own minus loans and debts, over time.", period: "24m", btc: true },
     balances: { name: "Account balances", desc: "What each account holds, and what you still owe.", btc: true },
     subscriptions: { name: "Subscriptions", desc: "Every running subscription with amount, interval and the next payment." },
+    subcal: { name: "Subscription calendar", desc: "Subscriptions by next payment, and what is due each month from January to December." },
     recent: { name: "Latest transactions", desc: "The newest bookings, filtered the way you like.", period: "90d", kind: "both", rows: true, kinds: true },
   };
   const HOME_TYPES = {
@@ -735,6 +742,7 @@
         case "btc": case "btcchart": return await rBtcWidget(host, spec, mode);
         case "news": return await rNews(host, spec, mode);
         case "subscriptions": return await rSubs(host, spec, mode);
+        case "subcal": return await rSubCal(host, spec, mode);
         case "saved": {
           await loadReports();
           const s = D.reports.find((r) => r.id === spec.ref);
@@ -1119,6 +1127,12 @@
       return el;
     }
     if (spec.type === "subscriptions") return el;
+    if (spec.type === "subcal") {
+      const s = add(`<label class="f">Year<select><option value="this">This year</option><option value="next">Next year</option></select></label>`).querySelector("select");
+      s.value = spec.year || "this";
+      s.addEventListener("change", () => { spec.year = s.value; change(); });
+      return el;
+    }
     if (spec.type === "btc" || spec.type === "kpi") {
       if (spec.type === "kpi") el.appendChild(accountsField());
       return el;
@@ -1736,6 +1750,58 @@
       <div class="sub" style="margin-top:8px">Grouped by the booking's category — set categories in Firefly (e.g. Stadtwerke → House & Apartment, Netflix → Subscriptions) to sort them. <b>Firefly</b>: your subscriptions in Firefly. <b>tagged</b>: bookings you tagged Subscription or Abo. <b>detected</b>: a similar amount from the same payee in at least 3 of the last months.
       ${d.firefly_subscriptions ? "" : "You have no subscriptions in Firefly yet — create the ones you want to keep an eye on under Firefly → Subscriptions; then missed payments and price rises show up in the news flash."}</div>`;
     hbars(host.querySelector(".cb"), gl.map((g, gi) => ({ name: g.name, value: g.pm, color: PAL[gi % PAL.length] })), { fmt: (v) => `${eur(v)} / month${inc ? ` · ${share(v)}` : ""}` });
+  }
+
+  /* ============================================================ subscription calendar */
+  // payment dates of one subscription inside [from, to], stepped from its next due date
+  // (backwards too, but never before its first known payment)
+  const isoD = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  function payDates(x, from, to) {
+    if (!x.next) return [];
+    const STEP = { monthly: 1, quarterly: 3, "half-year": 6, yearly: 12 };
+    const [y, m, dd] = x.next.split("-").map(Number);
+    const at = (k) => {                                   // k-th payment from the next one (k may be negative)
+      if (x.freq === "weekly") return new Date(y, m - 1, dd + 7 * k);
+      const mm = m - 1 + k * (STEP[x.freq] || 1), last = new Date(y, mm + 1, 0).getDate();
+      return new Date(y, mm, Math.min(dd, last));
+    };
+    const floor = x.first && x.first > from ? x.first : from, out = [];
+    for (let k = 0; k > -600; k--) { const d = isoD(at(k)); if (d < floor) break; if (d <= to) out.push(d); }
+    for (let k = 1; k < 600; k++) { const d = isoD(at(k)); if (d > to) break; if (d >= floor) out.push(d); }
+    return out.sort();
+  }
+  async function rSubCal(host, spec, mode) {
+    const d = await once("subs", () => api("api/subscriptions"));
+    const act = d.items.filter((x) => x.active && x.next);
+    if (!act.length) return emptyIn(host, "No running subscriptions found yet. Tag them Subscription or Abo, or create them in Firefly under Subscriptions.");
+    const now = new Date(), today = isoD(now);
+    const year = now.getFullYear() + (spec.year === "next" ? 1 : 0), cm = year === now.getFullYear() ? now.getMonth() : -1;
+    const subs = act.map((x) => {
+      const dates = payDates(x, `${year}-01-01`, `${year}-12-31`), months = Array(12).fill(0);
+      for (const dt of dates) months[+dt.slice(5, 7) - 1] += x.amount;
+      const upcoming = dates.find((dt) => dt >= today) || x.next;
+      return { ...x, months, upcoming, total: sum(months), left: dates.filter((dt) => dt >= today).length * x.amount };
+    }).sort((a, b) => (a.upcoming < b.upcoming ? -1 : a.upcoming > b.upcoming ? 1 : b.amount - a.amount));
+    const mt = MONTHS.map((_, i) => sum(subs.map((x) => x.months[i])));
+    const yt = sum(mt), rest = sum(subs.map((x) => x.left));
+    const soon = subs.filter((x) => x.upcoming >= today).sort((a, b) => (a.upcoming < b.upcoming ? -1 : 1));
+    const chart = (h) => barChart(host.querySelector(".cb"), MONTHS.map((_, i) => `${year}-${String(i + 1).padStart(2, "0")}`),
+      [{ name: "Due", color: PAL[0], values: mt }], { labelFmt: (k) => MONTHS[+k.slice(5) - 1], height: h });
+    const dueLine = (x) => `<tr><td class="l">${ddmm(x.upcoming)}</td><td class="l wr"><b>${esc(x.name)}</b></td><td>${eur2(x.amount)}</td></tr>`;
+    if (mode !== "full") {
+      host.innerHTML = `<div class="sumline">${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) : stat(`${year} total`, eur(yt))}${soon[0] ? stat("Next", `${esc(soon[0].name)} <span class="sub">${ddmm(soon[0].upcoming)}</span>`) : ""}</div>
+        <div class="tablewrap"><table class="agtable"><tbody>${soon.slice(0, 6).map(dueLine).join("")}</tbody></table></div><div class="cb"></div>`;
+      return chart(150);
+    }
+    const n2 = NF({ minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const cell = (v, i) => `<td class="${i === cm ? "curm" : i < cm ? "pastm" : ""}">${v ? n2.format(v) : ""}</td>`;
+    host.innerHTML = `<div class="sumline">${stat(`${year} total`, eur(yt))}${cm >= 0 ? stat(`Due in ${MONTHS[cm]}`, eur(mt[cm])) + stat("Still to pay this year", eur(rest)) : ""}${stat("Ø per month", eur(yt / 12))}${stat("Running", subs.length)}</div>
+      <div class="cb" style="margin-bottom:10px"></div>
+      <div class="tablewrap"><table class="agtable subcal"><thead><tr><th class="l">Subscription</th><th>Next</th><th>Amount</th>${MONTHS.map((m, i) => `<th class="${i === cm ? "curm" : ""}">${m}</th>`).join("")}<th>Year</th></tr></thead>
+      <tbody>${subs.map((x) => `<tr><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc([FREQ[x.freq] || x.freq, x.category].filter(Boolean).join(" · "))}</div></td><td>${ddmm(x.upcoming)}</td><td>${eur2(x.amount)}</td>${x.months.map(cell).join("")}<td><b>${n2.format(x.total)}</b></td></tr>`).join("")}
+      <tr class="tot"><td class="l" colspan="3"><b>Total per month</b></td>${mt.map((v, i) => cell(v, i).replace(/>([^<]*)<\/td>$/, "><b>$1</b></td>")).join("")}<td><b>${eur2(yt)}</b></td></tr></tbody></table></div>
+      <div class="sub" style="margin-top:8px">Sorted by the next payment. Months are worked out from each subscription's interval and next due date${cm > 0 ? "; earlier months of the year are the schedule, counted from the first payment Firefly knows" : ""}. Subscriptions that look stopped are left out.</div>`;
+    chart(260);
   }
 
   /* ============================================================ news flash */
