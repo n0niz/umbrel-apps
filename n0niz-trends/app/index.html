@@ -325,7 +325,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.6.1</footer>
+  <footer class="appver">Spending Trends v2.6.2</footer>
 </div>
 
 <dialog id="settings">
@@ -1774,8 +1774,10 @@
   }
   async function rSubCal(host, spec, mode) {
     const d = await once("subs", () => api("api/subscriptions"));
-    const act = d.items.filter((x) => x.active && x.next);
-    if (!act.length) return emptyIn(host, "No running subscriptions found yet. Tag them Subscription or Abo, or create them in Firefly under Subscriptions.");
+    // only what you told Firefly: a subscription created there, or bookings tagged Subscription/Abo;
+    // payments that merely repeat (a restaurant you go to often) stay out
+    const act = d.items.filter((x) => x.active && x.next && x.source !== "pattern");
+    if (!act.length) return emptyIn(host, "No subscriptions yet. Tag the bookings Subscription or Abo, or create them in Firefly under Subscriptions.");
     const now = new Date(), today = isoD(now);
     const year = now.getFullYear() + (spec.year === "next" ? 1 : 0), cm = year === now.getFullYear() ? now.getMonth() : -1;
     const subs = act.map((x) => {
@@ -1802,7 +1804,7 @@
       <div class="tablewrap"><table class="agtable subcal"><thead><tr><th class="l">Subscription</th><th>Next</th><th>Amount</th>${MONTHS.map((m, i) => `<th class="${i === cm ? "curm" : ""}">${m}</th>`).join("")}<th>Year</th></tr></thead>
       <tbody>${subs.map((x) => `<tr><td class="l wr"><b>${esc(x.name)}</b><div class="sub">${esc([FREQ[x.freq] || x.freq, x.category].filter(Boolean).join(" · "))}</div></td><td>${ddmm(x.upcoming)}</td><td>${eur2(x.amount)}</td>${x.months.map(cell).join("")}<td><b>${n2.format(x.total)}</b></td></tr>`).join("")}
       <tr class="tot"><td class="l" colspan="3"><b>Total per month</b></td>${mt.map((v, i) => cell(v, i).replace(/>([^<]*)<\/td>$/, "><b>$1</b></td>")).join("")}<td><b>${eur2(yt)}</b></td></tr></tbody></table></div>
-      <div class="sub" style="margin-top:8px">Sorted by the next payment. Months are worked out from each subscription's interval and next due date${cm > 0 ? "; earlier months of the year are the schedule, counted from the first payment Firefly knows" : ""}. Subscriptions that look stopped are left out.</div>`;
+      <div class="sub" style="margin-top:8px">Sorted by the next payment. Months are worked out from each subscription's interval and next due date${cm > 0 ? "; earlier months of the year are the schedule, counted from the first payment Firefly knows" : ""}. Only subscriptions created in Firefly or tagged Subscription/Abo; ones that look stopped are left out.</div>`;
     chart(260);
   }
 
