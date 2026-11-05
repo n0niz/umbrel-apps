@@ -330,6 +330,11 @@ def try_book(cfg, card, ev):
         ev["status"], ev["reason"] = "booked", ""
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
+        if e.code == 422 and re.search(r"valid (source|destination) account", body):
+            # no auto-create: a renamed account would silently get a second twin
+            ev["status"], ev["reason"] = "error", (f"Firefly has no asset account “{card['account']}”. If you renamed it "
+                                                   "in Firefly, enter the new name for this card under Settings, then press Book.")
+            return
         if e.code == 422 and "uplicate" in body:
             ev["status"], ev["reason"] = "duplicate", "already in Firefly"
         else:
@@ -359,36 +364,51 @@ def route_card(cfg, card, full):
     return card, ""
 
 
-def merge_duplicate(cfg, events, card, ev):
-    """The same payment seen by two apps (e.g. Google Wallet and the card's own app):
-    same card, same amount, within 2 minutes, from two DIFFERENT apps, and at most one
-    of them names a merchant. Two notifications from the same app are always two payments."""
-    p = ev.get("parsed")
-    if not p:
+def same_payment(a, b):
+    """Two notifications about one payment: same card, kind and amount, within 2 minutes,
+    from two DIFFERENT apps, and at most one of them names a merchant (or both the same).
+    Two notifications from the same app are always two payments."""
+    pa, pb = a.get("parsed"), b.get("parsed")
+    if not pa or not pb or a is b:
         return False
+    apps = (a.get("app") or "").strip().lower(), (b.get("app") or "").strip().lower()
+    merchants_fit = "Card payment" in (pa["merchant"], pb["merchant"]) or pa["merchant"] == pb["merchant"]
+    return (a.get("card") == b.get("card") and pa["kind"] == pb["kind"]
+            and abs(pa["amount"] - pb["amount"]) < 0.005
+            and all(apps) and apps[0] != apps[1]
+            and merchants_fit
+            and abs(datetime.fromisoformat(a["received"]).timestamp()
+                    - datetime.fromisoformat(b["received"]).timestamp()) < MERGE_SECONDS)
+
+
+def merge_duplicate(cfg, events, card, ev):
+    """The same payment seen by two apps (e.g. Google Wallet and the card's own app)."""
+    if not ev.get("parsed"):
+        return False
+    p = ev["parsed"]
     for old in reversed(events[-60:]):
-        op = old.get("parsed")
-        apps = (old.get("app") or "").strip().lower(), (ev.get("app") or "").strip().lower()
-        merchants_fit = "Card payment" in (op or {}).get("merchant", "") + "|" + p["merchant"] or (op or {}).get("merchant") == p["merchant"]
-        if (old.get("card") == card["id"] and old.get("status") == "booked" and op and op["kind"] == p["kind"]
-                and abs(op["amount"] - p["amount"]) < 0.005
-                and all(apps) and apps[0] != apps[1]        # same app twice = two real payments
-                and merchants_fit
-                and abs(datetime.fromisoformat(ev["received"]).timestamp() - datetime.fromisoformat(old["received"]).timestamp()) < MERGE_SECONDS):
-            ev["status"], ev["reason"] = "duplicate", "same payment as an earlier notification from another app"
-            if op["merchant"] == "Card payment" and p["merchant"] != "Card payment" and old.get("firefly_id"):
-                try:
-                    res = ff(cfg, "GET", f"/api/v1/transactions/{old['firefly_id']}")
-                    j = res["data"]["attributes"]["transactions"][0]
-                    nm = payee_name(cfg, p["merchant"])
-                    upd = {"transaction_journal_id": j["transaction_journal_id"], "description": nm}
-                    upd["destination_name" if p["kind"] == "withdrawal" else "source_name"] = nm
-                    ff(cfg, "PUT", f"/api/v1/transactions/{old['firefly_id']}", {"apply_rules": True, "transactions": [upd]})
-                    op["merchant"] = p["merchant"]
-                    ev["reason"] += f" · merchant “{nm}” added to the booking"
-                except Exception as e:  # noqa: BLE001
-                    ev["reason"] += f" · could not add the merchant: {e}"
+        if old.get("status") not in ("booked", "review", "error") or not same_payment(old, ev):
+            continue
+        op = old["parsed"]
+        if old["status"] != "booked":              # the first one is still waiting here
+            ev["status"], ev["reason"] = "duplicate", "same payment as the other notification still waiting here – book that one"
+            if op["merchant"] == "Card payment" and p["merchant"] != "Card payment":
+                op["merchant"] = p["merchant"]
             return True
+        ev["status"], ev["reason"] = "duplicate", "same payment as an earlier notification from another app"
+        if op["merchant"] == "Card payment" and p["merchant"] != "Card payment" and old.get("firefly_id"):
+            try:
+                res = ff(cfg, "GET", f"/api/v1/transactions/{old['firefly_id']}")
+                j = res["data"]["attributes"]["transactions"][0]
+                nm = payee_name(cfg, p["merchant"])
+                upd = {"transaction_journal_id": j["transaction_journal_id"], "description": nm}
+                upd["destination_name" if p["kind"] == "withdrawal" else "source_name"] = nm
+                ff(cfg, "PUT", f"/api/v1/transactions/{old['firefly_id']}", {"apply_rules": True, "transactions": [upd]})
+                op["merchant"] = p["merchant"]
+                ev["reason"] += f" · merchant “{nm}” added to the booking"
+            except Exception as e:  # noqa: BLE001
+                ev["reason"] += f" · could not add the merchant: {e}"
+        return True
     return False
 
 
@@ -557,7 +577,15 @@ class Handler(BaseHTTPRequestHandler):
                                     "kind": "deposit" if data.get("kind") == "deposit" else "withdrawal"}
                     if not cfg["token"]:
                         return self._json(400, {"error": "Set the Firefly token in Settings first."})
-                    try_book(cfg, card, ev)
+                    twin = next((e for e in events if e.get("status") == "booked" and same_payment(e, ev)), None)
+                    if twin and not ev.get("confirm_twin"):
+                        # pressing Book on both notifications of one payment would book it twice
+                        ev["status"], ev["confirm_twin"] = "repeat", True
+                        ev["reason"] = (f"already booked from the {twin.get('app') or 'other'} notification – probably the same "
+                                        "payment. Press Ignore, or Book again if it really was a second payment.")
+                    else:
+                        ev.pop("confirm_twin", None)
+                        try_book(cfg, card, ev)
                 save_events(events)
             return self._json(200, ev)
 

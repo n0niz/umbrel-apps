@@ -4,7 +4,7 @@ name: Card Capture
 tagline: Turn card payment notifications into Firefly III transactions
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-card-capture/icon.svg
 category: finance
-version: "1.3.0"
+version: "1.3.1"
 port: 4950
 description: >-
   Receives card payment notifications forwarded from an Android phone (for
@@ -20,9 +20,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Cards are recognised by their last 4 digits, so one Google Wallet macro serves all
-  cards; the same payment from two apps is booked once and gets the merchant; DKB
-  notifications are understood; missing merchants can be filled in.
+  The same payment from two apps is caught even if the first one is still waiting
+  for review, and pressing Book on both asks before booking twice. Clear message
+  when a card's Firefly account is missing or was renamed.
 dependencies:
   - firefly-iii
 path: ""
