@@ -329,7 +329,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.8.1</footer>
+  <footer class="appver">Spending Trends v2.9.0</footer>
 </div>
 
 <dialog id="settings">
@@ -348,6 +348,14 @@
     <label>API key<input type="password" id="krKey" autocomplete="off"></label>
     <label>Private key<input type="password" id="krSecret" autocomplete="off"></label>
     <label class="sub" style="display:flex;gap:8px;align-items:center" id="krRemoveWrap"><input type="checkbox" id="krRemove" style="width:auto"> Remove the Kraken key</label>
+    <h3>Krak cashback in Firefly</h3>
+    <div class="sub" style="margin-top:4px">Books every cashback transfer from the Krak card to Kraken (found in the Kraken ledger with the key above) as a deposit “Krak cashback” in Firefly: the euro value of that day, the BTC amount in the note, each one only once. Your Firefly rules run on it, so category and tags come from there. Runs after every Kraken sync.</div>
+    <label class="sub" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cbOn" style="width:auto"> Book Krak cashback in Firefly</label>
+    <div id="cbOpts">
+      <label>Firefly account<select id="cbAcc"></select></label>
+      <label>Book cashback from<input type="date" id="cbFrom"></label>
+      <div class="sub" id="cbInfo"></div>
+    </div>
     <h3>Bitcoin wallets <span class="sub" style="font-weight:400">watch-only</span></h3>
     <div class="sub" style="margin-top:4px">Paste an <b>xpub / ypub / zpub</b>, or for multisig the wallet's <b>output descriptor</b> (Sparrow: Settings → Script Policy → Export or Show descriptor). It can only read, never spend. Addresses are looked up in your own Mempool app.</div>
     <div id="walletRows"></div>
@@ -2085,6 +2093,20 @@
     $("savPick").replaceChildren(msel("Categories", uniq([...optionsFor("category"), ...D.savDraft]), D.savDraft, (v) => (D.savDraft = v), "none"));
     D.wdraft = (c.wallets || []).map((w) => ({ ...w, desc: "" }));
     drawWallets();
+    // Krak cashback booking
+    let accs = [];
+    try { accs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active).map((a) => a.name); } catch {}
+    const pick = (sel, list, cur, guess, empty) => {
+      sel.replaceChildren(new Option(empty, ""), ...list.map((x) => new Option(x, x)));
+      sel.value = cur && list.includes(cur) ? cur : (!cur && list.find(guess)) || "";
+      if (cur && !list.includes(cur)) { sel.add(new Option(cur, cur)); sel.value = cur; }
+    };
+    pick($("cbAcc"), accs, c.cashback_account, (x) => /kraken/i.test(x) && !/krak card/i.test(x), "– choose –");
+    $("cbFrom").value = c.cashback_from || `${now.getFullYear()}-01-01`;
+    $("cbOn").checked = !!c.cashback_book;
+    $("cbInfo").textContent = c.cashback_count ? `${c.cashback_count} cashback transfers booked so far.` : c.kraken_set ? "" : "Needs the Kraken key above.";
+    const cbShow = () => ($("cbOpts").style.display = $("cbOn").checked ? "" : "none");
+    $("cbOn").onchange = cbShow; cbShow();
     $("settingsMsg").textContent = "";
     if (!$("settings").open) $("settings").showModal();
   }
@@ -2112,7 +2134,8 @@
     try {
       await put("api/config", { firefly_url: $("ffUrl").value, token: $("ffToken").value, history_start: $("ffHist").value,
         kraken_key: $("krKey").value, kraken_secret: $("krSecret").value, kraken_remove: $("krRemove").checked,
-        mempool_url: $("mpUrl").value, savings_categories: D.savDraft || [], wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
+        mempool_url: $("mpUrl").value, savings_categories: D.savDraft || [],
+        cashback_book: $("cbOn").checked, cashback_account: $("cbAcc").value, cashback_from: $("cbFrom").value, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
     } catch (er) { $("settingsMsg").textContent = er.message; return; }
     $("settings").close();
     D.p = {}; D.btcModel = null; D.rows = null;

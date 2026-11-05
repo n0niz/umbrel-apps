@@ -30,6 +30,7 @@ APP_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 CONFIG_FILE = DATA_DIR / "config.json"
 KRAKEN_FILE = DATA_DIR / "kraken.json"
+CASHBACK_FILE = DATA_DIR / "cashback_booked.json"
 PRICES_FILE = DATA_DIR / "btc_prices.json"
 WALLETS_FILE = DATA_DIR / "wallets.json"
 MEMPOOL_DEFAULTS = [os.environ.get("MEMPOOL_URL", ""), "http://mempool_web_1:3006/api", "http://mempool_api_1:8999/api/v1"]
@@ -59,6 +60,10 @@ DEFAULTS = {
     "ollama_model": "",
     "news_lang": "en",
     "savings_categories": ["Crypto"],
+    # Krak card cashback (BTC sent from Krak to Kraken) booked in Firefly as deposits
+    "cashback_book": False,
+    "cashback_account": "",
+    "cashback_from": "",
 }
 
 cache = {}
@@ -373,7 +378,78 @@ def btc_sync(cfg):
         update_prices()
     except Exception as e:  # noqa: BLE001
         errors.append(f"Prices: {e}")
+    if has_kraken and cfg.get("cashback_book") and cfg.get("token"):
+        set_sync(step="Booking Krak cashback in Firefly")
+        try:
+            book_cashback(cfg)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"Cashback: {e}")
     set_sync(running=False, step="", error=" · ".join(errors), finished=int(time.time()))
+
+
+def cashback_rows(cfg):
+    """BTC that came into Kraken as a reward (Krak card cashback), with your own corrections
+    from the Bitcoin page applied (marked as reward / not a reward)."""
+    tx, _ = classify(read_json(KRAKEN_FILE, {}))
+    prefs = read_json(DATA_DIR / "store_prefs.json", None) or {}
+    as_r, not_r = set(prefs.get("asReward") or []), set(prefs.get("notReward") or [])
+    out = []
+    for r in tx:
+        if r["ref"] in not_r:
+            continue
+        if r["type"] == "Reward" or (r["ref"] in as_r and r["btc"] > 0):
+            out.append(r)
+    return out
+
+
+def book_cashback(cfg):
+    """Each cashback transfer once as a Firefly deposit: euro value of the day, BTC in the note,
+    external id kraken-<refid> so nothing is ever booked twice."""
+    acc = (cfg.get("cashback_account") or "").strip()
+    if not acc:
+        raise RuntimeError("choose the Firefly account for the cashback in Settings")
+    since = cfg.get("cashback_from") or f"{date.today().year}-01-01"
+    days = read_json(PRICES_FILE, {"days": {}}).get("days", {})
+    done = read_json(CASHBACK_FILE, {})
+    booked = 0
+    for r in cashback_rows(cfg):
+        d = datetime.fromtimestamp(r["t"], timezone.utc).date().isoformat()
+        if d < since or r["ref"] in done:
+            continue
+        px = days.get(d) or days.get((date.fromisoformat(d) - timedelta(days=1)).isoformat())
+        if not px:
+            continue                                         # price of that day not known yet: next sync
+        ext = f"kraken-{r['ref']}"
+        found = firefly_get(cfg, "/api/v1/search/transactions", {"query": f'external_id_is:"{ext}"', "limit": 5}).get("data", [])
+        if found:
+            done[r["ref"]] = found[0].get("id")
+            write_json(CASHBACK_FILE, done)
+            continue
+        eur = round(r["btc"] * float(px), 2)
+        if eur < 0.01:
+            continue
+        t = {"type": "deposit", "date": datetime.fromtimestamp(r["t"], timezone.utc).isoformat(), "amount": f"{eur:.2f}",
+             "description": "Krak cashback", "source_name": "Krak Cashback", "destination_name": acc,
+             "external_id": ext, "notes": f"{r['btc']:.8f} BTC ({round(r['btc'] * 1e8)} sats) · Kraken ledger {r['ref']} · "
+                                          f"valued at the BTC/EUR close of {d} ({float(px):,.0f} €)"}
+        # category and tags: your own Firefly rules (apply_rules) decide
+        try:
+            res = firefly_post(cfg, "/api/v1/transactions", {"error_if_duplicate_hash": True, "apply_rules": True, "transactions": [t]})
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode(errors="replace")[:300]
+            if "uplicate" in msg:
+                done[r["ref"]] = "duplicate"
+                write_json(CASHBACK_FILE, done)
+                continue
+            raise RuntimeError(f"Firefly {e.code}: {msg}")
+        done[r["ref"]] = (res.get("data") or {}).get("id")
+        write_json(CASHBACK_FILE, done)
+        booked += 1
+    if booked:
+        with cache_lock:
+            for k in [k for k in cache if k[0] == "rows"]:
+                del cache[k]
+    return booked
 
 
 def wallet_part(cfg):
@@ -823,6 +899,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"firefly_url": cfg["firefly_url"], "token_set": bool(cfg["token"]),
                                     "wallets": wl, "mempool_url": cfg.get("mempool_url", ""),
                                     "savings_categories": cfg.get("savings_categories") or [],
+                                    **{k: cfg.get(k, DEFAULTS[k]) for k in ("cashback_book", "cashback_account", "cashback_from")},
+                                    "cashback_count": len(read_json(CASHBACK_FILE, {})),
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
                                     "history_start": history_start(cfg)})
         if p == "/api/data":
@@ -1067,12 +1145,23 @@ class Handler(BaseHTTPRequestHandler):
                     del cache[k]
         if "mempool_url" in body:
             cfg["mempool_url"] = (body.get("mempool_url") or "").strip()
+        cashback_on = False
+        if "cashback_book" in body:
+            cf = (body.get("cashback_from") or "").strip()
+            if cf and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", cf):
+                return self._json(400, {"error": "Cashback start date must look like 2026-01-01."})
+            if body.get("cashback_book") and not (body.get("cashback_account") or "").strip():
+                return self._json(400, {"error": "Choose the Firefly account the cashback should be booked to."})
+            cashback_on = bool(body.get("cashback_book")) and not cfg.get("cashback_book")
+            cfg["cashback_book"] = bool(body.get("cashback_book"))
+            cfg["cashback_account"] = (body.get("cashback_account") or "").strip()
+            cfg["cashback_from"] = cf
         if body.get("kraken_remove"):
             cfg["kraken_key"] = cfg["kraken_secret"] = ""
         save_config(cfg)
         with cache_lock:
             cache.clear()
-        if kraken_changed or wallets_changed:
+        if kraken_changed or wallets_changed or cashback_on:
             start_sync(cfg)
         self._json(200, {"ok": True})
 
