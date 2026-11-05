@@ -184,6 +184,9 @@ def clean_merchant(s):
         if len(tail) >= 3:
             s = tail
     s = re.sub(r"\b(?:successful(?:ly)?|erfolgreich|approved|genehmigt)\b", "", s, flags=re.I).strip(" -–:.,")
+    s = re.sub(r"^(?:(?:von|from|bei|at)\s+)+", "", s, flags=re.I)   # "Erstattung von 1,09 € von X" -> "X"
+    if REFUND.fullmatch(s.strip()) or re.fullmatch(r"(?:rück|rueck)?erstattung|gutschrift|refund(?:ed)?", s.strip(), re.I):
+        return ""                     # "Rückerstattung: 1,09 €" names no merchant
     return s[:80]
 
 
