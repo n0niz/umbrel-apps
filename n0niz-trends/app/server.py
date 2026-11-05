@@ -175,12 +175,17 @@ def fetch_rows(cfg, start, end):
                     if t.get("type") not in ("withdrawal", "deposit"):
                         continue
                     cur = t.get("currency_code") or "?"
+                    amt = abs(float(t.get("amount") or 0))
+                    # booked in another currency (e.g. BTC cashback) with its euro value as foreign amount:
+                    # count it in euros
+                    if cur != "EUR" and t.get("foreign_currency_code") == "EUR" and t.get("foreign_amount"):
+                        cur, amt = "EUR", abs(float(t["foreign_amount"]))
                     currencies[cur] = currencies.get(cur, 0) + 1
                     out = t["type"] == "withdrawal"
                     rows.append([
                         t["date"][:7],
                         "e" if out else "i",
-                        round(abs(float(t.get("amount") or 0)), 2),
+                        round(amt, 2),
                         t.get("category_name") or "",
                         t.get("budget_name") or "",
                         t.get("tags") or [],
@@ -409,6 +414,11 @@ def book_cashback(cfg):
     if not acc:
         raise RuntimeError("choose the Firefly account for the cashback in Settings")
     since = cfg.get("cashback_from") or f"{date.today().year}-01-01"
+    # an account kept in BTC gets the sats as the amount and the euro value as foreign amount;
+    # a euro account gets the euro value
+    acc_cur = next((a["currency"] for a in fetch_accounts(cfg) if a["name"] == acc), None)
+    if acc_cur is None:
+        raise RuntimeError(f"there is no asset account “{acc}” in Firefly")
     days = read_json(PRICES_FILE, {"days": {}}).get("days", {})
     done = read_json(CASHBACK_FILE, {})
     booked = 0
@@ -433,6 +443,10 @@ def book_cashback(cfg):
              "external_id": ext, "notes": f"{r['btc']:.8f} BTC ({round(r['btc'] * 1e8)} sats) · Kraken ledger {r['ref']} · "
                                           f"valued at the BTC/EUR close of {d} ({float(px):,.0f} €)"}
         # category and tags: your own Firefly rules (apply_rules) decide
+        if acc_cur == "BTC":
+            t.update(amount=f"{r['btc']:.8f}", currency_code="BTC", foreign_amount=f"{eur:.2f}", foreign_currency_code="EUR")
+        elif acc_cur != "EUR":
+            raise RuntimeError(f"the account “{acc}” is kept in {acc_cur}; choose a euro or a BTC account")
         try:
             res = firefly_post(cfg, "/api/v1/transactions", {"error_if_duplicate_hash": True, "apply_rules": True, "transactions": [t]})
         except urllib.error.HTTPError as e:

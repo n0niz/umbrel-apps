@@ -329,7 +329,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.9.0</footer>
+  <footer class="appver">Spending Trends v2.9.1</footer>
 </div>
 
 <dialog id="settings">
@@ -349,7 +349,7 @@
     <label>Private key<input type="password" id="krSecret" autocomplete="off"></label>
     <label class="sub" style="display:flex;gap:8px;align-items:center" id="krRemoveWrap"><input type="checkbox" id="krRemove" style="width:auto"> Remove the Kraken key</label>
     <h3>Krak cashback in Firefly</h3>
-    <div class="sub" style="margin-top:4px">Books every cashback transfer from the Krak card to Kraken (found in the Kraken ledger with the key above) as a deposit “Krak cashback” in Firefly: the euro value of that day, the BTC amount in the note, each one only once. Your Firefly rules run on it, so category and tags come from there. Runs after every Kraken sync.</div>
+    <div class="sub" style="margin-top:4px">Books every cashback transfer from the Krak card to Kraken (found in the Kraken ledger with the key above) as a deposit “Krak cashback” in Firefly: the euro value of that day, the BTC amount in the note, each one only once. Choose a <b>BTC account</b> (e.g. “Kraken BTC”): it gets the sats as amount and the euro value as foreign amount, so your euro Kraken account stays right. Your Firefly rules run on it, so category and tags come from there. Runs after every Kraken sync.</div>
     <label class="sub" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cbOn" style="width:auto"> Book Krak cashback in Firefly</label>
     <div id="cbOpts">
       <label>Firefly account<select id="cbAcc"></select></label>
@@ -2095,13 +2095,13 @@
     drawWallets();
     // Krak cashback booking
     let accs = [];
-    try { accs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active).map((a) => a.name); } catch {}
+    try { accs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active && (a.currency === "EUR" || a.currency === "BTC")).map((a) => a.name); } catch {}
     const pick = (sel, list, cur, guess, empty) => {
       sel.replaceChildren(new Option(empty, ""), ...list.map((x) => new Option(x, x)));
       sel.value = cur && list.includes(cur) ? cur : (!cur && list.find(guess)) || "";
       if (cur && !list.includes(cur)) { sel.add(new Option(cur, cur)); sel.value = cur; }
     };
-    pick($("cbAcc"), accs, c.cashback_account, (x) => /kraken/i.test(x) && !/krak card/i.test(x), "– choose –");
+    pick($("cbAcc"), accs, c.cashback_account, (x) => /btc|bitcoin/i.test(x), "– choose –");
     $("cbFrom").value = c.cashback_from || `${now.getFullYear()}-01-01`;
     $("cbOn").checked = !!c.cashback_book;
     $("cbInfo").textContent = c.cashback_count ? `${c.cashback_count} cashback transfers booked so far.` : c.kraken_set ? "" : "Needs the Kraken key above.";
