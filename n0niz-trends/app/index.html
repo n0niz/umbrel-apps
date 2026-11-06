@@ -80,6 +80,8 @@
   .tip b { display: block; margin-bottom: 4px; }
   .tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
   .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  .wherebox { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .wherebox table { flex: 1; min-width: 260px; }
   .donut { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
   .donut svg { width: 176px; height: 176px; flex: none; }
   .donut circle { transition: stroke-width .15s; cursor: pointer; }
@@ -337,7 +339,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.6</footer>
+  <footer class="appver">Spending Trends v2.11.7</footer>
 </div>
 
 <dialog id="settings">
@@ -695,7 +697,8 @@
       if (o.onClick) { li.addEventListener("click", () => o.onClick(it)); arcs[i].addEventListener("click", () => o.onClick(it)); }
       leg.appendChild(li);
     });
-    wrap.append(svg, leg); host.appendChild(wrap);
+    if (o.noLegend) wrap.append(svg); else wrap.append(svg, leg);
+    host.appendChild(wrap);
   }
 
   function hbars(host, items, o = {}) {
@@ -1804,9 +1807,10 @@
     const rest = M.qty - sum(places.map((p) => p.btc));
     if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : "Moved off Kraken", btc: rest, color: OTHER });
     const tot = Math.max(M.qty, sum(places.map((p) => p.btc)));
-    $("where").innerHTML = `<div class="bar2">${places.map((p) => `<i style="width:${tot ? (p.btc / tot) * 100 : 0}%;background:${p.color}"></i>`).join("")}</div>
-      <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td></tr>`).join("")}</tbody></table>
+    $("where").innerHTML = `<div class="wherebox"><div class="cbw"></div>
+      <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
       <div class="sub" style="margin-top:8px">${data.kraken ? (data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : "Kraken balance worked out from the ledger. ") : ""}${(data.wallets || []).length ? "Wallet balances come from your Mempool app. " : "Add your wallets in Settings to see exactly where the coins are. "}${rest < -1e-6 ? `Your wallets hold ${btcS(-rest)} BTC more than the tracked history explains — coins received before the history starts or ignored receipts.` : ""}</div>`;
+    donut($("where").querySelector(".cbw"), places.filter((p) => p.btc > 1e-8).map((p) => ({ name: p.name, value: p.btc * M.spot, color: p.color })), { label: "All coins", noLegend: true });
     // by year
     const ys = new Map();
     for (const r of M.tx) {
