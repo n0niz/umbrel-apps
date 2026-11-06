@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.16.0</footer>
+  <footer class="appver">Spending Trends v2.16.1</footer>
 </div>
 
 <dialog id="settings">
@@ -1878,7 +1878,7 @@
           <div class="sub" style="margin-top:8px">Coins sold in Germany after holding them more than a year are tax-free (§23 EStG). This counts your buys oldest-first. Not tax advice.</div></div>
         <div class="card"><h2>Where the coins sit</h2><div id="where"></div></div>
         <div class="card full"><h2>By year</h2><div class="tablewrap" id="byYear"></div></div>
-        <div class="card full"><h2>By month <span class="hint">euros put in per month</span></h2><div id="bc4"></div></div>
+        <div class="card full"><h2>By month <span class="hint">euros put in per month · Kraken orange, Strike purple</span></h2><div id="bc4"></div></div>
         <div class="card full"><h2>Transactions <span class="seg sm" id="btcFilter">${["All", "Buy", "Sell", "Reward", "Transfers"].concat((data.wallets || []).length ? ["Wallets"] : [], ["Other"]).map((f) => `<button data-v="${f}" class="${B.filter === f ? "on" : ""}">${f}</button>`).join("")}</span></h2><div id="btcTx"></div></div>
         <div class="card full"><h2>Data check</h2><div class="checks" id="btcChecks"></div></div>
       </div>`;
@@ -1924,9 +1924,12 @@
     $("bl3").innerHTML = legendHtml(s3) + `<span class="dot" style="--c:${C.inc}">Buy</span><span class="dot" style="--c:${C.exp}">Sell</span>`;
     const first = M.dates.length ? M.dates[start].slice(0, 7) : TODAY.slice(0, 7);
     const months = monthKeys(first + "-01", TODAY);
-    const inv = new Map(), sats = new Map();
-    for (const r of M.tx) if (r.type === "Buy") { const k = r.date.slice(0, 7); inv.set(k, (inv.get(k) || 0) + r.eur); sats.set(k, (sats.get(k) || 0) + r.btc); }
-    barChart($("bc4"), months, [{ name: "Put in", color: C.btc, values: months.map((k) => inv.get(k) || 0) }], { labelFmt: monthLabel, height: 220,
+    const inv = new Map(), sats = new Map(), invS = new Map();
+    for (const r of M.tx) if (r.type === "Buy") { const k = r.date.slice(0, 7); inv.set(k, (inv.get(k) || 0) + r.eur); sats.set(k, (sats.get(k) || 0) + r.btc); if (r.src === "strike") invS.set(k, (invS.get(k) || 0) + r.eur); }
+    const hasS = invS.size > 0;
+    const bars = hasS ? [{ name: "Kraken", color: C.btc, values: months.map((k) => (inv.get(k) || 0) - (invS.get(k) || 0)) }, { name: "Strike", color: "#c084fc", values: months.map((k) => invS.get(k) || 0) }]
+      : [{ name: "Put in", color: C.btc, values: months.map((k) => inv.get(k) || 0) }];
+    barChart($("bc4"), months, bars, { labelFmt: monthLabel, height: 220, stack: hasS,
       tipExtra: (i) => { const s = sats.get(months[i]) || 0; return s ? `<div><span>BTC bought</span><span>${btcS(s)}</span></div><div><span>Ø price</span><span>${eur(inv.get(months[i]) / s)}</span></div>` : ""; } });
   }
   function btcTables(M, data) {
