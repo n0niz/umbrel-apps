@@ -336,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.2</footer>
+  <footer class="appver">Spending Trends v2.11.3</footer>
 </div>
 
 <dialog id="settings">
@@ -982,13 +982,15 @@
     try {
       const nmD = new Date(y, m + 1, 1), nmKey = key(y, m + 1), nmEnd = isoD(new Date(y, m + 2, 0));
       const sc = await once(`subcal${nmD.getFullYear()}`, () => api(`api/subcal?year=${nmD.getFullYear()}`));
-      const minBig = +(spec.bigMin ?? 100);
+      const minBig = +(spec.bigMin ?? 0);
       const big = [];
       for (const x of sc.items) for (const dt of schedule(x, `${nmKey}-01`, nmEnd))
-        if (x.amount >= minBig || !["monthly", "weekly"].includes(x.freq)) big.push({ name: x.name, dt, amount: x.amount });
+        // only what does not come every month (yearly, half-yearly, quarterly, or monthly with skips):
+        // the usual monthly costs are paid from the salary anyway
+        if (!["monthly", "weekly"].includes(x.freq) || x.skip) { if (x.amount >= minBig) big.push({ name: x.name, dt, amount: x.amount }); }
       big.sort((a, b) => b.amount - a.amount);
       const nmName = MONTHS[nmD.getMonth()];
-      bigTile = `<div class="tile"><span>To save for next month</span><b>${eur(sum(big.map((b) => b.amount)))}</b><small>due in ${nmName}</small>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>no big payments due</small>`}</div>`;
+      bigTile = `<div class="tile"><span>To save for next month</span><b>${eur(sum(big.map((b) => b.amount)))}</b><small>due in ${nmName}</small>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>nothing besides the usual monthly costs</small>`}</div>`;
     } catch { /* no Firefly subscriptions reachable: leave the tile out */ }
     const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MONTHS[m]}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
     host.innerHTML = `<div class="tiles">
@@ -1271,7 +1273,7 @@
         const cw = add(`<div class="f"></div>`);
         const ecats = uniq(D.rows.filter((r) => r[1] === "e" && r[3]).map((r) => r[3])).sort();
         cw.appendChild(msel("Category tiles", ecats, spec.kpiCats || ecats.filter((x) => /shopping|food|household|lebensmittel/i.test(x)).slice(0, 3), (v) => { spec.kpiCats = v; change(); }, "none"));
-        const bm = add(`<label class="f">“To save for” counts payments from €<input type="number" min="0" step="10" placeholder="100"></label>`).querySelector("input");
+        const bm = add(`<label class="f">“To save for next month”: only payments from €<input type="number" min="0" step="10" placeholder="0"></label>`).querySelector("input");
         bm.value = spec.bigMin ?? "";
         bm.addEventListener("change", () => { spec.bigMin = bm.value === "" ? undefined : +bm.value; change(); });
         const tg = add(`<label class="f">Cashback tag<input type="text" placeholder="Cashback"></label>`).querySelector("input");
