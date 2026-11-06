@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.19.2</footer>
+  <footer class="appver">Spending Trends v2.19.3</footer>
 </div>
 
 <dialog id="settings">
@@ -1070,7 +1070,7 @@
     }
     const grand = bv ? total.map((v, i) => v + bv[i]) : total;
     series.push({ name: bv ? "Total incl. Bitcoin" : "Total", color: C.net, width: 2.5, values: grand, area: true });
-    if (bv) { series.push({ name: "Accounts", color: "#a5d6ff", values: total, dash: true }); series.push({ name: "Bitcoin (Kraken)", color: C.btc, values: bv }); }
+    if (bv) { series.push({ name: "Accounts", color: "#a5d6ff", values: total, dash: true }); series.push({ name: "Bitcoin", color: C.btc, values: bv }); }
     const debtAcc = accs.filter((a) => a.kind === "liability");
     if (debtAcc.length && !spec.split) series.push({ name: "Debt", color: C.exp, values: labels.map((_, i) => sum(debtAcc.map((a) => a.values[i]))), dash: true });
     if (spec.split) accs.forEach((a, i) => series.push({ name: a.name, color: PAL[(i + 1) % PAL.length], values: a.values, width: 1.5, opacity: 0.85 }));
