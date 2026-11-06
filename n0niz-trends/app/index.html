@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.13.1</footer>
+  <footer class="appver">Spending Trends v2.13.2</footer>
 </div>
 
 <dialog id="settings">
@@ -966,10 +966,27 @@
     // salary month: everything booked from the salary day on (default the 20th) belongs to the NEXT month –
     // the salary at the end of October, and all you spend or pay back after it, is November
     const pd = spec.payday === "off" ? 0 : +(spec.payday || 28);
-    const y = now.getFullYear(), m = now.getMonth() + (pd && now.getDate() >= pd ? 1 : 0);
+    // the salary can come earlier than the set day (February, weekends, holidays): in each month the
+    // day of the largest income in the last 10 days moves the start forward
+    const cutoff = new Map();
+    if (pd) for (const r of D.rows) {
+      if (r[1] !== "i" || r[7] !== D.cur || r[11]) continue;
+      const d = +String(r[9] || "").slice(8, 10);
+      if (d < Math.min(pd, 20) || d > pd) continue;
+      const c = cutoff.get(r[0]);
+      if (!c || r[2] > c.amt) cutoff.set(r[0], { day: d, amt: r[2] });
+    }
+    // only a salary-sized income counts (half the typical largest monthly income), not a refund on the 22nd
+    const mx = new Map();
+    for (const r of D.rows) if (r[1] === "i" && r[7] === D.cur && !r[11]) mx.set(r[0], Math.max(mx.get(r[0]) || 0, r[2]));
+    const mxs = [...mx.values()].sort((a, b) => a - b), salRef = mxs.length ? mxs[Math.floor(mxs.length / 2)] : 0;
+    const big = (k) => { const c = cutoff.get(k); return c && c.amt >= 0.5 * salRef ? c.day : 0; };
+    const cutDay = (k) => { if (!pd) return 99; const d = big(k); return d && d < pd ? d : pd; };
+    const ym0 = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const y = now.getFullYear(), m = now.getMonth() + (pd && now.getDate() >= cutDay(ym0) ? 1 : 0);
     const cur = key(y, m), prev = key(y, m - 1), MN = MONTHS[new Date(y, m, 1).getMonth()], PMN = MONTHS[new Date(y, m - 1, 1).getMonth()];
     const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 14)}-01`, to: TODAY, kind: "both" });
-    const mk = (r) => (pd && +String(r[9] || "").slice(8, 10) >= pd ? key(+r[0].slice(0, 4), +r[0].slice(5, 7)) : r[0]);
+    const mk = (r) => (pd && +String(r[9] || "").slice(8, 10) >= cutDay(r[0]) ? key(+r[0].slice(0, 4), +r[0].slice(5, 7)) : r[0]);
     const tot = (k, t) => sum(base.filter((r) => r[1] === t && mk(r) === k).map((r) => r[2]));
     const avg = (t) => { let s = 0; for (let i = 1; i <= 12; i++) s += tot(key(y, m - i), t); return s / 12; };
     const ci = tot(cur, "i"), ce = tot(cur, "e"), pi = tot(prev, "i"), pe = tot(prev, "e"), ai = avg("i"), ae = avg("e");
