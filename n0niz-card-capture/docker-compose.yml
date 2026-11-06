@@ -14,11 +14,52 @@ services:
     image: python:3.12-alpine
     restart: on-failure
     init: true
-    command: ["python", "-u", "/app/server.py"]
+    # Umbrel's update replaces this file but not the code folder it copied at install time,
+    # so the code fetches itself: if /app is not at APP_VERSION, it is downloaded from this
+    # app store on GitHub (the release tag, else master). Without internet the old code just runs.
+    command:
+      - sh
+      - -c
+      - |
+        python - <<'PY' || true
+        import io, os, tarfile, urllib.request
+        V, APP, DST = os.environ["APP_VERSION"], os.environ["APP_DIR"], "/app"
+        try:
+            cur = open(f"{DST}/VERSION").read().strip()
+        except OSError:
+            cur = ""
+        if cur != V:
+            data = None
+            for ref in (f"refs/tags/{os.environ['APP_TAG']}{V}", "refs/heads/master"):
+                try:
+                    data = urllib.request.urlopen(f"https://codeload.github.com/n0niz/umbrel-apps/tar.gz/{ref}", timeout=60).read()
+                    break
+                except Exception as e:
+                    print("code download failed:", ref, e, flush=True)
+            if data:
+                pre, n = f"{APP}/app/", 0
+                with tarfile.open(fileobj=io.BytesIO(data)) as t:
+                    for m in t.getmembers():
+                        rel = m.name.split("/", 1)[-1]
+                        if not m.isfile() or not rel.startswith(pre) or ".." in rel:
+                            continue
+                        out = os.path.join(DST, rel[len(pre):])
+                        os.makedirs(os.path.dirname(out), exist_ok=True)
+                        with t.extractfile(m) as f, open(out, "wb") as o:
+                            o.write(f.read())
+                        n += 1
+                if n:
+                    open(f"{DST}/VERSION", "w").write(V)
+                    print(f"app code updated to {V} ({n} files)", flush=True)
+        PY
+        exec python -u /app/server.py
     environment:
       DATA_DIR: /data
+      APP_VERSION: "1.3.3"
+      APP_DIR: n0niz-card-capture
+      APP_TAG: card-capture-v
       TZ: Europe/Berlin
       FIREFLY_URL: http://firefly-iii_server_1:8080
     volumes:
-      - ${APP_DATA_DIR}/app:/app:ro
+      - ${APP_DATA_DIR}/app:/app
       - ${APP_DATA_DIR}/data:/data
