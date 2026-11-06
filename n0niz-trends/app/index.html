@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.15.0</footer>
+  <footer class="appver">Spending Trends v2.16.0</footer>
 </div>
 
 <dialog id="settings">
@@ -385,6 +385,12 @@
     <div class="sub" id="stInfo"></div>
     <div class="sub" style="margin-top:10px">The API only knows the balance. For your <b>buys, sends and sats back</b> import the account statements (Strike app → Settings → Account statements → CSV, one file per month or year). Several files at once are fine; importing one again changes nothing.</div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><label class="btn sm" style="margin:0;cursor:pointer">Import Strike statements…<input type="file" id="stCsv" accept=".csv,text/csv" multiple hidden></label><span class="sub" id="stCsvInfo"></span></div>
+    <label class="sub" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="sbOn" style="width:auto"> Book the Strike buys in Firefly</label>
+    <div id="sbWrap">
+      <div class="sub">Each buy becomes a <b>transfer</b> from the euro account below to the Strike BTC account above (euros as amount incl. the fee, BTC as foreign amount) – a purchase, not income and not spending. Sends that arrive in one of your wallets become a transfer Strike BTC → that wallet's BTC account. Sats back and other receives are not booked; the balance sync keeps the account right. Each one only once.</div>
+      <label>Buys are paid from<select id="sbFrom"></select></label>
+      <div class="sub" id="sbInfo"></div>
+    </div>
     <h3>Bitcoin wallets <span class="sub" style="font-weight:400">watch-only</span></h3>
     <div class="sub" style="margin-top:4px">Paste an <b>xpub / ypub / zpub</b>, or for multisig the wallet's <b>output descriptor</b> (Sparrow: Settings → Script Policy → Export or Show descriptor). It can only read, never spend. Addresses are looked up in your own Mempool app. A Firefly BTC account with the wallet's name (e.g. wallet “Jade” → account “Jade BTC”) is kept at the wallet's balance after every sync; only its opening balance moves.</div>
     <div id="walletRows"></div>
@@ -2374,6 +2380,25 @@
     let btcAccs = [];
     try { btcAccs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "BTC").map((a) => a.name); } catch {}
     pick($("stAcc"), btcAccs, c.strike_account, (x) => /strike/i.test(x), "– don't change Firefly –");
+    let eurAccs = [];
+    try { eurAccs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "EUR").map((a) => a.name); } catch {}
+    pick($("sbFrom"), eurAccs, c.strike_from, (x) => /^strike/i.test(x), "– choose –");
+    $("sbOn").checked = !!c.strike_book;
+    const sbShow = () => ($("sbWrap").style.display = $("sbOn").checked ? "" : "none");
+    $("sbOn").onchange = sbShow; sbShow();
+    const sbNote = [];
+    if (c.strike_booked) sbNote.push(`${c.strike_booked} Strike transactions booked so far. <a href="#" id="sbUndo">Delete them from Firefly</a>`);
+    try {
+      const top = (await loadRows()).rows.filter((r) => r[1] === "e" && /strike/i.test(r[6] || ""));
+      if (top.length) sbNote.push(`<b>Check first:</b> Firefly has ${top.length} expenses to “Strike” (${eur(sum(top.map((r) => r[2])))}) – your euro top-ups, counted as spending. If you pay the buys from that same bank account, the money leaves it twice. Cleaner: an asset account “Strike EUR”, a rule that turns the bank transfers to Strike into transfers to it, and the buys paid from “Strike EUR”.`);
+    } catch {}
+    $("sbInfo").innerHTML = sbNote.join("<br>");
+    if ($("sbUndo")) $("sbUndo").onclick = async (e) => {
+      e.preventDefault();
+      if (!confirm(`Delete the ${c.strike_booked} Strike transactions this app booked in Firefly, and stop booking?`)) return;
+      try { const r = await post("api/strike/unbook", {}); toast(`${r.deleted} deleted from Firefly`); $("sbOn").checked = false; sbShow(); $("sbInfo").textContent = ""; }
+      catch (err) { toast("Could not delete: " + err.message); }
+    };
     $("stInfo").innerHTML = c.strike_set ? `Key saved. <a href="#" id="stRemove">Remove the key</a>` : btcAccs.length ? "" : "No BTC account in Firefly yet – create one (currency Bitcoin) to keep it in sync.";
     D.stRemove = false;
     const stCsvInfo = (d) => {
@@ -2427,7 +2452,7 @@
         kraken_key: $("krKey").value, kraken_secret: $("krSecret").value, kraken_remove: $("krRemove").checked,
         mempool_url: $("mpUrl").value, savings_categories: D.savDraft || [],
         cashback_book: $("cbOn").checked, cashback_account: $("cbAcc").value, cashback_from: $("cbFrom").value, btc_balance_sync: $("cbBal").checked,
-        strike_key: $("stKey").value.trim(), strike_account: $("stAcc").value, strike_remove: D.stRemove, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
+        strike_key: $("stKey").value.trim(), strike_account: $("stAcc").value, strike_remove: D.stRemove, strike_book: $("sbOn").checked, strike_from: $("sbFrom").value, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
     } catch (er) { $("settingsMsg").textContent = er.message; return; }
     $("settings").close();
     D.p = {}; D.btcModel = null; D.rows = null;

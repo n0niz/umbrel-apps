@@ -33,6 +33,7 @@ KRAKEN_FILE = DATA_DIR / "kraken.json"
 CASHBACK_FILE = DATA_DIR / "cashback_booked.json"
 STRIKE_FILE = DATA_DIR / "strike.json"
 STRIKE_TX_FILE = DATA_DIR / "strike_tx.json"
+STRIKE_BOOKED_FILE = DATA_DIR / "strike_booked.json"
 STRIKE_API = "https://api.strike.me/v1"
 PRICES_FILE = DATA_DIR / "btc_prices.json"
 WALLETS_FILE = DATA_DIR / "wallets.json"
@@ -71,6 +72,10 @@ DEFAULTS = {
     # Strike: read-only API key; its BTC balance is shown on the Bitcoin page and can be kept in Firefly
     "strike_key": "",
     "strike_account": "",
+    # Strike statements booked in Firefly: buys as transfers euro account -> strike_account,
+    # sends to your own wallets as transfers strike_account -> that wallet's BTC account
+    "strike_book": False,
+    "strike_from": "",
 }
 
 cache = {}
@@ -134,6 +139,13 @@ def firefly_put(cfg, path, body):
                                           "Content-Type": "application/json", "User-Agent": "spending-trends/2.2"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.loads(r.read() or b"{}")
+
+
+def firefly_delete(cfg, path):
+    req = urllib.request.Request(cfg["firefly_url"].rstrip("/") + path, method="DELETE",
+                                 headers={"Authorization": f"Bearer {cfg['token']}", "Accept": "application/vnd.api+json"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.status
 
 
 def firefly_post(cfg, path, body):
@@ -389,7 +401,8 @@ def kraken_fetch_btc(cfg, st):
 
 def btc_sync(cfg):
     has_kraken = bool(cfg.get("kraken_key") and cfg.get("kraken_secret"))
-    if not (has_kraken or cfg.get("wallets") or cfg.get("strike_key")):
+    strike_book = bool(cfg.get("strike_book") and cfg.get("token") and STRIKE_TX_FILE.exists())
+    if not (has_kraken or cfg.get("wallets") or cfg.get("strike_key") or strike_book):
         return
     with sync_lock:
         if sync_state["running"]:
@@ -406,6 +419,13 @@ def btc_sync(cfg):
             wallet_part(cfg)
         except Exception as e:  # noqa: BLE001
             errors.append(f"Wallets: {e}")
+    if strike_book:
+        set_sync(step="Booking Strike in Firefly")
+        try:
+            book_strike(cfg)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"Strike → Firefly: {e}")
+    if cfg.get("wallets"):
         if cfg.get("token"):
             try:
                 wallets_to_firefly(cfg)
@@ -585,6 +605,99 @@ def book_cashback(cfg):
             for k in [k for k in cache if k[0] == "rows"]:
                 del cache[k]
     return booked
+
+
+def strike_balance_from_statements(tx):
+    return round(sum(-(r["btc"] + r["feeBtc"]) if r["type"] == "Withdrawal" else r["btc"] for r in tx), 8)
+
+
+def book_strike(cfg):
+    """Strike statements in Firefly, each one once (external id strike-<id>):
+    buys = transfer euro account -> Strike BTC (euros as amount, BTC as foreign amount, the fee is in the euros);
+    sends whose hash is a transaction of one of your wallets = transfer Strike BTC -> that wallet's BTC account.
+    Sats back, other receives and other sends are left out: the balance sync keeps the account right."""
+    acc, src = (cfg.get("strike_account") or "").strip(), (cfg.get("strike_from") or "").strip()
+    if not acc or not src:
+        raise RuntimeError("choose the Strike BTC account and the euro account the buys are paid from in Settings")
+    accs = {a["name"]: a["currency"] for a in fetch_accounts(cfg) if a.get("kind") == "asset"}
+    if accs.get(acc) != "BTC":
+        raise RuntimeError(f"“{acc}” is not a BTC asset account in Firefly")
+    if src not in accs:
+        raise RuntimeError(f"there is no asset account “{src}” in Firefly")
+    if accs[src] != "EUR":
+        raise RuntimeError(f"“{src}” is kept in {accs[src]}; choose a euro account to pay the buys from")
+    tx = strike_classify(read_json(STRIKE_TX_FILE, {}).get("rows", {}))
+    # wallet txid -> Firefly BTC account of that wallet
+    to_acc = {}
+    wstore = read_json(WALLETS_FILE, {})
+    try:
+        for w, wacc in wallet_accounts(cfg):
+            for t in ((wstore.get(w["id"]) or {}).get("result") or {}).get("txs", []):
+                if t.get("net", 0) > 0:
+                    to_acc[t["txid"]] = wacc
+    except Exception:  # noqa: BLE001 - without wallets only the buys are booked
+        pass
+    done = read_json(STRIKE_BOOKED_FILE, {})
+    booked = 0
+    for r in tx:
+        if r["ref"] in done:
+            continue
+        when = datetime.fromtimestamp(r["t"], timezone.utc)
+        ext = f"strike-{r['ref']}"
+        if r["type"] == "Buy":
+            t = {"type": "transfer", "description": "Strike: Bitcoin purchase", "source_name": src, "destination_name": acc,
+                 "amount": f"{r['eur']:.2f}", "currency_code": "EUR", "foreign_amount": f"{r['btc']:.8f}", "foreign_currency_code": "BTC",
+                 "notes": f"{r['btc']:.8f} BTC ({round(r['btc'] * 1e8)} sats) for {r['eur']:.2f} € incl. {r['feeEur']:.2f} € fee"
+                          f" · {r['eur'] / r['btc']:,.0f} €/BTC · Strike {r['ref']}" + (f" · {r['sub']}" if r["sub"] else "")}
+        elif r["type"] == "Withdrawal" and r.get("hash") in to_acc:
+            t = {"type": "transfer", "description": f"Strike → {to_acc[r['hash']]}", "source_name": acc, "destination_name": to_acc[r["hash"]],
+                 "amount": f"{r['btc']:.8f}", "currency_code": "BTC",
+                 "notes": f"{r['btc']:.8f} BTC sent on-chain, network fee {round(r['feeBtc'] * 1e8)} sats · tx {r['hash']} · Strike {r['ref']}"}
+        else:
+            continue
+        t.update(date=when.isoformat(), external_id=ext)
+        found = firefly_get(cfg, "/api/v1/search/transactions", {"query": f'external_id_is:"{ext}"', "limit": 5}).get("data", [])
+        if found:
+            done[r["ref"]] = found[0].get("id")
+            write_json(STRIKE_BOOKED_FILE, done)
+            continue
+        set_sync(step=f"Booking Strike in Firefly ({booked + 1})")
+        try:
+            res = firefly_post(cfg, "/api/v1/transactions", {"error_if_duplicate_hash": True, "apply_rules": True, "transactions": [t]})
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode(errors="replace")[:300]
+            if "uplicate" in msg:
+                done[r["ref"]] = "duplicate"
+                write_json(STRIKE_BOOKED_FILE, done)
+                continue
+            raise RuntimeError(f"Firefly {e.code}: {msg}")
+        done[r["ref"]] = (res.get("data") or {}).get("id")
+        write_json(STRIKE_BOOKED_FILE, done)
+        booked += 1
+    if booked:
+        with cache_lock:
+            cache.clear()
+    if not cfg.get("strike_key") and tx:
+        # no API key: the statements tell what is left on Strike
+        set_firefly_btc(cfg, acc, strike_balance_from_statements(tx), f"{date.today().year}-01-01")
+    return booked
+
+
+def unbook_strike(cfg):
+    done, n = read_json(STRIKE_BOOKED_FILE, {}), 0
+    for ref, jid in list(done.items()):
+        if jid and str(jid).isdigit():
+            try:
+                firefly_delete(cfg, f"/api/v1/transactions/{jid}")
+                n += 1
+            except urllib.error.HTTPError as e:
+                if e.code != 404:
+                    raise RuntimeError(f"Firefly {e.code}: {e.read().decode(errors='replace')[:200]}")
+        del done[ref]
+        write_json(STRIKE_BOOKED_FILE, done)
+    with cache_lock:
+        cache.clear()
+    return n
 
 
 def wallet_part(cfg):
@@ -1143,6 +1256,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "cashback_count": len(read_json(CASHBACK_FILE, {})),
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
                                     "strike_set": bool(cfg.get("strike_key")), "strike_account": cfg.get("strike_account", ""),
+                                    "strike_book": bool(cfg.get("strike_book")), "strike_from": cfg.get("strike_from", ""),
+                                    "strike_booked": sum(1 for v in read_json(STRIKE_BOOKED_FILE, {}).values() if str(v).isdigit()),
                                     "history_start": history_start(cfg)})
         if p == "/api/data":
             def get(cfg):
@@ -1293,6 +1408,15 @@ class Handler(BaseHTTPRequestHandler):
             with cache_lock:
                 cache.clear()
             return self._json(200, {"ok": True, "id": (res.get("data") or {}).get("id")})
+        if self.path == "/api/strike/unbook":
+            cfg = load_config()
+            try:
+                n = unbook_strike(cfg)
+            except Exception as e:  # noqa: BLE001
+                return self._json(502, {"error": str(e)})
+            cfg["strike_book"] = False
+            save_config(cfg)
+            return self._json(200, {"ok": True, "deleted": n})
         if self.path in ("/api/strike/import", "/api/strike/clear"):
             if self.path == "/api/strike/clear":
                 STRIKE_TX_FILE.unlink(missing_ok=True)
@@ -1309,6 +1433,9 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._json(400, {"error": f"{(f or {}).get('name', 'file')}: {e}"})
             write_json(STRIKE_TX_FILE, {"rows": rows, "at": int(time.time())})
+            cfg = load_config()
+            if added and cfg.get("strike_book") and cfg.get("token"):
+                start_sync(cfg)
             return self._json(200, {"ok": True, "added": added, "rows": len(rows), "tx": len(strike_classify(rows))})
         if self.path == "/api/btc/sync":
             cfg = load_config()
@@ -1388,6 +1515,12 @@ class Handler(BaseHTTPRequestHandler):
         if "strike_account" in body:
             strike_changed = strike_changed or (body.get("strike_account") or "") != cfg.get("strike_account", "")
             cfg["strike_account"] = (body.get("strike_account") or "").strip()
+        if "strike_book" in body:
+            sb, sf = bool(body.get("strike_book")), (body.get("strike_from") or "").strip()
+            if sb and not (sf and cfg.get("strike_account")):
+                return self._json(400, {"error": "To book Strike in Firefly choose the Strike BTC account and the euro account the buys are paid from."})
+            strike_changed = strike_changed or (sb and (not cfg.get("strike_book") or sf != cfg.get("strike_from")))
+            cfg["strike_book"], cfg["strike_from"] = sb, sf
         wallets_changed = False
         if isinstance(body.get("wallets"), list):
             old = {w["id"]: w for w in cfg.get("wallets", [])}
@@ -1437,7 +1570,7 @@ class Handler(BaseHTTPRequestHandler):
         save_config(cfg)
         with cache_lock:
             cache.clear()
-        if kraken_changed or wallets_changed or cashback_on or (strike_changed and cfg.get("strike_key")):
+        if kraken_changed or wallets_changed or cashback_on or (strike_changed and (cfg.get("strike_key") or cfg.get("strike_book"))):
             start_sync(cfg)
         self._json(200, {"ok": True})
 
