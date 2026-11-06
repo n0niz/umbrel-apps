@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.16.1</footer>
+  <footer class="appver">Spending Trends v2.17.0</footer>
 </div>
 
 <dialog id="settings">
@@ -1117,9 +1117,11 @@
       const o = ov[txid];
       if (ins.length && outs.length) { out.push({ ...base, type: "Between wallets", btc: sum(ins.map((p) => p.net)) / 1e8, feeBtc: Math.max(0, -net), wallet: `${outs[0].wallet} → ${ins[0].wallet}` }); continue; }
       if (net > 0) {
-        const m = wds.find((w) => !w.used && w.r.hash && w.r.hash === txid) || wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -3600 && t - w.r.t <= 3 * 86400);
+        const m = wds.find((w) => !w.used && w.r.hash && w.r.hash === txid) || wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -3600 && t - w.r.t <= 3 * 86400)
+          || wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -86400 && t - w.r.t <= 14 * 86400);
         if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: m.r.src === "strike" ? "From Strike" : "From Kraken", btc: net, feeBtc: 0 }); continue; }
-        out.push({ ...base, type: "Received", btc: net, feeBtc: 0, ignored: o === "ignore", setCost: o && typeof o === "object" ? o.cost : null });
+        const own = (D.prefs || {}).recvOwn && !(o && typeof o === "object");
+        out.push({ ...base, type: "Received", btc: net, feeBtc: 0, ignored: o === "ignore" || own, own, setCost: o && typeof o === "object" ? o.cost : null });
       } else if (net < 0) {
         const amt = -net - fee;
         const m = dps.find((d) => !d.used && d.r.hash && d.r.hash === txid) || dps.find((d) => !d.used && near(amt, d.r.btc) && d.r.t - t >= -3600 && d.r.t - t <= 3 * 86400);
@@ -1141,6 +1143,7 @@
       const o = { ...r, autoType: r.type, src: r.src || "kraken" };
       if (asR.has(r.ref) && o.btc > 0) o.type = "Reward";
       if (notR.has(r.ref) && r.type === "Reward") o.type = "Internal";
+      if (r.type === "Withdrawal" && (pref.gone || []).includes(r.ref)) { o.type = "Sent"; o.gone = true; }
       const dep = (pref.dep || {})[r.ref];
       if (o.type === "Deposit" && dep) { o.counted = true; o.setCost = typeof dep === "object" ? dep.cost : null; }
       return o;
@@ -1894,10 +1897,35 @@
     if (r.counted) return ` <button class="btn sm" data-dep="${esc(r.ref)}" data-act="cost">${r.setCost != null ? `Paid ${eur(r.setCost)} · change` : `Counted at ${eur2(r.cost || 0)} · set price`}</button> <button class="btn sm" data-dep="${esc(r.ref)}" data-act="reset">Don't count</button>`;
     return ` <button class="btn sm" data-dep="${esc(r.ref)}" data-act="market" title="Coins you bought elsewhere and sent to Kraken">Count at that day's price</button> <button class="btn sm" data-dep="${esc(r.ref)}" data-act="cost">Set price paid</button>`;
   }
+  const pref0 = () => D.prefs || {};
+  /* what "not in a tracked wallet" is made of: coins that left an exchange without arriving in a tracked wallet,
+     and wallet receipts counted as new coins (if one of those came from an exchange send, it is counted twice) */
+  function restBreakdown(M, rest) {
+    const src = (r) => (r.src === "strike" ? "Strike" : "Kraken");
+    const outs = M.tx.filter((r) => r.type === "Withdrawal" && !r.matched);
+    const ownN = M.tx.filter((r) => r.own).length;
+    const gone = M.tx.filter((r) => r.gone);
+    const recv = M.tx.filter((r) => r.type === "Received" && !r.ignored);
+    const near = (a, b) => Math.abs(a - b) <= Math.max(0.00002, b * 0.01);
+    const twin = (w) => recv.find((x) => near(x.btc, w.btc) && x.t >= w.t - 86400 && x.t - w.t <= 60 * 86400);
+    const row = (r, btn) => `<tr><td>${r.date}</td><td class="l">${btn[0]}</td><td>${btcF(r.btc)}</td><td class="l">${btn[1]}</td></tr>`;
+    const lines = [];
+    for (const r of recv) lines.push(row(r, [`Received in ${esc(r.wallet)} – counted as new coins${(() => { const w = outs.find((o) => near(r.btc, o.btc) && r.t >= o.t - 86400 && r.t - o.t <= 60 * 86400); return w ? ` · <b>probably the ${src(w)} send of ${w.date}</b>, then it is counted twice` : ""; })()}`,
+      `<button class="btn sm" data-nn="${esc(r.txid)}">Not new coins</button>`]));
+    if (!pref0().recvOwn) for (const r of outs) lines.push(row(r, [`Sent from ${src(r)}${r.sub ? " · " + esc(r.sub) : ""}, not found in a tracked wallet${twin(r) ? "" : ""}`,
+      `<button class="btn sm" data-gone="${esc(r.ref)}" data-on="0" title="Paid, sold or given away – no longer yours">Spent / sold</button>`]));
+    for (const r of gone) lines.push(row(r, [`Sent from ${src(r)} – marked spent / sold`, `<button class="btn sm" data-gone="${esc(r.ref)}" data-on="1">Still mine</button>`]));
+    return `<details style="margin-top:10px"${rest > 0.01 ? " open" : ""}><summary class="sub" style="cursor:pointer">What the ${btcS(Math.max(0, rest))} BTC “not in a tracked wallet” is made of</summary>
+      <label class="sub" style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" data-own ${pref0().recvOwn ? "checked" : ""} style="width:auto"> My wallet coins all come from my Kraken / Strike buys (e.g. via Sparrow) – wallet receipts are not new coins</label>
+      ${ownN ? `<div class="sub">${ownN} wallet receipts treated as your own coins from the exchanges. To count one as bought elsewhere, set its price under Transactions → Wallets.</div>` : ""}
+      ${pref0().recvOwn ? `<div class="sub" style="margin:6px 0">So the rest is coins that left Kraken / Strike and are not in a tracked wallet now – still in Sparrow, or paid / sold. Add your Sparrow wallet as a watch-only wallet in Settings and it shows exactly.</div>` : ""}
+      <div class="sub" style="margin:6px 0">Coins you still own somewhere else are fine here. Mark sends you paid with or sold as <b>Spent / sold</b>, and wallet receipts that came from an exchange as <b>Not new coins</b>.</div>
+      <div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">What</th><th>BTC</th><th></th></tr></thead><tbody>${lines.join("") || `<tr><td colspan="4" class="sub">Nothing left to explain.</td></tr>`}</tbody></table></div></details>`;
+  }
   function walletCell(r) {
     const short = `${r.txid.slice(0, 8)}…${r.txid.slice(-4)}`;
     let btns = "";
-    if (r.type === "Received") btns = r.ignored ? `<button class="btn sm" data-wx="${r.txid}" data-act="reset">Count it</button>`
+    if (r.type === "Received") btns = r.own ? `<span class="sub">from your exchanges</span> <button class="btn sm" data-wx="${r.txid}" data-act="cost">Bought elsewhere: set price</button>` : r.ignored ? `<button class="btn sm" data-wx="${r.txid}" data-act="reset">Count it</button>`
       : `<button class="btn sm" data-wx="${r.txid}" data-act="cost">${r.setCost != null ? `Paid ${eur(r.setCost)} · change` : "Set price paid"}</button> <button class="btn sm" data-wx="${r.txid}" data-act="ignore" title="Not new coins, e.g. from a wallet you don't track">Not new coins</button>`;
     if (r.type === "Sent") btns = r.ignored ? `<button class="btn sm" data-wx="${r.txid}" data-act="reset">Count as spent</button>`
       : `<button class="btn sm" data-wx="${r.txid}" data-act="ignore" title="Still your coins, e.g. sent to a wallet you don't track">Still mine</button>`;
@@ -1953,6 +1981,18 @@
     $("where").innerHTML = `<div class="wherebox"><div class="cbw"></div>
       <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span><div class="sub neg">${esc(p.err.slice(0, 160))}</div>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
       <div class="sub" style="margin-top:8px">${data.kraken ? (data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : "Kraken balance worked out from the ledger. ") : ""}${data.strike && data.strike.at ? `Strike balance read ${new Date(data.strike.at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : ""}${(data.wallets || []).length ? "Wallet balances come from your Mempool app. " : "Add your wallets in Settings to see exactly where the coins are. "}${rest < -1e-6 ? `Your wallets hold ${btcS(-rest)} BTC more than the tracked history explains — coins received before the history starts or ignored receipts.` : ""}</div>`;
+    if (rest > 1e-6 || (pref0().gone || []).length || pref0().recvOwn) $("where").insertAdjacentHTML("beforeend", restBreakdown(M, rest));
+    $("where").querySelectorAll("[data-own]").forEach((c) => c.addEventListener("change", () => {
+      D.prefs = D.prefs || {}; D.prefs.recvOwn = c.checked; savePrefs(); D.btcModel = null; renderBtc();
+    }));
+    $("where").querySelectorAll("[data-gone]").forEach((b) => b.addEventListener("click", () => {
+      D.prefs = D.prefs || {}; const g = new Set(D.prefs.gone || []);
+      if (b.dataset.on === "1") g.delete(b.dataset.gone); else g.add(b.dataset.gone);
+      D.prefs.gone = [...g]; savePrefs(); D.btcModel = null; renderBtc();
+    }));
+    $("where").querySelectorAll("[data-nn]").forEach((b) => b.addEventListener("click", () => {
+      D.prefs = D.prefs || {}; D.prefs.wtx = D.prefs.wtx || {}; D.prefs.wtx[b.dataset.nn] = "ignore"; savePrefs(); D.btcModel = null; renderBtc();
+    }));
     donut($("where").querySelector(".cbw"), places.filter((p) => p.btc > 1e-8).map((p) => ({ name: p.name, value: p.btc * M.spot, color: p.color })), { label: "All coins", noLegend: true });
     // by year
     const ys = new Map();

@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.16.1"
+version: "2.17.0"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Strike in Firefly: buys are booked as transfers from a euro account to your
-  Strike BTC account (euros incl. fee, BTC as foreign amount), sends to your own
-  wallets as transfers to that wallet's BTC account. Each one once, and undoable.
+  Where the coins sit explains "not in a tracked wallet": exchange sends that
+  never reached a tracked wallet (mark spent / sold) and wallet receipts counted
+  as new coins. New switch for coins that reach your wallets via e.g. Sparrow.
 dependencies:
   - firefly-iii
 path: ""
