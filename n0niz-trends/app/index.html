@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.14.0</footer>
+  <footer class="appver">Spending Trends v2.15.0</footer>
 </div>
 
 <dialog id="settings">
@@ -383,6 +383,8 @@
     <label>API key<input type="password" id="stKey" autocomplete="off"></label>
     <label>Keep this Firefly account at your Strike balance<select id="stAcc"></select></label>
     <div class="sub" id="stInfo"></div>
+    <div class="sub" style="margin-top:10px">The API only knows the balance. For your <b>buys, sends and sats back</b> import the account statements (Strike app → Settings → Account statements → CSV, one file per month or year). Several files at once are fine; importing one again changes nothing.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><label class="btn sm" style="margin:0;cursor:pointer">Import Strike statements…<input type="file" id="stCsv" accept=".csv,text/csv" multiple hidden></label><span class="sub" id="stCsvInfo"></span></div>
     <h3>Bitcoin wallets <span class="sub" style="font-weight:400">watch-only</span></h3>
     <div class="sub" style="margin-top:4px">Paste an <b>xpub / ypub / zpub</b>, or for multisig the wallet's <b>output descriptor</b> (Sparrow: Settings → Script Policy → Export or Show descriptor). It can only read, never spend. Addresses are looked up in your own Mempool app. A Firefly BTC account with the wallet's name (e.g. wallet “Jade” → account “Jade BTC”) is kept at the wallet's balance after every sync; only its opening balance moves.</div>
     <div id="walletRows"></div>
@@ -442,6 +444,7 @@
     if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
     return d;
   }
+  const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const put = (path, body) => api(path, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
   /* ============================================================ data */
@@ -1064,7 +1067,7 @@
     host.querySelector(".legend").innerHTML = legendHtml(series);
     if (mode !== "full") return;
     const list = accs.map((a) => ({ name: a.name + (a.kind === "liability" ? " (debt)" : ""), a: a.values[0], b: a.values[a.values.length - 1] }));
-    if (bv) list.push({ name: "Bitcoin (Kraken buys)", a: bv[0], b: bv[bv.length - 1] });
+    if (bv) list.push({ name: "Bitcoin", a: bv[0], b: bv[bv.length - 1] });
     host.querySelector(".tbl").innerHTML = `<div class="tablewrap"><table><thead><tr><th>Account</th><th>${dayLabel(labels[0], true)}</th><th>Now</th><th>Change</th></tr></thead><tbody>${list.sort((x, y) => y.b - x.b).map((r) =>
       `<tr><td>${esc(r.name)}</td><td>${eur2(r.a)}</td><td>${eur2(r.b)}</td><td class="${r.b - r.a >= 0 ? "pos" : "neg"}">${eur2(r.b - r.a)}</td></tr>`).join("")}<tr class="total"><td>Total</td><td>${eur2(first)}</td><td>${eur2(last)}</td><td>${eur2(last - first)}</td></tr></tbody></table></div>
       <div class="sub" style="margin-top:6px">Balances at each month end, read from Firefly. ${nw.accounts.length - accs.length ? `${nw.accounts.length - accs.length} account(s) left out (not in net worth, other currency, or filtered).` : ""}</div>`;
@@ -1075,7 +1078,7 @@
     let accs = res.accounts.filter((a) => a.active && a.currency === D.cur);
     if (spec.accounts && spec.accounts.length) accs = accs.filter((a) => spec.accounts.includes(a.name));
     const items = accs.map((a, i) => ({ name: a.name, value: a.balance, color: PAL[i % PAL.length], liab: a.kind === "liability" }));
-    if (spec.btc) { const M = await btcModelSafe(); if (M && M.ok) items.push({ name: "Bitcoin (Kraken buys)", value: M.value, color: C.btc }); }
+    if (spec.btc) { const M = await btcModelSafe(); if (M && M.ok) items.push({ name: "Bitcoin", value: M.value, color: C.btc }); }
     items.sort((a, b) => b.value - a.value);
     items.forEach((it, i) => { if (it.color !== C.btc) it.color = PAL[i % PAL.length]; });
     const total = sum(items.map((i) => i.value));
@@ -1108,13 +1111,13 @@
       const o = ov[txid];
       if (ins.length && outs.length) { out.push({ ...base, type: "Between wallets", btc: sum(ins.map((p) => p.net)) / 1e8, feeBtc: Math.max(0, -net), wallet: `${outs[0].wallet} → ${ins[0].wallet}` }); continue; }
       if (net > 0) {
-        const m = wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -3600 && t - w.r.t <= 3 * 86400);
-        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: "From Kraken", btc: net, feeBtc: 0 }); continue; }
+        const m = wds.find((w) => !w.used && w.r.hash && w.r.hash === txid) || wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -3600 && t - w.r.t <= 3 * 86400);
+        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: m.r.src === "strike" ? "From Strike" : "From Kraken", btc: net, feeBtc: 0 }); continue; }
         out.push({ ...base, type: "Received", btc: net, feeBtc: 0, ignored: o === "ignore", setCost: o && typeof o === "object" ? o.cost : null });
       } else if (net < 0) {
         const amt = -net - fee;
-        const m = dps.find((d) => !d.used && near(amt, d.r.btc) && d.r.t - t >= -3600 && d.r.t - t <= 3 * 86400);
-        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: "To Kraken", btc: amt, feeBtc: fee }); continue; }
+        const m = dps.find((d) => !d.used && d.r.hash && d.r.hash === txid) || dps.find((d) => !d.used && near(amt, d.r.btc) && d.r.t - t >= -3600 && d.r.t - t <= 3 * 86400);
+        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: m.r.src === "strike" ? "To Strike" : "To Kraken", btc: amt, feeBtc: fee }); continue; }
         out.push({ ...base, type: "Sent", btc: amt, feeBtc: fee, ignored: o === "ignore" });
       }
     }
@@ -1128,8 +1131,8 @@
     const dayOf = (sec) => Math.floor((sec * 1000 - t0) / DAY);
     const pxAt = (d) => (px.length ? px[Math.max(0, Math.min(px.length - 1, d))] : spot);
     const pref = D.prefs || {}, asR = new Set(pref.asReward || []), notR = new Set(pref.notReward || []);
-    const kr = data.tx.map((r) => {
-      const o = { ...r, autoType: r.type, src: "kraken" };
+    const kr = (data.tx || []).concat(data.strike_tx || []).sort((a, b) => a.t - b.t).map((r) => {
+      const o = { ...r, autoType: r.type, src: r.src || "kraken" };
       if (asR.has(r.ref) && o.btc > 0) o.type = "Reward";
       if (notR.has(r.ref) && r.type === "Reward") o.type = "Internal";
       const dep = (pref.dep || {})[r.ref];
@@ -1160,7 +1163,7 @@
       } else if (r.type === "Withdrawal") {
         feeBtc += r.feeBtc || 0; qty -= r.feeBtc || 0; fifoTake(lots, r.feeBtc || 0);
       }
-      if (["Sent", "To Kraken", "Between wallets"].includes(r.type) && r.feeBtc) {
+      if (["Sent", "To Kraken", "To Strike", "Between wallets"].includes(r.type) && r.feeBtc) {
         feeBtc += r.feeBtc; qty -= r.feeBtc; fifoTake(lots, r.feeBtc);
       }
       if (qty < 0) qty = 0;
@@ -1178,6 +1181,8 @@
     const nowS = Date.now() / 1000, YEAR = 366 * 86400;
     const free = sum(lots.filter((l) => l.t + YEAR <= nowS).map((l) => l.qty));
     const locked = lots.filter((l) => l.t + YEAR > nowS).map((l) => ({ ...l, unlock: l.t + YEAR }));
+    const st = data.strike_tx || [];
+    const onStrike = st.length ? Math.max(0, sum(st.map((r) => r.type === "Withdrawal" ? -(r.btc + r.feeBtc) : r.btc))) : null;
     const onKraken = !data.kraken ? 0 : data.balance_btc != null ? data.balance_btc : data.ledger_btc;
     const xirr = (() => {
       if (!flows.length || value <= 0) return null;
@@ -1192,7 +1197,7 @@
     const sorted = [...buyAmts].sort((a, b) => a - b);
     return {
       ok: tx.length > 0, tx, qty, cost, realised, gross, feeEur, feeBtc, proceeds, soldQty, buys, sells, rewardBtc, rewardVal,
-      value, avg, spot, free, locked, onKraken, xirr, warn, dates, dq, dc, dv, dp, davg, pxAt,
+      value, avg, spot, free, locked, onKraken, onStrike, xirr, warn, dates, dq, dc, dv, dp, davg, pxAt,
       median: sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0,
       valueOn(d) { const i = Math.floor((Date.parse(d + "T00:00:00Z") - t0) / DAY); if (!dates.length || i < day0) return 0; const j = Math.min(dates.length - 1, i - day0); return dq[j] * (i >= n - 1 ? spot : px[Math.min(n - 1, i)]); },
     };
@@ -1837,7 +1842,7 @@
     const tile = (label, value, small, cls = "", title = "") => `<div class="tile" title="${esc(title)}"><span>${label}</span><b class="${cls}">${value}</b><small>${small}</small></div>`;
     v.innerHTML = `
       <div class="btchead">
-        <div><div class="big">${btcF(M.qty)} <small>BTC</small></div><div class="sub">${data.kraken ? "bought on Kraken" : "in your wallets"}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(M.qty * 1e8)} sats</div></div>
+        <div><div class="big">${btcF(M.qty)} <small>BTC</small></div><div class="sub">${data.kraken && (data.strike_tx || []).length ? "bought on Kraken and Strike" : data.kraken ? "bought on Kraken" : (data.strike_tx || []).length ? "bought on Strike" : "in your wallets"}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(M.qty * 1e8)} sats</div></div>
         <div class="spot"><label class="sub" for="spotIn">BTC price €</label><input id="spotIn" type="text" inputmode="decimal" value="${Math.round(M.spot)}"><button class="btn sm" id="spotLive" title="Back to the live Kraken price">Live</button></div>
       </div>
       <div class="sub" id="btcSync" style="margin-bottom:12px">${syncText(data)}</div>
@@ -1864,7 +1869,7 @@
           <div class="bar2"><i style="width:${M.qty ? (M.free / M.qty) * 100 : 0}%;background:${C.inc}"></i><i style="width:${M.qty ? (1 - M.free / M.qty) * 100 : 0}%;background:${C.btc};opacity:.6"></i></div>
           <div class="sumline">${stat("Tax-free", `${btcS(M.free)} BTC`, "pos")}${stat("Still within a year", `${btcS(M.qty - M.free)} BTC`)}${nextUnlock ? stat("Next free on", dayLabel(isoUTC(nextUnlock.unlock), true)) : ""}</div>
           <div id="unlocks"></div>
-          <div class="sub" style="margin-top:8px">Coins sold in Germany after holding them more than a year are tax-free (§23 EStG). This counts your Kraken buys oldest-first. Not tax advice.</div></div>
+          <div class="sub" style="margin-top:8px">Coins sold in Germany after holding them more than a year are tax-free (§23 EStG). This counts your buys oldest-first. Not tax advice.</div></div>
         <div class="card"><h2>Where the coins sit</h2><div id="where"></div></div>
         <div class="card full"><h2>By year</h2><div class="tablewrap" id="byYear"></div></div>
         <div class="card full"><h2>By month <span class="hint">euros put in per month</span></h2><div id="bc4"></div></div>
@@ -1928,11 +1933,13 @@
     const onK = Math.max(0, M.onKraken || 0);
     const places = [];
     if (data.kraken) places.push({ name: "Kraken", btc: onK, color: C.btc });
-    if (data.strike) places.push({ name: data.strike.at ? "Strike" : "Strike (not read yet – press Sync)", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
+    if (data.strike && data.strike.at) places.push({ name: "Strike", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
+    else if (M.onStrike != null) places.push({ name: "Strike (from statements)", btc: M.onStrike, color: "#c084fc" });
+    else if (data.strike) places.push({ name: "Strike (not read yet – press Sync)", btc: 0, color: "#c084fc", err: data.strike.error });
     (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: PAL[(i + 2) % PAL.length], err: w.error }));
     places.sort((a, b) => b.btc - a.btc);                    // largest holding first; the untracked rest stays last
     const rest = M.qty - sum(places.map((p) => p.btc));
-    if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : "Moved off Kraken", btc: rest, color: OTHER });
+    if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : (data.strike_tx || []).length || data.strike ? "Moved off the exchanges" : "Moved off Kraken", btc: rest, color: OTHER });
     const tot = Math.max(M.qty, sum(places.map((p) => p.btc)));
     $("where").innerHTML = `<div class="wherebox"><div class="cbw"></div>
       <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span><div class="sub neg">${esc(p.err.slice(0, 160))}</div>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
@@ -1953,11 +1960,11 @@
     $("byYear").innerHTML = `<table><thead><tr><th>Year</th><th>Buys</th><th>Put in</th><th>BTC bought</th><th>Ø price</th><th>Fees</th><th>Sold</th><th>Rewards</th><th>Worth today</th></tr></thead><tbody>${yrs.map(([y, o]) =>
       `<tr><td>${y}</td><td>${o.buys}</td><td>${eur(o.eur)}</td><td>${btcS(o.btc)}</td><td>${o.btc ? eur(o.eur / o.btc) : "–"}</td><td>${eur(o.fee)}</td><td>${o.sold ? `${btcS(o.sold)} <span class="sub">${eur(o.soldEur)}</span>` : "–"}</td><td>${o.reward ? `${intF(o.reward * 1e8)} sats` : "–"}</td><td class="${o.btc * M.spot >= o.eur ? "pos" : "neg"}">${eur(o.btc * M.spot)}</td></tr>`).join("")}</tbody></table>`;
     // transactions
-    const groups = { Buy: ["Buy"], Sell: ["Sell"], Reward: ["Reward"], Transfers: ["Deposit", "Withdrawal", "Internal"], Wallets: ["Received", "Sent", "From Kraken", "To Kraken", "Between wallets"], Other: ["Convert in", "Convert out", "Unmatched"] };
+    const groups = { Buy: ["Buy"], Sell: ["Sell"], Reward: ["Reward"], Transfers: ["Deposit", "Withdrawal", "Internal"], Wallets: ["Received", "Sent", "From Kraken", "To Kraken", "From Strike", "To Strike", "Between wallets"], Other: ["Convert in", "Convert out", "Unmatched"] };
     const list = M.tx.filter((r) => B.filter === "All" || (groups[B.filter] || []).includes(r.type)).slice().reverse();
     const shown = B.showAll ? list : list.slice(0, 60);
     $("btcTx").innerHTML = list.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">Type</th><th>BTC</th><th>Euro</th><th>Price</th><th>Fee</th><th class="l">Source</th></tr></thead><tbody>${shown.map((r) =>
-      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}${r.ignored ? " ign" : ""}">${r.type}</span>${r.src === "wallet" && !r.conf ? ` <span class="sub">unconfirmed</span>` : ""}</td><td>${["Sell", "Withdrawal", "Convert out", "Sent", "To Kraken"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : r.value ? `<span class="sub">${eur2(r.value)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${r.src === "wallet" ? walletCell(r) : `Kraken · ${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${r.matched ? ` · ${r.type === "Withdrawal" ? "to" : "from"} ${esc(r.matched)}` : ""}`}${r.src === "wallet" ? "" : ""}${r.type === "Deposit" && !r.matched ? depButtons(r) : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 && !r.counted ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
+      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}${r.ignored ? " ign" : ""}">${r.type}</span>${r.src === "wallet" && !r.conf ? ` <span class="sub">unconfirmed</span>` : ""}</td><td>${["Sell", "Withdrawal", "Convert out", "Sent", "To Kraken", "To Strike"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : r.value ? `<span class="sub">${eur2(r.value)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${r.src === "wallet" ? walletCell(r) : `${r.src === "strike" ? "Strike" : "Kraken"} · ${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${r.matched ? ` · ${r.type === "Withdrawal" ? "to" : "from"} ${esc(r.matched)}` : ""}`}${r.src === "wallet" ? "" : ""}${r.type === "Deposit" && !r.matched ? depButtons(r) : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 && !r.counted ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
     const more = $("btcMore"); if (more) more.addEventListener("click", () => { B.showAll = true; btcTables(M, data); });
     $("btcTx").querySelectorAll("[data-dep]").forEach((b) => b.addEventListener("click", () => {
       const ref = b.dataset.dep, act = b.dataset.act;
@@ -2369,6 +2376,23 @@
     pick($("stAcc"), btcAccs, c.strike_account, (x) => /strike/i.test(x), "– don't change Firefly –");
     $("stInfo").innerHTML = c.strike_set ? `Key saved. <a href="#" id="stRemove">Remove the key</a>` : btcAccs.length ? "" : "No BTC account in Firefly yet – create one (currency Bitcoin) to keep it in sync.";
     D.stRemove = false;
+    const stCsvInfo = (d) => {
+      const si = d && d.strike_import;
+      $("stCsvInfo").innerHTML = si && si.rows ? `${(d.strike_tx || []).length} Strike transactions imported (${isoUTC(si.first).slice(0, 7)} – ${isoUTC(si.last).slice(0, 7)}). <a href="#" id="stCsvClear">Remove</a>` : "No statements imported yet.";
+      if ($("stCsvClear")) $("stCsvClear").onclick = async (e) => { e.preventDefault(); if (!confirm("Remove all imported Strike transactions?")) return; await post("api/strike/clear", {}); delete D.p.btc; D.btcModel = null; stCsvInfo(await loadBtc()); };
+    };
+    loadBtc().then(stCsvInfo).catch(() => {});
+    $("stCsv").onchange = async (e) => {
+      const fs = [...e.target.files]; e.target.value = "";
+      if (!fs.length) return;
+      $("stCsvInfo").textContent = "Importing…";
+      try {
+        const r = await post("api/strike/import", { files: await Promise.all(fs.map(async (f) => ({ name: f.name, text: await f.text() }))) });
+        delete D.p.btc; D.btcModel = null;
+        toast(`${r.added} new rows from ${fs.length} file${fs.length > 1 ? "s" : ""}`);
+        stCsvInfo(await loadBtc());
+      } catch (err) { $("stCsvInfo").textContent = "Import failed: " + err.message; }
+    };
     if ($("stRemove")) $("stRemove").onclick = (e) => { e.preventDefault(); D.stRemove = true; $("stInfo").textContent = "The key will be removed when you press Save."; };
     $("cbBal").checked = c.btc_balance_sync !== false;
     $("cbInfo").textContent = c.cashback_count ? `${c.cashback_count} cashback transfers booked so far.` : c.kraken_set ? "" : "Needs the Kraken key above.";

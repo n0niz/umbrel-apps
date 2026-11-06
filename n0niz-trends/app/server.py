@@ -32,6 +32,7 @@ CONFIG_FILE = DATA_DIR / "config.json"
 KRAKEN_FILE = DATA_DIR / "kraken.json"
 CASHBACK_FILE = DATA_DIR / "cashback_booked.json"
 STRIKE_FILE = DATA_DIR / "strike.json"
+STRIKE_TX_FILE = DATA_DIR / "strike_tx.json"
 STRIKE_API = "https://api.strike.me/v1"
 PRICES_FILE = DATA_DIR / "btc_prices.json"
 WALLETS_FILE = DATA_DIR / "wallets.json"
@@ -943,6 +944,74 @@ def classify(st):
     return tx, onk
 
 
+# ------------------------------------------------------- strike csv ---
+STRIKE_REWARD = re.compile(r"satsback|thndr|slices|cashback|reward|bonus", re.I)
+
+
+def _num(v):
+    try:
+        return float(str(v).replace(",", "")) if str(v).strip() else 0.0
+    except ValueError:
+        return 0.0
+
+
+def strike_parse(text):
+    """Rows of a Strike account statement CSV -> {key: row}. The key makes re-imports harmless."""
+    import csv
+    import io
+    out = {}
+    rd = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    if not rd.fieldnames or "Transaction ID" not in rd.fieldnames or "Amount BTC" not in rd.fieldnames:
+        raise ValueError("this does not look like a Strike account statement (CSV)")
+    for r in rd:
+        tid = (r.get("Transaction ID") or "").strip()
+        if not tid:
+            continue
+        try:
+            t = int(datetime.strptime(r["Time (UTC)"].strip(), "%b %d %Y %H:%M:%S").replace(tzinfo=timezone.utc).timestamp())
+        except (ValueError, KeyError):
+            continue
+        row = {"id": tid, "t": t, "status": (r.get("Status") or "").strip(), "kind": (r.get("Transaction Type") or "").strip(),
+               "eur": _num(r.get("Amount EUR")), "feeEur": _num(r.get("Fee EUR")), "btc": _num(r.get("Amount BTC")),
+               "feeBtc": _num(r.get("Fee BTC")), "desc": (r.get("Description") or "").strip(), "rate": _num(r.get("Exchange Rate")),
+               "hash": (r.get("Transaction Hash") or "").strip()}
+        out[f"{tid}|{t}|{row['kind']}|{row['desc']}"] = row
+    return out
+
+
+def strike_classify(rows):
+    """Strike statement rows -> transactions in the same shape as classify()."""
+    groups = {}
+    for r in rows.values():
+        if r["status"] != "Completed" or r["kind"] not in ("Purchase", "Receive", "Send"):
+            continue  # EUR deposits/withdrawals move euros only; reversed target orders never happened
+        groups.setdefault(r["id"], []).append(r)
+    tx = []
+    for tid, g in groups.items():
+        g.sort(key=lambda r: r["t"])
+        kind, btc = g[0]["kind"], sum(r["btc"] for r in g)
+        desc = " / ".join(dict.fromkeys(r["desc"] for r in g if r["desc"]))
+        row = {"t": max(r["t"] for r in g if r["btc"]) if any(r["btc"] for r in g) else g[0]["t"], "ref": tid, "src": "strike",
+               "ktype": kind.lower(), "sub": desc, "btc": 0.0, "eur": 0.0, "feeEur": 0.0, "feeBtc": 0.0, "other": "",
+               "hash": next((r["hash"] for r in g if r["hash"]), "")}
+        if kind == "Purchase":
+            if btc <= 0:
+                continue
+            row.update(type="Buy", btc=btc, eur=-sum(r["eur"] for r in g), feeEur=sum(r["feeEur"] for r in g))
+        elif kind == "Receive":
+            row.update(type="Reward" if STRIKE_REWARD.search(desc) else "Deposit", btc=btc)
+        else:
+            fee = sum(r["feeBtc"] for r in g)  # Strike's "Amount BTC" already includes the network fee
+            row.update(type="Withdrawal", btc=-btc - fee, feeBtc=fee)
+        row["btc"] = round(row["btc"], 8)
+        row["eur"] = round(row["eur"], 2)
+        row["feeEur"] = round(row["feeEur"], 2)
+        row["feeBtc"] = round(row["feeBtc"], 8)
+        tx.append(row)
+    tx.sort(key=lambda r: r["t"])
+    return tx
+
+
 def price_series(tx, first_t=None):
     pr = read_json(PRICES_FILE, {"days": {}})
     anchors = dict(pr.get("days", {}))
@@ -981,6 +1050,8 @@ def price_series(tx, first_t=None):
 def btc_payload(cfg):
     st = read_json(KRAKEN_FILE, {})
     tx, onk = classify(st)
+    stx_store = read_json(STRIKE_TX_FILE, {})
+    stx = strike_classify(stx_store.get("rows", {}))
     bal = st.get("balance") or {}
     with sync_lock:
         sync = dict(sync_state)
@@ -994,16 +1065,19 @@ def btc_payload(cfg):
                         "error": rec.get("error", "")})
     wts = [t["t"] for w in wallets for t in w["txs"]]
     return {
-        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets) or bool(cfg.get("strike_key")),
+        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets) or bool(cfg.get("strike_key")) or bool(stx),
         "strike": ({k: v for k, v in read_json(STRIKE_FILE, {}).items() if k != "raw"} or {"btc": None}) if cfg.get("strike_key") else None,
         "kraken": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")),
         "wallets": wallets,
         "tx": tx,
+        "strike_tx": stx,
+        "strike_import": {"rows": len(stx_store.get("rows", {})), "at": stx_store.get("at", 0),
+                          "first": stx[0]["t"] if stx else 0, "last": stx[-1]["t"] if stx else 0},
         "ledger_btc": round(onk, 8),
         "balance_btc": round(sum(float(v) for k, v in bal.items() if is_btc(k)), 8) if bal else None,
         "balance_at": st.get("balance_at", 0),
         "balance_error": st.get("balance_error", ""),
-        "prices": price_series(tx, min(wts) if wts else None),
+        "prices": price_series(sorted(tx + stx, key=lambda r: r["t"]), min(wts) if wts else None),
         "spot": spot_price(),
         "sync": sync,
     }
@@ -1219,6 +1293,23 @@ class Handler(BaseHTTPRequestHandler):
             with cache_lock:
                 cache.clear()
             return self._json(200, {"ok": True, "id": (res.get("data") or {}).get("id")})
+        if self.path in ("/api/strike/import", "/api/strike/clear"):
+            if self.path == "/api/strike/clear":
+                STRIKE_TX_FILE.unlink(missing_ok=True)
+                return self._json(200, {"ok": True})
+            b = self._body() or {}
+            store = read_json(STRIKE_TX_FILE, {})
+            rows = store.get("rows", {})
+            added = 0
+            try:
+                for f in (b.get("files") or [])[:60]:
+                    for k, v in strike_parse(str(f.get("text", ""))).items():
+                        added += k not in rows
+                        rows[k] = v
+            except ValueError as e:
+                return self._json(400, {"error": f"{(f or {}).get('name', 'file')}: {e}"})
+            write_json(STRIKE_TX_FILE, {"rows": rows, "at": int(time.time())})
+            return self._json(200, {"ok": True, "added": added, "rows": len(rows), "tx": len(strike_classify(rows))})
         if self.path == "/api/btc/sync":
             cfg = load_config()
             if not cfg.get("kraken_key"):
