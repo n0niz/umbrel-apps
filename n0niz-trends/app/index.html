@@ -336,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.1</footer>
+  <footer class="appver">Spending Trends v2.11.2</footer>
 </div>
 
 <dialog id="settings">
@@ -988,7 +988,7 @@
         if (x.amount >= minBig || !["monthly", "weekly"].includes(x.freq)) big.push({ name: x.name, dt, amount: x.amount });
       big.sort((a, b) => b.amount - a.amount);
       const nmName = MONTHS[nmD.getMonth()];
-      bigTile = `<div class="tile"><span>To save for ${nmName}</span><b>${eur(sum(big.map((b) => b.amount)))}</b>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>no big payments due</small>`}</div>`;
+      bigTile = `<div class="tile"><span>To save for next month</span><b>${eur(sum(big.map((b) => b.amount)))}</b><small>due in ${nmName}</small>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>no big payments due</small>`}</div>`;
     } catch { /* no Firefly subscriptions reachable: leave the tile out */ }
     const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MONTHS[m]}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
     host.innerHTML = `<div class="tiles">
