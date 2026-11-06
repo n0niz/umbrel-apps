@@ -177,6 +177,16 @@ def fetch_rows(cfg, start, end):
                         continue
                     cur = t.get("currency_code") or "?"
                     amt = abs(float(t.get("amount") or 0))
+                    # the bitcoin in it: a BTC booking's own amount, or "(12345 sats)" / "0.0001 BTC" in its note
+                    btc = amt if cur == "BTC" else 0.0
+                    if not btc:
+                        nt = t.get("notes") or ""
+                        mm = re.search(r"(\d[\d.,]*)\s*sats\b", nt, re.I)
+                        if mm:
+                            btc = float(re.sub(r"[.,]", "", mm.group(1))) / 1e8
+                        else:
+                            mm = re.search(r"(\d+[.,]\d+)\s*BTC\b", nt)
+                            btc = float(mm.group(1).replace(",", ".")) if mm else 0.0
                     # booked in another currency (e.g. BTC cashback) with its euro value as foreign amount:
                     # count it in euros
                     if cur != "EUR" and t.get("foreign_currency_code") == "EUR" and t.get("foreign_amount"):
@@ -197,6 +207,7 @@ def fetch_rows(cfg, start, end):
                         (t.get("description") or "")[:120],
                         1 if ((t.get("destination_type") if out else t.get("source_type")) or "").lower() in LIAB_TYPES else 0,
                         t.get("bill_name") or t.get("subscription_name") or "",
+                        round(btc, 8),
                     ])
             if not more_pages(res, page):
                 break
@@ -962,13 +973,13 @@ class Handler(BaseHTTPRequestHandler):
                 with cache_lock:
                     hit = cache.get(key)
                 if hit and time.time() - hit["fetched"] < CACHE_SECONDS and "refresh" not in q:
-                    return hit
+                    return {**hit, "btc_eur": spot_price()}
                 data = fetch_rows(cfg, start, end)
                 with cache_lock:
                     for k in [k for k in cache if k[0] == "rows"]:
                         del cache[k]
                     cache[key] = data
-                return data
+                return {**data, "btc_eur": spot_price()}
             return self._firefly(get)
         if p == "/api/accounts":
             return self._firefly(lambda cfg: {"accounts": fetch_accounts(cfg)})

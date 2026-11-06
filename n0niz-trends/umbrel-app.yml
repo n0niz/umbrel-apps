@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.10.0"
+version: "2.10.1"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Saved reports can be dragged into your own order. Income vs expenses can split
-  each month by tags, payees, accounts, categories or budgets: stacked bars with
-  the share per month and a table with amount and % per month.
+  Income vs expenses shows what the bitcoin in your income (e.g. Krak cashback
+  in sats) is worth at today's price: a stat with the change, a line in the
+  chart and a column in the table.
 dependencies:
   - firefly-iii
 path: ""

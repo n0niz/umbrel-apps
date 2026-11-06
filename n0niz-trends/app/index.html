@@ -336,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.10.0</footer>
+  <footer class="appver">Spending Trends v2.10.1</footer>
 </div>
 
 <dialog id="settings">
@@ -436,7 +436,7 @@
   const loadCfg = () => once("cfg", async () => (D.cfg = await api("api/config")));
   const loadRows = () => once("rows", async () => {
     const d = await api("api/data" + (fresh("rows") ? "?refresh=1" : ""));
-    D.rows = d.rows;
+    D.rows = d.rows; D.btcEur = d.btc_eur || 0;
     const curs = Object.entries(d.currencies).sort((a, b) => b[1] - a[1]);
     D.cur = curs.length ? curs[0][0] : "EUR";
     D.otherCur = curs.slice(1);
@@ -836,21 +836,30 @@
     }
     const N = months.map((_, i) => I[i] - E[i]), ti = sum(I), te = sum(E), ts = sum(Sv);
     const kind = spec.kind || "both";
+    // bookings that carry bitcoin (cashback in sats): what they are worth at today's price
+    // only income: a card payment's note also names the sats it earned, that is not money received
+    const btcOf = (r) => +r[13] || 0;
+    const btcRows = D.btcEur && kind !== "e" ? rows.filter((r) => r[1] === "i" && btcOf(r) > 0) : [];
+    const btcTot = sum(btcRows.map(btcOf)), btcThen = sum(btcRows.map((r) => r[2])), btcNow = btcTot * D.btcEur;
+    const W = months.map(() => 0);
+    for (const r of btcRows) { const i = pos.get(r[0]); if (i != null) W[i] += btcOf(r) * D.btcEur; }
+    const worthStat = btcRows.length ? stat(`Its ${intF(Math.round(btcTot * 1e8))} sats today`, `${eur(btcNow)} <span class="sub ${btcNow >= btcThen ? "pos" : "neg"}">${btcThen ? `${btcNow >= btcThen ? "+" : ""}${Math.round((btcNow / btcThen - 1) * 100)}%` : ""}</span>`) : "";
     if (spec.split && kind !== "both") return rSplit(host, spec, mode, months, rows.filter((r) => r[1] === kind), kind);
-    host.innerHTML = `<div class="sumline">${kind !== "e" ? stat("Income", eur(ti), "pos") : ""}${kind !== "i" ? stat("Expenses", eur(te), "neg") : ""}${kind === "both" ? stat("Left over", eur(ti - te), ti - te >= 0 ? "pos" : "neg") : ""}${ts ? stat(`of which saved (${[...savCats()].join(", ")})`, eur(ts)) : ""}${kind === "both" && ti > 0 ? stat("Savings rate", pct((ti - te) / ti, 0)) : ""}${months.length > 1 ? stat(kind === "i" ? "Ø income / month" : "Ø spent / month", eur((kind === "i" ? ti : te) / months.length)) : ""}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
+    host.innerHTML = `<div class="sumline">${kind !== "e" ? stat("Income", eur(ti), "pos") : ""}${kind !== "i" ? stat("Expenses", eur(te), "neg") : ""}${kind === "both" ? stat("Left over", eur(ti - te), ti - te >= 0 ? "pos" : "neg") : ""}${ts ? stat(`of which saved (${[...savCats()].join(", ")})`, eur(ts)) : ""}${kind === "both" && ti > 0 ? stat("Savings rate", pct((ti - te) / ti, 0)) : ""}${months.length > 1 ? stat(kind === "i" ? "Ø income / month" : "Ø spent / month", eur((kind === "i" ? ti : te) / months.length)) : ""}${worthStat}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
     const groups = [];
     if (kind !== "e") groups.push({ name: "Income", color: C.inc, values: I });
     if (kind !== "i") groups.push({ name: "Expenses", color: C.exp, values: E });
     if (kind === "both" && ts) groups.push({ name: "Saved", color: C.btc, values: Sv });
-    const line = kind === "both" ? { name: "Left over", color: C.net, values: N } : null;
+    const line = kind === "both" ? { name: "Left over", color: C.net, values: N } : btcRows.length ? { name: "Worth today (BTC)", color: C.btc, values: W } : null;
     barChart(host.querySelector(".cb"), months, groups, { line, labelFmt: monthLabel, height: mode === "full" ? 300 : 220,
       onClick: mode === "full" ? (i) => drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)) : null });
     host.querySelector(".legend").innerHTML = legendHtml(groups.concat(line ? [line] : []));
     if (mode !== "full") return;
-    let html = `<div class="tablewrap"><table><thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Left over</th>${ts ? "<th>of which saved</th>" : ""}<th>Savings rate</th></tr></thead><tbody>`;
-    for (let i = months.length - 1; i >= 0; i--) html += `<tr class="click" data-i="${i}"><td>${monthLabel(months[i], true)}</td><td>${eur2(I[i])}</td><td>${eur2(E[i])}</td><td class="${N[i] >= 0 ? "pos" : "neg"}">${eur2(N[i])}</td>${ts ? `<td>${eur2(Sv[i])}</td>` : ""}<td>${I[i] > 0 ? pct(N[i] / I[i], 0) : "–"}</td></tr>`;
-    html += `<tr class="total"><td>Total</td><td>${eur2(ti)}</td><td>${eur2(te)}</td><td>${eur2(ti - te)}</td>${ts ? `<td>${eur2(ts)}</td>` : ""}<td>${ti > 0 ? pct((ti - te) / ti, 0) : "–"}</td></tr>`;
-    html += `<tr><td class="sub">Ø per month</td><td>${eur2(ti / months.length)}</td><td>${eur2(te / months.length)}</td><td>${eur2((ti - te) / months.length)}</td>${ts ? `<td>${eur2(ts / months.length)}</td>` : ""}<td></td></tr></tbody></table></div>`;
+    const wb = btcRows.length > 0;
+    let html = `<div class="tablewrap"><table><thead><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Left over</th>${ts ? "<th>of which saved</th>" : ""}<th>Savings rate</th>${wb ? "<th>Its BTC worth today</th>" : ""}</tr></thead><tbody>`;
+    for (let i = months.length - 1; i >= 0; i--) html += `<tr class="click" data-i="${i}"><td>${monthLabel(months[i], true)}</td><td>${eur2(I[i])}</td><td>${eur2(E[i])}</td><td class="${N[i] >= 0 ? "pos" : "neg"}">${eur2(N[i])}</td>${ts ? `<td>${eur2(Sv[i])}</td>` : ""}<td>${I[i] > 0 ? pct(N[i] / I[i], 0) : "–"}</td>${wb ? `<td>${W[i] ? eur2(W[i]) : ""}</td>` : ""}</tr>`;
+    html += `<tr class="total"><td>Total</td><td>${eur2(ti)}</td><td>${eur2(te)}</td><td>${eur2(ti - te)}</td>${ts ? `<td>${eur2(ts)}</td>` : ""}<td>${ti > 0 ? pct((ti - te) / ti, 0) : "–"}</td>${wb ? `<td>${eur2(btcNow)}</td>` : ""}</tr>`;
+    html += `<tr><td class="sub">Ø per month</td><td>${eur2(ti / months.length)}</td><td>${eur2(te / months.length)}</td><td>${eur2((ti - te) / months.length)}</td>${ts ? `<td>${eur2(ts / months.length)}</td>` : ""}<td></td>${wb ? "<td></td>" : ""}</tr></tbody></table></div>`;
     const tbl = host.querySelector(".tbl"); tbl.innerHTML = html;
     tbl.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", () => { const i = +tr.dataset.i; drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)); }));
   }
