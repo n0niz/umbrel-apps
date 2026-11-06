@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.13.0</footer>
+  <footer class="appver">Spending Trends v2.13.1</footer>
 </div>
 
 <dialog id="settings">
@@ -965,7 +965,7 @@
     const key = (yy, mm) => { const d = new Date(yy, mm, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
     // salary month: everything booked from the salary day on (default the 20th) belongs to the NEXT month –
     // the salary at the end of October, and all you spend or pay back after it, is November
-    const pd = spec.payday === "off" ? 0 : +(spec.payday || 20);
+    const pd = spec.payday === "off" ? 0 : +(spec.payday || 28);
     const y = now.getFullYear(), m = now.getMonth() + (pd && now.getDate() >= pd ? 1 : 0);
     const cur = key(y, m), prev = key(y, m - 1), MN = MONTHS[new Date(y, m, 1).getMonth()], PMN = MONTHS[new Date(y, m - 1, 1).getMonth()];
     const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 14)}-01`, to: TODAY, kind: "both" });
@@ -1287,7 +1287,7 @@
       if (spec.type === "kpi") {
         el.appendChild(accountsField());
         const s = add(`<label class="f">Month starts on salary day (everything from this day counts for the next month)<select><option value="off">Off – calendar month</option>${[15, 18, 20, 22, 24, 25, 26, 27, 28].map((d) => `<option value="${d}">${d}.</option>`).join("")}</select></label>`).querySelector("select");
-        s.value = String(spec.payday || 20);
+        s.value = String(spec.payday || 28);
         s.addEventListener("change", () => { spec.payday = s.value === "off" ? "off" : +s.value; change(); });
         const cw = add(`<div class="f"></div>`);
         const ecats = uniq(D.rows.filter((r) => r[1] === "e" && r[3]).map((r) => r[3])).sort();

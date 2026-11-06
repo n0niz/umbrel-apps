@@ -52,7 +52,7 @@ services:
         exec python -u /app/server.py
     environment:
       DATA_DIR: /data
-      APP_VERSION: "2.13.0"
+      APP_VERSION: "2.13.1"
       APP_DIR: n0niz-trends
       APP_TAG: trends-v
       FIREFLY_URL: http://firefly-iii_server_1:8080
