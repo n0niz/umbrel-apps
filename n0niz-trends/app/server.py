@@ -64,6 +64,7 @@ DEFAULTS = {
     "cashback_book": False,
     "cashback_account": "",
     "cashback_from": "",
+    "btc_balance_sync": True,
 }
 
 cache = {}
@@ -389,6 +390,12 @@ def btc_sync(cfg):
             book_cashback(cfg)
         except Exception as e:  # noqa: BLE001
             errors.append(f"Cashback: {e}")
+        if cfg.get("btc_balance_sync", True):
+            set_sync(step="Setting the BTC balance in Firefly")
+            try:
+                sync_btc_balance(cfg)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"BTC balance: {e}")
     set_sync(running=False, step="", error=" · ".join(errors), finished=int(time.time()))
 
 
@@ -405,6 +412,36 @@ def cashback_rows(cfg):
         if r["type"] == "Reward" or (r["ref"] in as_r and r["btc"] > 0):
             out.append(r)
     return out
+
+
+def sync_btc_balance(cfg):
+    """Keep the chosen BTC account in Firefly at your real Kraken BTC balance. Only its opening
+    balance moves, so nothing shows up as income or spending; the cashback bookings stay as they are."""
+    acc = (cfg.get("cashback_account") or "").strip()
+    st = read_json(KRAKEN_FILE, {})
+    bal = st.get("balance")
+    if not acc or not bal:
+        return None
+    target = round(sum(float(v) for k, v in bal.items() if is_btc(k)), 8)
+    a, page = None, 1
+    while a is None:
+        res = firefly_get(cfg, "/api/v1/accounts", {"type": "asset", "page": page, "limit": 200})
+        a = next((x for x in res.get("data", []) if (x.get("attributes") or {}).get("name") == acc), None)
+        if a is None and not more_pages(res, page):
+            raise RuntimeError(f"there is no asset account “{acc}” in Firefly")
+        page += 1
+    at = a["attributes"]
+    if at.get("currency_code") != "BTC":
+        return None                                          # only a BTC account can hold the sats
+    cur = float(at.get("current_balance") or 0)
+    diff = round(target - cur, 8)
+    if abs(diff) < 1e-8:
+        return 0.0
+    opening = float(at.get("opening_balance") or 0) + diff
+    since = cfg.get("cashback_from") or f"{date.today().year}-01-01"
+    odate = str(at.get("opening_balance_date") or "")[:10] or (date.fromisoformat(since) - timedelta(days=1)).isoformat()
+    firefly_put(cfg, f"/api/v1/accounts/{a['id']}", {"name": acc, "opening_balance": f"{opening:.8f}", "opening_balance_date": odate})
+    return diff
 
 
 def book_cashback(cfg):
@@ -913,7 +950,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"firefly_url": cfg["firefly_url"], "token_set": bool(cfg["token"]),
                                     "wallets": wl, "mempool_url": cfg.get("mempool_url", ""),
                                     "savings_categories": cfg.get("savings_categories") or [],
-                                    **{k: cfg.get(k, DEFAULTS[k]) for k in ("cashback_book", "cashback_account", "cashback_from")},
+                                    **{k: cfg.get(k, DEFAULTS[k]) for k in ("cashback_book", "cashback_account", "cashback_from", "btc_balance_sync")},
                                     "cashback_count": len(read_json(CASHBACK_FILE, {})),
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
                                     "history_start": history_start(cfg)})
@@ -1170,6 +1207,7 @@ class Handler(BaseHTTPRequestHandler):
             cfg["cashback_book"] = bool(body.get("cashback_book"))
             cfg["cashback_account"] = (body.get("cashback_account") or "").strip()
             cfg["cashback_from"] = cf
+            cfg["btc_balance_sync"] = bool(body.get("btc_balance_sync", True))
         if body.get("kraken_remove"):
             cfg["kraken_key"] = cfg["kraken_secret"] = ""
         save_config(cfg)

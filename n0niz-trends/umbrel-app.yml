@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.9.1"
+version: "2.9.2"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Krak cashback can be booked to a BTC account in Firefly: the sats as amount,
-  the euro value as foreign amount (counted in euros in all reports), so your
-  euro Kraken account stays correct.
+  The BTC cashback account in Firefly can be kept at your real Kraken BTC
+  balance: after every Kraken sync its opening balance is adjusted (not counted
+  as income or spending).
 dependencies:
   - firefly-iii
 path: ""

@@ -329,7 +329,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.9.1</footer>
+  <footer class="appver">Spending Trends v2.9.2</footer>
 </div>
 
 <dialog id="settings">
@@ -354,6 +354,8 @@
     <div id="cbOpts">
       <label>Firefly account<select id="cbAcc"></select></label>
       <label>Book cashback from<input type="date" id="cbFrom"></label>
+      <label class="sub" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="cbBal" style="width:auto"> Keep this BTC account at your Kraken BTC balance</label>
+      <div class="sub">After every Kraken sync its opening balance is set so the account shows exactly the BTC you hold on Kraken (bought and cashback). Not counted as income or spending.</div>
       <div class="sub" id="cbInfo"></div>
     </div>
     <h3>Bitcoin wallets <span class="sub" style="font-weight:400">watch-only</span></h3>
@@ -2104,6 +2106,7 @@
     pick($("cbAcc"), accs, c.cashback_account, (x) => /btc|bitcoin/i.test(x), "– choose –");
     $("cbFrom").value = c.cashback_from || `${now.getFullYear()}-01-01`;
     $("cbOn").checked = !!c.cashback_book;
+    $("cbBal").checked = c.btc_balance_sync !== false;
     $("cbInfo").textContent = c.cashback_count ? `${c.cashback_count} cashback transfers booked so far.` : c.kraken_set ? "" : "Needs the Kraken key above.";
     const cbShow = () => ($("cbOpts").style.display = $("cbOn").checked ? "" : "none");
     $("cbOn").onchange = cbShow; cbShow();
@@ -2135,7 +2138,7 @@
       await put("api/config", { firefly_url: $("ffUrl").value, token: $("ffToken").value, history_start: $("ffHist").value,
         kraken_key: $("krKey").value, kraken_secret: $("krSecret").value, kraken_remove: $("krRemove").checked,
         mempool_url: $("mpUrl").value, savings_categories: D.savDraft || [],
-        cashback_book: $("cbOn").checked, cashback_account: $("cbAcc").value, cashback_from: $("cbFrom").value, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
+        cashback_book: $("cbOn").checked, cashback_account: $("cbAcc").value, cashback_from: $("cbFrom").value, btc_balance_sync: $("cbBal").checked, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
     } catch (er) { $("settingsMsg").textContent = er.message; return; }
     $("settings").close();
     D.p = {}; D.btcModel = null; D.rows = null;
