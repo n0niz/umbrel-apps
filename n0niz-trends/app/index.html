@@ -336,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.0</footer>
+  <footer class="appver">Spending Trends v2.11.1</footer>
 </div>
 
 <dialog id="settings">
@@ -802,7 +802,7 @@
         }
       }
       await loadRows();
-      if (spec.type === "kpi") return rKpi(host, spec, mode);
+      if (spec.type === "kpi") return await rKpi(host, spec, mode);
       if (spec.type === "incexp") return rIncExp(host, spec, mode);
       if (spec.type === "trend") return rTrend(host, spec, mode);
       if (spec.type === "recent") return rRecent(host, spec, mode);
@@ -942,7 +942,7 @@
     })();
   }
 
-  function rKpi(host, spec) {
+  async function rKpi(host, spec) {
     const y = now.getFullYear(), m = now.getMonth();
     const key = (yy, mm) => { const d = new Date(yy, mm, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
     const cur = key(y, m), prev = key(y, m - 1);
@@ -977,12 +977,25 @@
     const catTiles = myCats.map((c) => { const v = catSum(cur, c), p = catSum(prev, c);
       return `<div class="tile"><span>${esc(c)} ${MONTHS[m]}</span><b>${eur(v)}</b><small>${cmp(v, p * (day / dim))} vs same point last month · Ø ${eur(catAvg(c))}</small></div>`; }).join("");
     const cbTile = cbc.length || cbp.length || cbYear.length ? `<div class="tile"><span>Cashback ${MONTHS[m]}</span><b class="pos">${eur(sum(cbc.map((r) => r[2])))}</b><small>${cbSats ? `${intF(Math.round(cbSats * 1e8))} sats${D.btcEur ? ` · today ${eur(cbSats * D.btcEur)}` : ""} · ` : ""}last month ${eur(sum(cbp.map((r) => r[2])))} · ${y} ${eur(sum(cbYear.map((r) => r[2])))}</small></div>` : "";
+    // big payments coming next month (from your Firefly subscriptions): what to put aside now
+    let bigTile = "";
+    try {
+      const nmD = new Date(y, m + 1, 1), nmKey = key(y, m + 1), nmEnd = isoD(new Date(y, m + 2, 0));
+      const sc = await once(`subcal${nmD.getFullYear()}`, () => api(`api/subcal?year=${nmD.getFullYear()}`));
+      const minBig = +(spec.bigMin ?? 100);
+      const big = [];
+      for (const x of sc.items) for (const dt of schedule(x, `${nmKey}-01`, nmEnd))
+        if (x.amount >= minBig || !["monthly", "weekly"].includes(x.freq)) big.push({ name: x.name, dt, amount: x.amount });
+      big.sort((a, b) => b.amount - a.amount);
+      const nmName = MONTHS[nmD.getMonth()];
+      bigTile = `<div class="tile"><span>To save for ${nmName}</span><b>${eur(sum(big.map((b) => b.amount)))}</b>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>no big payments due</small>`}</div>`;
+    } catch { /* no Firefly subscriptions reachable: leave the tile out */ }
     const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MONTHS[m]}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
     host.innerHTML = `<div class="tiles">
       <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>${pd ? `incl. salary from ${pd}. ${MONTHS[(m + 11) % 12]} · ` : ""}last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
       <div class="tile"><span>Spent ${MONTHS[m]}</span><b>${eur(ce)}</b><small>${cmp(ce, pe * (day / dim))} vs same point last month · Ø ${eur(ae)}</small></div>
       <div class="tile"><span>Left over</span><b class="${ci - ce - crs >= 0 ? "pos" : "neg"}">${eur(ci - ce - crs)}</b><small>${crs ? `after ${eur(crs)} paid back${debtTo ? ` (${esc(debtTo)})` : ""} · ` : ""}last month ${eur(pi - pe - prs)}</small></div>
-      ${debtTile}${cbTile}${catTiles}
+      ${bigTile}${debtTile}${cbTile}${catTiles}
       <div class="tile"><span>Spending pace</span><b>${eur((ce / day) * dim)}</b><small>projected for ${MONTHS[m]} at day ${day} of ${dim}</small></div>
       <div class="tile"><span>Top categories ${MONTHS[m]}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
     </div>`;
@@ -1258,6 +1271,9 @@
         const cw = add(`<div class="f"></div>`);
         const ecats = uniq(D.rows.filter((r) => r[1] === "e" && r[3]).map((r) => r[3])).sort();
         cw.appendChild(msel("Category tiles", ecats, spec.kpiCats || ecats.filter((x) => /shopping|food|household|lebensmittel/i.test(x)).slice(0, 3), (v) => { spec.kpiCats = v; change(); }, "none"));
+        const bm = add(`<label class="f">“To save for” counts payments from €<input type="number" min="0" step="10" placeholder="100"></label>`).querySelector("input");
+        bm.value = spec.bigMin ?? "";
+        bm.addEventListener("change", () => { spec.bigMin = bm.value === "" ? undefined : +bm.value; change(); });
         const tg = add(`<label class="f">Cashback tag<input type="text" placeholder="Cashback"></label>`).querySelector("input");
         tg.value = spec.cbtag || "";
         tg.addEventListener("change", () => { spec.cbtag = tg.value.trim() || undefined; change(); });
