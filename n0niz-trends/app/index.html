@@ -336,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.4</footer>
+  <footer class="appver">Spending Trends v2.11.5</footer>
 </div>
 
 <dialog id="settings">
@@ -998,7 +998,6 @@
       <div class="tile"><span>Spent ${MONTHS[m]}</span><b>${eur(ce)}</b><small>${cmp(ce, pe * (day / dim))} vs same point last month · Ø ${eur(ae)}</small></div>
       <div class="tile"><span>Left over</span><b class="${ci - ce - crs >= 0 ? "pos" : "neg"}">${eur(ci - ce - crs)}</b><small>${crs ? `after ${eur(crs)} paid back${debtTo ? ` (${esc(debtTo)})` : ""} · ` : ""}last month ${eur(pi - pe - prs)}</small></div>
       ${bigTile}${debtTile}${cbTile}${catTiles}
-      <div class="tile"><span>Spending pace</span><b>${eur((ce / day) * dim)}</b><small>projected for ${MONTHS[m]} at day ${day} of ${dim}</small></div>
       <div class="tile"><span>Top categories ${MONTHS[m]}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
     </div>`;
   }

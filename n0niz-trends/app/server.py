@@ -166,13 +166,23 @@ def fetch_rows(cfg, start, end):
     [month, e|i, amount, category, budget, tags, payee, currency, account, date, description, loan]
     loan = 1 when the money goes to (or comes from) a liability: a repayment or a payout, not spending."""
     rows, currencies = [], {}
-    for kind in ("withdrawal", "deposit"):
+    for kind in ("withdrawal", "deposit", "transfer"):
         page = 1
         while True:
             res = firefly_get(cfg, "/api/v1/transactions",
                               {"type": kind, "start": start, "end": end, "page": page, "limit": 500})
             for group in res.get("data", []):
                 for t in group.get("attributes", {}).get("transactions", []):
+                    if t.get("type") == "transfer":
+                        # a transfer to or from a liability is a repayment or a payout: keep it as a loan
+                        # row (never spending); transfers between your own accounts stay out
+                        st, dt = (t.get("source_type") or "").lower(), (t.get("destination_type") or "").lower()
+                        if dt in LIAB_TYPES and st not in LIAB_TYPES:
+                            t = {**t, "type": "withdrawal"}
+                        elif st in LIAB_TYPES and dt not in LIAB_TYPES:
+                            t = {**t, "type": "deposit"}
+                        else:
+                            continue
                     if t.get("type") not in ("withdrawal", "deposit"):
                         continue
                     cur = t.get("currency_code") or "?"
