@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.18.1</footer>
+  <footer class="appver">Spending Trends v2.18.2</footer>
 </div>
 
 <dialog id="settings">
@@ -1108,6 +1108,8 @@
     if (D.btcModel && D.btcModel.spotKey === D.spot) return D.btcModel;
     const M = computeBtc(data, D.spot);
     M.spotKey = D.spot;
+    // what you hold is the live balance; the history-based stack only sets the average cost
+    if (M.ok) { M.held = liveBtc(data, M); M.value = M.held * M.spot; }
     return (D.btcModel = M);
   }
   /* on-chain wallet transactions: matched against Kraken withdrawals/deposits so nothing counts twice */
@@ -1228,7 +1230,7 @@
     const M = btcModel(data), pl = M.value - M.cost;
     if (spec.type === "btc") {
       host.innerHTML = `<div class="tiles">
-        <div class="tile"><span>Value</span><b>${eur(M.value)}</b><small>${btcS(M.qty)} BTC × ${eur(M.spot)}</small></div>
+        <div class="tile"><span>Value</span><b>${eur(M.value)}</b><small>${btcS(M.held ?? M.qty)} BTC × ${eur(M.spot)}</small></div>
         <div class="tile"><span>Unrealised P/L</span><b class="${pl >= 0 ? "pos" : "neg"}">${pl >= 0 ? "+" : "−"}${eur(Math.abs(pl))}</b><small>${M.cost ? pct(pl / M.cost) : ""} on ${eur(M.cost)} invested</small></div>
         <div class="tile"><span>Average cost</span><b>${eur(M.avg)}</b><small>${!M.avg ? "" : M.avg > M.spot ? `break-even ${pct(M.avg / M.spot - 1)} away` : `price is ${pct(M.spot / M.avg - 1)} above it`}</small></div>
         <div class="tile"><span>Tax-free now</span><b>${btcS(M.free)} BTC</b><small>${M.qty ? Math.round((M.free / M.qty) * 100) : 0}% held over a year</small></div>
@@ -1860,12 +1862,12 @@
     const tile = (label, value, small, cls = "", title = "") => `<div class="tile" title="${esc(title)}"><span>${label}</span><b class="${cls}">${value}</b><small>${small}</small></div>`;
     v.innerHTML = `
       <div class="btchead">
-        <div><div class="big">${btcF(liveBtc(data, M))} <small>BTC</small></div><div class="sub">${(() => { const xs = [data.kraken && "Kraken", (data.strike_tx || []).length && "Strike", (data.binance_tx || []).length && "Binance"].filter(Boolean); return xs.length ? "bought on " + xs.join(", ").replace(/, ([^,]*)$/, " and $1") : "in your wallets"; })()}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(liveBtc(data, M) * 1e8)} sats${Math.abs(liveBtc(data, M) - M.qty) > 1e-6 ? ` · <span title="Buys and rewards minus sells and fees. Average cost and P/L are worked out from this.">history explains ${btcS(M.qty)} BTC</span>` : ""}</div></div>
+        <div><div class="big">${btcF(liveBtc(data, M))} <small>BTC</small></div><div class="sub">${(() => { const xs = [data.kraken && "Kraken", (data.strike_tx || []).length && "Strike", (data.binance_tx || []).length && "Binance"].filter(Boolean); return xs.length ? "bought on " + xs.join(", ").replace(/, ([^,]*)$/, " and $1") : "in your wallets"; })()}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(liveBtc(data, M) * 1e8)} sats</div></div>
         <div class="spot"><label class="sub" for="spotIn">BTC price €</label><input id="spotIn" type="text" inputmode="decimal" value="${Math.round(M.spot)}"><button class="btn sm" id="spotLive" title="Back to the live Kraken price">Live</button></div>
       </div>
       <div class="sub" id="btcSync" style="margin-bottom:12px">${syncText(data)}</div>
       <div class="tiles" style="margin-bottom:16px">
-        ${tile("Market value", eur(M.value), `${btcS(M.qty)} BTC × ${eur(M.spot)}`, "", "Coins held × the price in the box above. Type another price to see a what-if.")}
+        ${tile("Market value", eur(M.value), `${btcS(M.held ?? M.qty)} BTC × ${eur(M.spot)}`, "", "Coins held × the price in the box above. Type another price to see a what-if.")}
         ${tile("Net invested", eur(M.cost), M.sells ? `cost of ${btcS(M.soldQty)} BTC sold removed` : "money still in the stack", "", "Everything paid in, minus the cost basis of coins sold since.")}
         ${tile("Unrealised P/L", `${pl >= 0 ? "+" : "−"}${eur(Math.abs(pl))}`, M.cost ? `${pct(pl / M.cost)} on net invested` : "", pl >= 0 ? "pos" : "neg", "Market value minus net invested.")}
         ${tile("Realised P/L", M.sells ? `${M.realised >= 0 ? "+" : "−"}${eur(Math.abs(M.realised))}` : "–", M.sells ? `${M.sells} sales, average-cost method` : "nothing sold", M.realised >= 0 ? "pos" : "neg", "What sales locked in, against the running average cost. Not your tax figure (German tax uses FIFO).")}
@@ -2001,7 +2003,7 @@
     const tot = Math.max(M.qty, sum(places.map((p) => p.btc)));
     $("where").innerHTML = `<div class="wherebox"><div class="cbw"></div>
       <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span><div class="sub neg">${esc(p.err.slice(0, 160))}</div>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
-      <div class="sub" style="margin-top:8px">${data.kraken ? (data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : "Kraken balance worked out from the ledger. ") : ""}${data.strike && data.strike.at ? `Strike balance read ${new Date(data.strike.at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : ""}${(data.wallets || []).length ? "Wallet balances come from your Mempool app. " : "Add your wallets in Settings to see exactly where the coins are. "}${rest < -1e-6 ? `Your wallets hold ${btcS(-rest)} BTC more than the tracked history explains — coins received before the history starts or ignored receipts.` : ""}</div>`;
+      <div class="sub" style="margin-top:8px">${data.kraken ? (data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : "Kraken balance worked out from the ledger. ") : ""}${data.strike && data.strike.at ? `Strike balance read ${new Date(data.strike.at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : ""}${(data.wallets || []).length ? "Wallet balances come from your Mempool app. " : "Add your wallets in Settings to see exactly where the coins are. "}${rest < -1e-6 ? `${btcS(-rest)} BTC have no known purchase price (bought before the history starts or somewhere not connected), so they count at 0 € in the average cost.` : ""}</div>`;
     if (rest > 1e-6 || (pref0().gone || []).length || pref0().recvOwn) $("where").insertAdjacentHTML("beforeend", restBreakdown(M, rest));
     $("where").querySelectorAll("[data-own]").forEach((c) => c.addEventListener("change", () => {
       D.prefs = D.prefs || {}; D.prefs.recvOwn = c.checked; savePrefs(); D.btcModel = null; renderBtc();
