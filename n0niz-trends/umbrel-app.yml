@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.13.3"
+version: "2.13.4"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,8 +26,7 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Strike: shows when the balance was read and any error from Strike, says when
-  it has not been read yet, and understands more answer formats.
+  "Where the coins sit" is sorted by how much each place holds, largest first.
 dependencies:
   - firefly-iii
 path: ""

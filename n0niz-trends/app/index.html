@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.13.3</footer>
+  <footer class="appver">Spending Trends v2.13.4</footer>
 </div>
 
 <dialog id="settings">
@@ -1930,6 +1930,7 @@
     if (data.kraken) places.push({ name: "Kraken", btc: onK, color: C.btc });
     if (data.strike) places.push({ name: data.strike.at ? "Strike" : "Strike (not read yet – press Sync)", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
     (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: PAL[(i + 2) % PAL.length], err: w.error }));
+    places.sort((a, b) => b.btc - a.btc);                    // largest holding first; the untracked rest stays last
     const rest = M.qty - sum(places.map((p) => p.btc));
     if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : "Moved off Kraken", btc: rest, color: OTHER });
     const tot = Math.max(M.qty, sum(places.map((p) => p.btc)));
