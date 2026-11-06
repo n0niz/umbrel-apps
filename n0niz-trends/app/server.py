@@ -405,6 +405,11 @@ def btc_sync(cfg):
             wallet_part(cfg)
         except Exception as e:  # noqa: BLE001
             errors.append(f"Wallets: {e}")
+        if cfg.get("token"):
+            try:
+                wallets_to_firefly(cfg)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"Wallets → Firefly: {e}")
     if cfg.get("strike_key"):
         try:
             strike_part(cfg)
@@ -604,6 +609,37 @@ def wallet_part(cfg):
     bad = [f"{r['name']}: {r['error']}" for r in keep.values() if r["error"]]
     if bad:
         raise RuntimeError("; ".join(bad))
+
+
+def wallet_accounts(cfg):
+    """Your wallets and the Firefly BTC account each one belongs to: same name, or name + " BTC"
+    (wallet "trezor" -> account "Trezor BTC"), ignoring upper/lower case."""
+    accs, page = [], 1
+    while True:
+        res = firefly_get(cfg, "/api/v1/accounts", {"type": "asset", "page": page, "limit": 200})
+        accs += [(x.get("attributes") or {}) for x in res.get("data", [])]
+        if not more_pages(res, page):
+            break
+        page += 1
+    btc = [a["name"] for a in accs if a.get("currency_code") == "BTC" and a.get("active", True)]
+    out = []
+    for w in cfg.get("wallets", []):
+        n = w["name"].strip().lower()
+        hit = next((a for a in btc if a.strip().lower() in (n, f"{n} btc", f"btc {n}")), None)
+        if hit:
+            out.append((w, hit))
+    return out
+
+
+def wallets_to_firefly(cfg):
+    """Keep each wallet's Firefly BTC account at the wallet's balance (opening balance only)."""
+    store = read_json(WALLETS_FILE, {})
+    for w, acc in wallet_accounts(cfg):
+        rec = store.get(w["id"], {})
+        if rec.get("error") or not rec.get("result"):
+            continue                                         # no fresh scan: leave Firefly as it is
+        set_sync(step=f"Setting {acc} in Firefly")
+        set_firefly_btc(cfg, acc, round(rec["result"].get("balance", 0) / 1e8, 8), f"{date.today().year}-01-01")
 
 
 def kraken_part(cfg):

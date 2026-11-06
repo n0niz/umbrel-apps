@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.13.4</footer>
+  <footer class="appver">Spending Trends v2.14.0</footer>
 </div>
 
 <dialog id="settings">
@@ -384,7 +384,7 @@
     <label>Keep this Firefly account at your Strike balance<select id="stAcc"></select></label>
     <div class="sub" id="stInfo"></div>
     <h3>Bitcoin wallets <span class="sub" style="font-weight:400">watch-only</span></h3>
-    <div class="sub" style="margin-top:4px">Paste an <b>xpub / ypub / zpub</b>, or for multisig the wallet's <b>output descriptor</b> (Sparrow: Settings → Script Policy → Export or Show descriptor). It can only read, never spend. Addresses are looked up in your own Mempool app.</div>
+    <div class="sub" style="margin-top:4px">Paste an <b>xpub / ypub / zpub</b>, or for multisig the wallet's <b>output descriptor</b> (Sparrow: Settings → Script Policy → Export or Show descriptor). It can only read, never spend. Addresses are looked up in your own Mempool app. A Firefly BTC account with the wallet's name (e.g. wallet “Jade” → account “Jade BTC”) is kept at the wallet's balance after every sync; only its opening balance moves.</div>
     <div id="walletRows"></div>
     <button type="button" class="btn sm" id="addWallet" style="margin-top:10px">+ Add wallet</button>
     <label>Mempool API address<input type="text" id="mpUrl" placeholder="automatic (Umbrel Mempool app)"></label>

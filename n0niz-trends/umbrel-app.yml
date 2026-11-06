@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.13.4"
+version: "2.14.0"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,7 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  "Where the coins sit" is sorted by how much each place holds, largest first.
+  Watch-only wallets are kept in Firefly too: a BTC account named like the
+  wallet (e.g. "Jade BTC", "Trezor BTC") is set to the wallet balance after
+  every sync (opening balance only, nothing counts as income or spending).
 dependencies:
   - firefly-iii
 path: ""
