@@ -336,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.10.1</footer>
+  <footer class="appver">Spending Trends v2.11.0</footer>
 </div>
 
 <dialog id="settings">
@@ -963,10 +963,26 @@
     const day = now.getDate(), dim = new Date(y, m + 1, 0).getDate();
     const cmp = (a, b, goodUp) => { if (!b) return ""; const p = (a - b) / b; const good = goodUp ? p >= 0 : p <= 0; return `<span class="${good ? "pos" : "neg"}">${pct(p, 0)}</span>`; };
     const cats = groupBy(base.filter((r) => r[0] === cur && r[1] === "e"), "category").slice(0, 3);
+    // cashback: income tagged Cashback; its sats valued at today's price
+    const cbTag = (spec.cbtag || "Cashback").toLowerCase();
+    const isCb = (r) => r[1] === "i" && r[5].some((t) => t.toLowerCase() === cbTag);
+    const cbRows = (k) => base.filter((r) => r[0] === k && isCb(r));
+    const cbc = cbRows(cur), cbp = cbRows(prev), cbSats = sum(cbc.map((r) => +r[13] || 0));
+    const cbYear = base.filter((r) => r[0].startsWith(String(y)) && isCb(r));
+    // your own category tiles (default Shopping and Food & Household)
+    const allCats = uniq(D.rows.filter((r) => r[1] === "e" && r[3]).map((r) => r[3]));
+    const myCats = (spec.kpiCats || allCats.filter((c) => /shopping|food|household|lebensmittel/i.test(c)).slice(0, 3)).filter((c) => allCats.includes(c));
+    const catSum = (k, c) => sum(base.filter((r) => r[0] === k && r[1] === "e" && r[3] === c).map((r) => r[2]));
+    const catAvg = (c) => { let t = 0; for (let i = 1; i <= 12; i++) t += catSum(key(y, m - i), c); return t / 12; };
+    const catTiles = myCats.map((c) => { const v = catSum(cur, c), p = catSum(prev, c);
+      return `<div class="tile"><span>${esc(c)} ${MONTHS[m]}</span><b>${eur(v)}</b><small>${cmp(v, p * (day / dim))} vs same point last month · Ø ${eur(catAvg(c))}</small></div>`; }).join("");
+    const cbTile = cbc.length || cbp.length || cbYear.length ? `<div class="tile"><span>Cashback ${MONTHS[m]}</span><b class="pos">${eur(sum(cbc.map((r) => r[2])))}</b><small>${cbSats ? `${intF(Math.round(cbSats * 1e8))} sats${D.btcEur ? ` · today ${eur(cbSats * D.btcEur)}` : ""} · ` : ""}last month ${eur(sum(cbp.map((r) => r[2])))} · ${y} ${eur(sum(cbYear.map((r) => r[2])))}</small></div>` : "";
+    const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MONTHS[m]}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
     host.innerHTML = `<div class="tiles">
       <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>${pd ? `incl. salary from ${pd}. ${MONTHS[(m + 11) % 12]} · ` : ""}last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
       <div class="tile"><span>Spent ${MONTHS[m]}</span><b>${eur(ce)}</b><small>${cmp(ce, pe * (day / dim))} vs same point last month · Ø ${eur(ae)}</small></div>
       <div class="tile"><span>Left over</span><b class="${ci - ce - crs >= 0 ? "pos" : "neg"}">${eur(ci - ce - crs)}</b><small>${crs ? `after ${eur(crs)} paid back${debtTo ? ` (${esc(debtTo)})` : ""} · ` : ""}last month ${eur(pi - pe - prs)}</small></div>
+      ${debtTile}${cbTile}${catTiles}
       <div class="tile"><span>Spending pace</span><b>${eur((ce / day) * dim)}</b><small>projected for ${MONTHS[m]} at day ${day} of ${dim}</small></div>
       <div class="tile"><span>Top categories ${MONTHS[m]}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
     </div>`;
@@ -1239,6 +1255,12 @@
         const s = add(`<label class="f">Salary counts for the next month from day<select><option value="off">Off – calendar month</option>${[15, 18, 20, 22, 24, 25, 26, 27, 28].map((d) => `<option value="${d}">${d}.</option>`).join("")}</select></label>`).querySelector("select");
         s.value = String(spec.payday || 20);
         s.addEventListener("change", () => { spec.payday = s.value === "off" ? "off" : +s.value; change(); });
+        const cw = add(`<div class="f"></div>`);
+        const ecats = uniq(D.rows.filter((r) => r[1] === "e" && r[3]).map((r) => r[3])).sort();
+        cw.appendChild(msel("Category tiles", ecats, spec.kpiCats || ecats.filter((x) => /shopping|food|household|lebensmittel/i.test(x)).slice(0, 3), (v) => { spec.kpiCats = v; change(); }, "none"));
+        const tg = add(`<label class="f">Cashback tag<input type="text" placeholder="Cashback"></label>`).querySelector("input");
+        tg.value = spec.cbtag || "";
+        tg.addEventListener("change", () => { spec.cbtag = tg.value.trim() || undefined; change(); });
         const c = add(`<label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" style="width:auto"> Subtract loan and debt repayments from Left over</label>`).querySelector("input");
         c.checked = spec.repay !== false;
         c.addEventListener("change", () => { spec.repay = c.checked; change(); });
