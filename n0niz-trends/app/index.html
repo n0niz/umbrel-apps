@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.13.2</footer>
+  <footer class="appver">Spending Trends v2.13.3</footer>
 </div>
 
 <dialog id="settings">
@@ -1928,14 +1928,14 @@
     const onK = Math.max(0, M.onKraken || 0);
     const places = [];
     if (data.kraken) places.push({ name: "Kraken", btc: onK, color: C.btc });
-    if (data.strike) places.push({ name: "Strike", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
+    if (data.strike) places.push({ name: data.strike.at ? "Strike" : "Strike (not read yet – press Sync)", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
     (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: PAL[(i + 2) % PAL.length], err: w.error }));
     const rest = M.qty - sum(places.map((p) => p.btc));
     if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : "Moved off Kraken", btc: rest, color: OTHER });
     const tot = Math.max(M.qty, sum(places.map((p) => p.btc)));
     $("where").innerHTML = `<div class="wherebox"><div class="cbw"></div>
-      <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
-      <div class="sub" style="margin-top:8px">${data.kraken ? (data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : "Kraken balance worked out from the ledger. ") : ""}${(data.wallets || []).length ? "Wallet balances come from your Mempool app. " : "Add your wallets in Settings to see exactly where the coins are. "}${rest < -1e-6 ? `Your wallets hold ${btcS(-rest)} BTC more than the tracked history explains — coins received before the history starts or ignored receipts.` : ""}</div>`;
+      <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span><div class="sub neg">${esc(p.err.slice(0, 160))}</div>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
+      <div class="sub" style="margin-top:8px">${data.kraken ? (data.balance_btc != null ? `Kraken balance read ${new Date(data.balance_at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : "Kraken balance worked out from the ledger. ") : ""}${data.strike && data.strike.at ? `Strike balance read ${new Date(data.strike.at * 1000).toLocaleString([], { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}. ` : ""}${(data.wallets || []).length ? "Wallet balances come from your Mempool app. " : "Add your wallets in Settings to see exactly where the coins are. "}${rest < -1e-6 ? `Your wallets hold ${btcS(-rest)} BTC more than the tracked history explains — coins received before the history starts or ignored receipts.` : ""}</div>`;
     donut($("where").querySelector(".cbw"), places.filter((p) => p.btc > 1e-8).map((p) => ({ name: p.name, value: p.btc * M.spot, color: p.color })), { label: "All coins", noLegend: true });
     // by year
     const ys = new Map();

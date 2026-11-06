@@ -484,7 +484,14 @@ def strike_get(key, path):
 
 
 def strike_btc(balances):
-    """BTC held on Strike from GET /balances (a list with one entry per currency)."""
+    """BTC held on Strike from GET /balances: a list with one entry per currency (also accepted
+    wrapped as {"items": [...]} / {"data": [...]} or keyed by currency)."""
+    if isinstance(balances, dict):
+        inner = balances.get("items") or balances.get("data") or balances.get("balances")
+        if isinstance(inner, list):
+            balances = inner
+        else:
+            balances = [{"currency": k, **v} if isinstance(v, dict) else {"currency": k, "current": v} for k, v in balances.items()]
     for b in balances if isinstance(balances, list) else []:
         if str(b.get("currency", "")).upper() == "BTC":
             # "current"/"total" leave out BTC parked in Stacks, so those are added
@@ -498,7 +505,10 @@ def strike_part(cfg):
     st = read_json(STRIKE_FILE, {})
     try:
         bal = strike_get(cfg["strike_key"], "balances")
-        st.update(btc=strike_btc(bal), at=int(time.time()), error="", raw=bal)
+        btc = strike_btc(bal)
+        has_btc = any(str(b.get("currency", "")).upper() == "BTC" for b in (bal if isinstance(bal, list) else []))
+        st.update(btc=btc, at=int(time.time()), raw=bal,
+                  error="" if has_btc or btc else f"Strike answered without a BTC balance: {json.dumps(bal)[:200]}")
     except urllib.error.HTTPError as e:
         st.update(error=f"Strike {e.code}: {e.read().decode(errors='replace')[:200]}")
     except Exception as e:  # noqa: BLE001
