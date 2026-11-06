@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.19.0</footer>
+  <footer class="appver">Spending Trends v2.19.1</footer>
 </div>
 
 <dialog id="settings">
@@ -1895,7 +1895,7 @@
           <div class="sub" style="margin-top:8px">Coins sold in Germany after holding them more than a year are tax-free (§23 EStG). This counts your buys oldest-first. Not tax advice.</div></div>
         <div class="card"><h2>Where the coins sit</h2><div id="where"></div></div>
         <div class="card full"><h2>By year</h2><div class="tablewrap" id="byYear"></div></div>
-        <div class="card full"><h2>By month <span class="hint">euros put in per month · Kraken orange, Strike purple, Binance yellow</span></h2><div id="bc4"></div></div>
+        <div class="card full"><h2>By month <span class="hint">euros put in per month · Kraken pink, Strike orange, Binance yellow</span></h2><div id="bc4"></div></div>
         <div class="card full"><h2>Transactions <span class="seg sm" id="btcFilter">${["All", "Buy", "Sell", "Reward", "Transfers"].concat((data.wallets || []).length ? ["Wallets"] : [], ["Other"]).map((f) => `<button data-v="${f}" class="${B.filter === f ? "on" : ""}">${f}</button>`).join("")}</span></h2><div id="btcTx"></div></div>
         <div class="card full"><h2>Data check</h2><div class="checks" id="btcChecks"></div></div>
       </div>`;
@@ -1990,7 +1990,7 @@
     const months = monthKeys(first + "-01", TODAY);
     const inv = new Map(), sats = new Map(), bySrc = { kraken: new Map(), strike: new Map(), binance: new Map() };
     for (const r of M.tx) if (r.type === "Buy") { const k = r.date.slice(0, 7), m = bySrc[r.src] || bySrc.kraken; inv.set(k, (inv.get(k) || 0) + r.eur); sats.set(k, (sats.get(k) || 0) + r.btc); m.set(k, (m.get(k) || 0) + r.eur); }
-    const SRCC = { kraken: C.btc, strike: "#c084fc", binance: "#f0b90b" };
+    const SRCC = { kraken: "#ec4899", strike: C.btc, binance: "#f0b90b" };
     const used = Object.keys(bySrc).filter((k) => bySrc[k].size);
     const hasS = used.length > 1;
     const bars = hasS ? used.map((k) => ({ name: SRCN[k], color: SRCC[k], values: months.map((m) => bySrc[k].get(m) || 0) }))
@@ -2007,10 +2007,10 @@
     // where
     const onK = Math.max(0, M.onKraken || 0);
     const places = [];
-    if (data.kraken) places.push({ name: "Kraken", btc: onK, color: C.btc });
-    if (data.strike && data.strike.at) places.push({ name: "Strike", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
-    else if (M.onStrike != null) places.push({ name: "Strike (from statements)", btc: M.onStrike, color: "#c084fc" });
-    else if (data.strike) places.push({ name: "Strike (not read yet – press Sync)", btc: 0, color: "#c084fc", err: data.strike.error });
+    if (data.kraken) places.push({ name: "Kraken", btc: onK, color: "#ec4899" });
+    if (data.strike && data.strike.at) places.push({ name: "Strike", btc: +data.strike.btc || 0, color: C.btc, err: data.strike.error });
+    else if (M.onStrike != null) places.push({ name: "Strike (from statements)", btc: M.onStrike, color: C.btc });
+    else if (data.strike) places.push({ name: "Strike (not read yet – press Sync)", btc: 0, color: C.btc, err: data.strike.error });
     if (data.binance) places.push({ name: data.binance.at ? "Binance" : "Binance (not read yet – press Sync)", btc: +data.binance.btc || 0, color: "#f0b90b", err: data.binance.error });
     (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: PAL[(i + 2) % PAL.length], err: w.error }));
     places.sort((a, b) => b.btc - a.btc);                    // largest holding first; the untracked rest stays last
