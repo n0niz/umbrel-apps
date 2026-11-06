@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.12.1"
+version: "2.13.0"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Month at a glance runs from salary day to salary day: everything booked from
-  the 20th on (income, spending, debt paid back, cashback, categories) counts
-  for the next month. The day can be changed or switched off in the widget.
+  Strike: add a read-only Strike API key in Settings. Its BTC balance (Stacks
+  included) shows in "Where the coins sit" and can keep a BTC account in Firefly
+  (e.g. "Strike BTC") at the right amount after every sync.
 dependencies:
   - firefly-iii
 path: ""

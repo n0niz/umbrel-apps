@@ -31,6 +31,8 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 CONFIG_FILE = DATA_DIR / "config.json"
 KRAKEN_FILE = DATA_DIR / "kraken.json"
 CASHBACK_FILE = DATA_DIR / "cashback_booked.json"
+STRIKE_FILE = DATA_DIR / "strike.json"
+STRIKE_API = "https://api.strike.me/v1"
 PRICES_FILE = DATA_DIR / "btc_prices.json"
 WALLETS_FILE = DATA_DIR / "wallets.json"
 MEMPOOL_DEFAULTS = [os.environ.get("MEMPOOL_URL", ""), "http://mempool_web_1:3006/api", "http://mempool_api_1:8999/api/v1"]
@@ -65,6 +67,9 @@ DEFAULTS = {
     "cashback_account": "",
     "cashback_from": "",
     "btc_balance_sync": True,
+    # Strike: read-only API key; its BTC balance is shown on the Bitcoin page and can be kept in Firefly
+    "strike_key": "",
+    "strike_account": "",
 }
 
 cache = {}
@@ -383,7 +388,7 @@ def kraken_fetch_btc(cfg, st):
 
 def btc_sync(cfg):
     has_kraken = bool(cfg.get("kraken_key") and cfg.get("kraken_secret"))
-    if not (has_kraken or cfg.get("wallets")):
+    if not (has_kraken or cfg.get("wallets") or cfg.get("strike_key")):
         return
     with sync_lock:
         if sync_state["running"]:
@@ -400,6 +405,11 @@ def btc_sync(cfg):
             wallet_part(cfg)
         except Exception as e:  # noqa: BLE001
             errors.append(f"Wallets: {e}")
+    if cfg.get("strike_key"):
+        try:
+            strike_part(cfg)
+        except Exception as e:  # noqa: BLE001
+            errors.append(str(e) if str(e).startswith("Strike") else f"Strike: {e}")
     set_sync(step="Updating price history")
     try:
         update_prices()
@@ -444,6 +454,11 @@ def sync_btc_balance(cfg):
     if not acc or not bal:
         return None
     target = round(sum(float(v) for k, v in bal.items() if is_btc(k)), 8)
+    return set_firefly_btc(cfg, acc, target, cfg.get("cashback_from") or f"{date.today().year}-01-01")
+
+
+def set_firefly_btc(cfg, acc, target, since):
+    """Set a BTC asset account in Firefly to `target` BTC by moving its opening balance."""
     a, page = None, 1
     while a is None:
         res = firefly_get(cfg, "/api/v1/accounts", {"type": "asset", "page": page, "limit": 200})
@@ -459,10 +474,42 @@ def sync_btc_balance(cfg):
     if abs(diff) < 1e-8:
         return 0.0
     opening = float(at.get("opening_balance") or 0) + diff
-    since = cfg.get("cashback_from") or f"{date.today().year}-01-01"
     odate = str(at.get("opening_balance_date") or "")[:10] or (date.fromisoformat(since) - timedelta(days=1)).isoformat()
     firefly_put(cfg, f"/api/v1/accounts/{a['id']}", {"name": acc, "opening_balance": f"{opening:.8f}", "opening_balance_date": odate})
     return diff
+
+
+def strike_get(key, path):
+    return http_json(f"{STRIKE_API}/{path}", headers={"Authorization": f"Bearer {key}", "Accept": "application/json"}, timeout=30)
+
+
+def strike_btc(balances):
+    """BTC held on Strike from GET /balances (a list with one entry per currency)."""
+    for b in balances if isinstance(balances, list) else []:
+        if str(b.get("currency", "")).upper() == "BTC":
+            # "current"/"total" leave out BTC parked in Stacks, so those are added
+            main = max(float(b.get("current") or 0), float(b.get("total") or 0))
+            return round(main + sum(float(x.get("amount") or 0) for x in (b.get("stacks") or [])), 8)
+    return 0.0
+
+
+def strike_part(cfg):
+    set_sync(step="Reading Strike balance")
+    st = read_json(STRIKE_FILE, {})
+    try:
+        bal = strike_get(cfg["strike_key"], "balances")
+        st.update(btc=strike_btc(bal), at=int(time.time()), error="", raw=bal)
+    except urllib.error.HTTPError as e:
+        st.update(error=f"Strike {e.code}: {e.read().decode(errors='replace')[:200]}")
+    except Exception as e:  # noqa: BLE001
+        st.update(error=f"Strike: {e}")
+    write_json(STRIKE_FILE, st)
+    if st.get("error"):
+        raise RuntimeError(st["error"])
+    acc = (cfg.get("strike_account") or "").strip()
+    if acc and cfg.get("token") and st.get("at"):
+        set_sync(step="Setting the Strike balance in Firefly")
+        set_firefly_btc(cfg, acc, st["btc"], f"{date.today().year}-01-01")
 
 
 def book_cashback(cfg):
@@ -740,7 +787,7 @@ def agent_loop():
 def sync_loop():
     while True:
         cfg = load_config()
-        if cfg.get("kraken_key") or cfg.get("wallets"):
+        if cfg.get("kraken_key") or cfg.get("wallets") or cfg.get("strike_key"):
             btc_sync(cfg)
         time.sleep(SYNC_EVERY)
 
@@ -901,7 +948,8 @@ def btc_payload(cfg):
                         "error": rec.get("error", "")})
     wts = [t["t"] for w in wallets for t in w["txs"]]
     return {
-        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets),
+        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets) or bool(cfg.get("strike_key")),
+        "strike": ({k: v for k, v in read_json(STRIKE_FILE, {}).items() if k != "raw"} or {"btc": None}) if cfg.get("strike_key") else None,
         "kraken": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")),
         "wallets": wallets,
         "tx": tx,
@@ -974,6 +1022,7 @@ class Handler(BaseHTTPRequestHandler):
                                     **{k: cfg.get(k, DEFAULTS[k]) for k in ("cashback_book", "cashback_account", "cashback_from", "btc_balance_sync")},
                                     "cashback_count": len(read_json(CASHBACK_FILE, {})),
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
+                                    "strike_set": bool(cfg.get("strike_key")), "strike_account": cfg.get("strike_account", ""),
                                     "history_start": history_start(cfg)})
         if p == "/api/data":
             def get(cfg):
@@ -1185,6 +1234,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": f"Kraken rejected the key: {e}"})
             kraken_changed = (k, s) != (cfg.get("kraken_key"), cfg.get("kraken_secret"))
             cfg["kraken_key"], cfg["kraken_secret"] = k, s
+        strike_changed = False
+        if body.get("strike_key"):
+            sk = body["strike_key"].strip()
+            try:
+                strike_get(sk, "balances")
+            except urllib.error.HTTPError as e:
+                return self._json(400, {"error": f"Strike rejected the key ({e.code}). Give it the scope partner.balances.read."})
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"error": f"Cannot reach Strike: {e}"})
+            strike_changed = sk != cfg.get("strike_key")
+            cfg["strike_key"] = sk
+        if body.get("strike_remove"):
+            cfg["strike_key"] = ""
+            STRIKE_FILE.unlink(missing_ok=True)
+        if "strike_account" in body:
+            strike_changed = strike_changed or (body.get("strike_account") or "") != cfg.get("strike_account", "")
+            cfg["strike_account"] = (body.get("strike_account") or "").strip()
         wallets_changed = False
         if isinstance(body.get("wallets"), list):
             old = {w["id"]: w for w in cfg.get("wallets", [])}
@@ -1234,7 +1300,7 @@ class Handler(BaseHTTPRequestHandler):
         save_config(cfg)
         with cache_lock:
             cache.clear()
-        if kraken_changed or wallets_changed or cashback_on:
+        if kraken_changed or wallets_changed or cashback_on or (strike_changed and cfg.get("strike_key")):
             start_sync(cfg)
         self._json(200, {"ok": True})
 
