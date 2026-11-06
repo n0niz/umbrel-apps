@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.18.2"
+version: "2.19.0"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Binance (read-only key): spot trades, Convert, card buys, deposits,
-  withdrawals, rewards and balance join the Bitcoin page. Withdrawals are
-  matched to your wallets by transaction id.
+  Bitcoin: the headline and market value use your live balance, and you can
+  set your own average price (Average cost tile → set yours); net invested and
+  P/L follow from it.
 dependencies:
   - firefly-iii
 path: ""

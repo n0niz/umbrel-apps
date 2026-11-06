@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.18.2</footer>
+  <footer class="appver">Spending Trends v2.19.0</footer>
 </div>
 
 <dialog id="settings">
@@ -1110,6 +1110,9 @@
     M.spotKey = D.spot;
     // what you hold is the live balance; the history-based stack only sets the average cost
     if (M.ok) { M.held = liveBtc(data, M); M.value = M.held * M.spot; }
+    // your own average price (e.g. from your records) replaces the one worked out from the connected buys
+    const own = +((D.prefs || {}).avgPrice) || 0;
+    if (M.ok && own > 0) { M.avgOwn = true; M.avgCalc = M.avg; M.avg = own; M.cost = own * M.held; }
     return (D.btcModel = M);
   }
   /* on-chain wallet transactions: matched against Kraken withdrawals/deposits so nothing counts twice */
@@ -1872,7 +1875,7 @@
         ${tile("Unrealised P/L", `${pl >= 0 ? "+" : "−"}${eur(Math.abs(pl))}`, M.cost ? `${pct(pl / M.cost)} on net invested` : "", pl >= 0 ? "pos" : "neg", "Market value minus net invested.")}
         ${tile("Realised P/L", M.sells ? `${M.realised >= 0 ? "+" : "−"}${eur(Math.abs(M.realised))}` : "–", M.sells ? `${M.sells} sales, average-cost method` : "nothing sold", M.realised >= 0 ? "pos" : "neg", "What sales locked in, against the running average cost. Not your tax figure (German tax uses FIFO).")}
         ${tile("Return p.a.", M.xirr == null ? "–" : pct(M.xirr), "money-weighted (XIRR)", M.xirr >= 0 ? "pos" : "neg", "The yearly rate that balances every payment in, every sale out and today's value. It respects when each euro arrived.")}
-        ${tile("Average cost", eur(M.avg), "per BTC, fees included", "", "Net invested ÷ coins held. Rewards come in at zero cost and pull it down.")}
+        ${tile("Average cost", eur(M.avg), M.avgOwn ? `your own price · <a href="#" id="avgSet">change</a>` : `per BTC, fees included · <a href="#" id="avgSet">set yours</a>`, "", M.avgOwn ? `Your own average price. Worked out from the connected buys it would be ${eur(M.avgCalc)}. Net invested = this × the BTC you hold.` : "Net invested ÷ coins held. Rewards come in at zero cost and pull it down.")}
         ${tile("Break-even", M.avg ? (beven > 0 ? pct(beven) : "reached") : "–", M.avg ? (beven > 0 ? `price needs to reach ${eur(M.avg)}` : `${pct(-beven)} above your average`) : "", beven > 0 ? "neg" : "pos")}
         ${tile("Total in", eur(M.gross), `${M.buys} buys · median ${eur(M.median)}`, "", "Every euro ever paid, fees included. Never goes down, not even when you sell.")}
         ${tile("Fees paid", eur(M.feeEur), M.feeBtc ? `+ ${intF(M.feeBtc * 1e8)} sats network fees` : `${M.gross ? pct(M.feeEur / M.gross, 2).replace("+", "") : ""} of everything paid in`)}
@@ -1898,6 +1901,19 @@
       </div>`;
     bindSyncNow();
     const spotIn = $("spotIn");
+    $("avgSet").addEventListener("click", (e) => {
+      e.preventDefault();
+      const t = e.target.closest(".tile");
+      t.innerHTML = `<span>Your average price per BTC</span><span class="row" style="flex-wrap:nowrap;margin-top:6px"><input type="text" inputmode="decimal" placeholder="e.g. 83.643,26" style="width:130px" value="${D.prefs && D.prefs.avgPrice ? String(D.prefs.avgPrice).replace(".", ",") : ""}"><button class="btn sm">OK</button></span><small>empty = work it out from the buys</small>`;
+      const inp = t.querySelector("input"); inp.focus();
+      const ok = () => {
+        const v = inp.value.trim(), n = parseFloat(v.replace(/\./g, "").replace(",", "."));
+        D.prefs = D.prefs || {};
+        if (!v) delete D.prefs.avgPrice; else if (n > 0) D.prefs.avgPrice = n; else return;
+        savePrefs(); D.btcModel = null; renderBtc();
+      };
+      t.querySelector("button").addEventListener("click", ok); inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") ok(); });
+    });
     spotIn.addEventListener("change", () => { const n = parseFloat(spotIn.value.replace(/\./g, "").replace(",", ".")); if (n > 0) { D.spot = n; D.btcModel = null; renderBtc(); } });
     $("spotLive").addEventListener("click", () => { D.spot = null; D.btcModel = null; renderBtc(); });
     $("btcRange").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { B.range = b.dataset.v; store.set("btcRange", B.range); renderBtc(); }));
