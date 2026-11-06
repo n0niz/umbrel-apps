@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.19.1</footer>
+  <footer class="appver">Spending Trends v2.19.2</footer>
 </div>
 
 <dialog id="settings">
@@ -2012,7 +2012,7 @@
     else if (M.onStrike != null) places.push({ name: "Strike (from statements)", btc: M.onStrike, color: C.btc });
     else if (data.strike) places.push({ name: "Strike (not read yet – press Sync)", btc: 0, color: C.btc, err: data.strike.error });
     if (data.binance) places.push({ name: data.binance.at ? "Binance" : "Binance (not read yet – press Sync)", btc: +data.binance.btc || 0, color: "#f0b90b", err: data.binance.error });
-    (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: PAL[(i + 2) % PAL.length], err: w.error }));
+    (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: /trezor/i.test(w.name) ? "#22c55e" : PAL[(i + 2) % PAL.length], err: w.error }));
     places.sort((a, b) => b.btc - a.btc);                    // largest holding first; the untracked rest stays last
     const rest = M.qty - sum(places.map((p) => p.btc));
     if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : (data.strike_tx || []).length || data.strike || data.binance ? "Moved off the exchanges" : "Moved off Kraken", btc: rest, color: OTHER });
