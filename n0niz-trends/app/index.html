@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.12.0</footer>
+  <footer class="appver">Spending Trends v2.12.1</footer>
 </div>
 
 <dialog id="settings">
@@ -957,40 +957,42 @@
   }
 
   async function rKpi(host, spec) {
-    const y = now.getFullYear(), m = now.getMonth();
     const key = (yy, mm) => { const d = new Date(yy, mm, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
-    const cur = key(y, m), prev = key(y, m - 1);
-    const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 13)}-01`, to: TODAY, kind: "both" });
-    // income booked from the salary day on (default the 20th) pays for the NEXT month:
-    // the salary at the end of October is November's income
+    // salary month: everything booked from the salary day on (default the 20th) belongs to the NEXT month –
+    // the salary at the end of October, and all you spend or pay back after it, is November
     const pd = spec.payday === "off" ? 0 : +(spec.payday || 20);
-    const incKey = (r) => (pd && +String(r[9] || "").slice(8, 10) >= pd ? key(+r[0].slice(0, 4), +r[0].slice(5, 7)) : r[0]);
-    const tot = (k, t) => sum(base.filter((r) => r[1] === t && (t === "i" ? incKey(r) : r[0]) === k).map((r) => r[2]));
+    const y = now.getFullYear(), m = now.getMonth() + (pd && now.getDate() >= pd ? 1 : 0);
+    const cur = key(y, m), prev = key(y, m - 1), MN = MONTHS[new Date(y, m, 1).getMonth()], PMN = MONTHS[new Date(y, m - 1, 1).getMonth()];
+    const base = filterRows({ ...spec, period: "custom", from: `${key(y, m - 14)}-01`, to: TODAY, kind: "both" });
+    const mk = (r) => (pd && +String(r[9] || "").slice(8, 10) >= pd ? key(+r[0].slice(0, 4), +r[0].slice(5, 7)) : r[0]);
+    const tot = (k, t) => sum(base.filter((r) => r[1] === t && mk(r) === k).map((r) => r[2]));
     const avg = (t) => { let s = 0; for (let i = 1; i <= 12; i++) s += tot(key(y, m - i), t); return s / 12; };
     const ci = tot(cur, "i"), ce = tot(cur, "e"), pi = tot(prev, "i"), pe = tot(prev, "e"), ai = avg("i"), ae = avg("e");
     // money paid back on loans and debts (e.g. the Kraken liability) is not spending, but it is gone:
     // Left over subtracts it unless switched off
     const acc = spec.accounts && spec.accounts.length ? new Set(spec.accounts) : null;
-    const debtRows = (k) => spec.repay === false ? [] : D.rows.filter((r) => r[11] && r[1] === "e" && r[7] === D.cur && r[0] === k && (!acc || acc.has(r[8])));
+    const debtRows = (k) => spec.repay === false ? [] : D.rows.filter((r) => r[11] && r[1] === "e" && r[7] === D.cur && mk(r) === k && (!acc || acc.has(r[8])));
     const cr = debtRows(cur), pr = debtRows(prev), crs = sum(cr.map((r) => r[2])), prs = sum(pr.map((r) => r[2]));
     const debtTo = [...new Set(cr.map((r) => r[6]))].join(", ");
-    const day = now.getDate(), dim = new Date(y, m + 1, 0).getDate();
+    // how far into the month we are (salary day to salary day, or the calendar month)
+    const pStart = pd ? new Date(y, m - 1, pd) : new Date(y, m, 1), pEnd = pd ? new Date(y, m, pd) : new Date(y, m + 1, 1);
+    const frac = Math.min(1, Math.max(0, (now - pStart) / (pEnd - pStart)));
     const cmp = (a, b, goodUp) => { if (!b) return ""; const p = (a - b) / b; const good = goodUp ? p >= 0 : p <= 0; return `<span class="${good ? "pos" : "neg"}">${pct(p, 0)}</span>`; };
-    const cats = groupBy(base.filter((r) => r[0] === cur && r[1] === "e"), "category").slice(0, 3);
+    const cats = groupBy(base.filter((r) => mk(r) === cur && r[1] === "e"), "category").slice(0, 3);
     // cashback: income tagged Cashback; its sats valued at today's price
     const cbTag = (spec.cbtag || "Cashback").toLowerCase();
     const isCb = (r) => r[1] === "i" && r[5].some((t) => t.toLowerCase() === cbTag);
-    const cbRows = (k) => base.filter((r) => r[0] === k && isCb(r));
+    const cbRows = (k) => base.filter((r) => mk(r) === k && isCb(r));
     const cbc = cbRows(cur), cbp = cbRows(prev), cbSats = sum(cbc.map((r) => +r[13] || 0));
-    const cbYear = base.filter((r) => r[0].startsWith(String(y)) && isCb(r));
+    const cbYear = base.filter((r) => mk(r).startsWith(cur.slice(0, 4)) && isCb(r));
     // your own category tiles (default Shopping and Food & Household)
     const allCats = uniq(D.rows.filter((r) => r[1] === "e" && r[3]).map((r) => r[3]));
     const myCats = (spec.kpiCats || allCats.filter((c) => /shopping|food|household|lebensmittel/i.test(c)).slice(0, 3)).filter((c) => allCats.includes(c));
-    const catSum = (k, c) => sum(base.filter((r) => r[0] === k && r[1] === "e" && r[3] === c).map((r) => r[2]));
+    const catSum = (k, c) => sum(base.filter((r) => mk(r) === k && r[1] === "e" && r[3] === c).map((r) => r[2]));
     const catAvg = (c) => { let t = 0; for (let i = 1; i <= 12; i++) t += catSum(key(y, m - i), c); return t / 12; };
     const catTiles = myCats.map((c) => { const v = catSum(cur, c), p = catSum(prev, c);
-      return `<div class="tile"><span title="${esc(c)}">${esc(c)}</span><b>${eur(v)}</b><small>${cmp(v, p * (day / dim))} vs same point last month · Ø ${eur(catAvg(c))}</small></div>`; }).join("");
-    const cbTile = cbc.length || cbp.length || cbYear.length ? `<div class="tile"><span>Cashback ${MONTHS[m]}</span><b class="pos">${eur(sum(cbc.map((r) => r[2])))}</b><small>${cbSats ? `${intF(Math.round(cbSats * 1e8))} sats${D.btcEur ? ` · today ${eur(cbSats * D.btcEur)}` : ""} · ` : ""}last month ${eur(sum(cbp.map((r) => r[2])))} · ${y} ${eur(sum(cbYear.map((r) => r[2])))}</small></div>` : "";
+      return `<div class="tile"><span title="${esc(c)}">${esc(c)}</span><b>${eur(v)}</b><small>${cmp(v, p * frac)} vs same point last month · Ø ${eur(catAvg(c))}</small></div>`; }).join("");
+    const cbTile = cbc.length || cbp.length || cbYear.length ? `<div class="tile"><span>Cashback ${MN}</span><b class="pos">${eur(sum(cbc.map((r) => r[2])))}</b><small>${cbSats ? `${intF(Math.round(cbSats * 1e8))} sats${D.btcEur ? ` · today ${eur(cbSats * D.btcEur)}` : ""} · ` : ""}last month ${eur(sum(cbp.map((r) => r[2])))} · ${cur.slice(0, 4)} ${eur(sum(cbYear.map((r) => r[2])))}</small></div>` : "";
     // big payments coming next month (from your Firefly subscriptions): what to put aside now
     let bigTile = "";
     try {
@@ -1006,12 +1008,12 @@
       const nmName = MONTHS[nmD.getMonth()];
       bigTile = `<div class="tile"><span title="To save for next month">Save for next month</span><b>${eur(sum(big.map((b) => b.amount)))}</b><small>due in ${nmName}</small>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>nothing besides the usual monthly costs</small>`}</div>`;
     } catch { /* no Firefly subscriptions reachable: leave the tile out */ }
-    const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MONTHS[m]}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
+    const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MN}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
     host.innerHTML = `<div class="tiles">
-      <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>${pd ? `incl. salary from ${pd}. ${MONTHS[(m + 11) % 12]} · ` : ""}last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
+      <div class="tile"><span>Income ${MN}</span><b class="pos">${eur(ci)}</b><small>${pd ? `from ${pd}. ${PMN} · ` : ""}last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
       <div class="tile"><span>Left over</span><b class="${ci - ce - crs >= 0 ? "pos" : "neg"}">${eur(ci - ce - crs)}</b><small>after ${eur(ce)} spent${crs ? ` and ${eur(crs)} paid back` : ""} · last month ${eur(pi - pe - prs)}</small></div>
       ${cbTile}${bigTile}${debtTile}${catTiles}
-      <div class="tile"><span>Top categories ${MONTHS[m]}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
+      <div class="tile"><span>Top categories ${MN}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
     </div>`;
   }
 
@@ -1279,7 +1281,7 @@
     if (spec.type === "btc" || spec.type === "kpi") {
       if (spec.type === "kpi") {
         el.appendChild(accountsField());
-        const s = add(`<label class="f">Salary counts for the next month from day<select><option value="off">Off – calendar month</option>${[15, 18, 20, 22, 24, 25, 26, 27, 28].map((d) => `<option value="${d}">${d}.</option>`).join("")}</select></label>`).querySelector("select");
+        const s = add(`<label class="f">Month starts on salary day (everything from this day counts for the next month)<select><option value="off">Off – calendar month</option>${[15, 18, 20, 22, 24, 25, 26, 27, 28].map((d) => `<option value="${d}">${d}.</option>`).join("")}</select></label>`).querySelector("select");
         s.value = String(spec.payday || 20);
         s.addEventListener("change", () => { spec.payday = s.value === "off" ? "off" : +s.value; change(); });
         const cw = add(`<div class="f"></div>`);
