@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.17.0</footer>
+  <footer class="appver">Spending Trends v2.18.0</footer>
 </div>
 
 <dialog id="settings">
@@ -378,6 +378,13 @@
       <div class="sub">After every Kraken sync its opening balance is set so the account shows exactly the BTC you hold on Kraken (bought and cashback). Not counted as income or spending.</div>
       <div class="sub" id="cbInfo"></div>
     </div>
+    <h3>Binance</h3>
+    <div class="sub" style="margin-top:4px">API Management → Create API → <b>System generated</b>, and tick <b>only “Enable Reading”</b> – a key that can trade or withdraw is refused. Reads your BTC spot trades, Convert, card buys, deposits, withdrawals, rewards and balance. Withdrawals carry the on-chain transaction id, so coins sent on to your wallets are matched exactly.</div>
+    <label>API key<input type="password" id="bnKey" autocomplete="off"></label>
+    <label>Secret key<input type="password" id="bnSecret" autocomplete="off"></label>
+    <label>Read history from<input type="date" id="bnFrom"></label>
+    <label>Keep this Firefly account at your Binance balance<select id="bnAcc"></select></label>
+    <div class="sub" id="bnInfo"></div>
     <h3>Strike</h3>
     <div class="sub" style="margin-top:4px">Create an API key in the Strike Dashboard with <b>only</b> the scope <code>partner.balances.read</code>. Its BTC balance shows on the Bitcoin page and can keep a BTC account in Firefly at the right amount (only its opening balance moves, nothing counts as income or spending).</div>
     <label>API key<input type="password" id="stKey" autocomplete="off"></label>
@@ -1094,6 +1101,8 @@
   }
 
   /* ============================================================ bitcoin model */
+  const SRCN = { kraken: "Kraken", strike: "Strike", binance: "Binance" };
+  const srcName = (r) => SRCN[r.src] || "Kraken";
   async function btcModelSafe() { try { const d = await loadBtc(); return btcModel(d); } catch { return null; } }
   function btcModel(data) {
     if (D.btcModel && D.btcModel.spotKey === D.spot) return D.btcModel;
@@ -1119,13 +1128,13 @@
       if (net > 0) {
         const m = wds.find((w) => !w.used && w.r.hash && w.r.hash === txid) || wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -3600 && t - w.r.t <= 3 * 86400)
           || wds.find((w) => !w.used && near(net, w.r.btc) && t - w.r.t >= -86400 && t - w.r.t <= 14 * 86400);
-        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: m.r.src === "strike" ? "From Strike" : "From Kraken", btc: net, feeBtc: 0 }); continue; }
+        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: `From ${srcName(m.r)}`, btc: net, feeBtc: 0 }); continue; }
         const own = (D.prefs || {}).recvOwn && !(o && typeof o === "object");
         out.push({ ...base, type: "Received", btc: net, feeBtc: 0, ignored: o === "ignore" || own, own, setCost: o && typeof o === "object" ? o.cost : null });
       } else if (net < 0) {
         const amt = -net - fee;
         const m = dps.find((d) => !d.used && d.r.hash && d.r.hash === txid) || dps.find((d) => !d.used && near(amt, d.r.btc) && d.r.t - t >= -3600 && d.r.t - t <= 3 * 86400);
-        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: m.r.src === "strike" ? "To Strike" : "To Kraken", btc: amt, feeBtc: fee }); continue; }
+        if (m) { m.used = true; m.r.matched = parts[0].wallet; out.push({ ...base, type: `To ${srcName(m.r)}`, btc: amt, feeBtc: fee }); continue; }
         out.push({ ...base, type: "Sent", btc: amt, feeBtc: fee, ignored: o === "ignore" });
       }
     }
@@ -1139,7 +1148,7 @@
     const dayOf = (sec) => Math.floor((sec * 1000 - t0) / DAY);
     const pxAt = (d) => (px.length ? px[Math.max(0, Math.min(px.length - 1, d))] : spot);
     const pref = D.prefs || {}, asR = new Set(pref.asReward || []), notR = new Set(pref.notReward || []);
-    const kr = (data.tx || []).concat(data.strike_tx || []).sort((a, b) => a.t - b.t).map((r) => {
+    const kr = (data.tx || []).concat(data.strike_tx || [], data.binance_tx || []).sort((a, b) => a.t - b.t).map((r) => {
       const o = { ...r, autoType: r.type, src: r.src || "kraken" };
       if (asR.has(r.ref) && o.btc > 0) o.type = "Reward";
       if (notR.has(r.ref) && r.type === "Reward") o.type = "Internal";
@@ -1172,7 +1181,7 @@
       } else if (r.type === "Withdrawal") {
         feeBtc += r.feeBtc || 0; qty -= r.feeBtc || 0; fifoTake(lots, r.feeBtc || 0);
       }
-      if (["Sent", "To Kraken", "To Strike", "Between wallets"].includes(r.type) && r.feeBtc) {
+      if (["Sent", "To Kraken", "To Strike", "To Binance", "Between wallets"].includes(r.type) && r.feeBtc) {
         feeBtc += r.feeBtc; qty -= r.feeBtc; fifoTake(lots, r.feeBtc);
       }
       if (qty < 0) qty = 0;
@@ -1851,7 +1860,7 @@
     const tile = (label, value, small, cls = "", title = "") => `<div class="tile" title="${esc(title)}"><span>${label}</span><b class="${cls}">${value}</b><small>${small}</small></div>`;
     v.innerHTML = `
       <div class="btchead">
-        <div><div class="big">${btcF(M.qty)} <small>BTC</small></div><div class="sub">${data.kraken && (data.strike_tx || []).length ? "bought on Kraken and Strike" : data.kraken ? "bought on Kraken" : (data.strike_tx || []).length ? "bought on Strike" : "in your wallets"}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(M.qty * 1e8)} sats</div></div>
+        <div><div class="big">${btcF(M.qty)} <small>BTC</small></div><div class="sub">${(() => { const xs = [data.kraken && "Kraken", (data.strike_tx || []).length && "Strike", (data.binance_tx || []).length && "Binance"].filter(Boolean); return xs.length ? "bought on " + xs.join(", ").replace(/, ([^,]*)$/, " and $1") : "in your wallets"; })()}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(M.qty * 1e8)} sats</div></div>
         <div class="spot"><label class="sub" for="spotIn">BTC price €</label><input id="spotIn" type="text" inputmode="decimal" value="${Math.round(M.spot)}"><button class="btn sm" id="spotLive" title="Back to the live Kraken price">Live</button></div>
       </div>
       <div class="sub" id="btcSync" style="margin-bottom:12px">${syncText(data)}</div>
@@ -1881,7 +1890,7 @@
           <div class="sub" style="margin-top:8px">Coins sold in Germany after holding them more than a year are tax-free (§23 EStG). This counts your buys oldest-first. Not tax advice.</div></div>
         <div class="card"><h2>Where the coins sit</h2><div id="where"></div></div>
         <div class="card full"><h2>By year</h2><div class="tablewrap" id="byYear"></div></div>
-        <div class="card full"><h2>By month <span class="hint">euros put in per month · Kraken orange, Strike purple</span></h2><div id="bc4"></div></div>
+        <div class="card full"><h2>By month <span class="hint">euros put in per month · Kraken orange, Strike purple, Binance yellow</span></h2><div id="bc4"></div></div>
         <div class="card full"><h2>Transactions <span class="seg sm" id="btcFilter">${["All", "Buy", "Sell", "Reward", "Transfers"].concat((data.wallets || []).length ? ["Wallets"] : [], ["Other"]).map((f) => `<button data-v="${f}" class="${B.filter === f ? "on" : ""}">${f}</button>`).join("")}</span></h2><div id="btcTx"></div></div>
         <div class="card full"><h2>Data check</h2><div class="checks" id="btcChecks"></div></div>
       </div>`;
@@ -1901,7 +1910,7 @@
   /* what "not in a tracked wallet" is made of: coins that left an exchange without arriving in a tracked wallet,
      and wallet receipts counted as new coins (if one of those came from an exchange send, it is counted twice) */
   function restBreakdown(M, rest) {
-    const src = (r) => (r.src === "strike" ? "Strike" : "Kraken");
+    const src = srcName;
     const outs = M.tx.filter((r) => r.type === "Withdrawal" && !r.matched);
     const ownN = M.tx.filter((r) => r.own).length;
     const gone = M.tx.filter((r) => r.gone);
@@ -1952,10 +1961,12 @@
     $("bl3").innerHTML = legendHtml(s3) + `<span class="dot" style="--c:${C.inc}">Buy</span><span class="dot" style="--c:${C.exp}">Sell</span>`;
     const first = M.dates.length ? M.dates[start].slice(0, 7) : TODAY.slice(0, 7);
     const months = monthKeys(first + "-01", TODAY);
-    const inv = new Map(), sats = new Map(), invS = new Map();
-    for (const r of M.tx) if (r.type === "Buy") { const k = r.date.slice(0, 7); inv.set(k, (inv.get(k) || 0) + r.eur); sats.set(k, (sats.get(k) || 0) + r.btc); if (r.src === "strike") invS.set(k, (invS.get(k) || 0) + r.eur); }
-    const hasS = invS.size > 0;
-    const bars = hasS ? [{ name: "Kraken", color: C.btc, values: months.map((k) => (inv.get(k) || 0) - (invS.get(k) || 0)) }, { name: "Strike", color: "#c084fc", values: months.map((k) => invS.get(k) || 0) }]
+    const inv = new Map(), sats = new Map(), bySrc = { kraken: new Map(), strike: new Map(), binance: new Map() };
+    for (const r of M.tx) if (r.type === "Buy") { const k = r.date.slice(0, 7), m = bySrc[r.src] || bySrc.kraken; inv.set(k, (inv.get(k) || 0) + r.eur); sats.set(k, (sats.get(k) || 0) + r.btc); m.set(k, (m.get(k) || 0) + r.eur); }
+    const SRCC = { kraken: C.btc, strike: "#c084fc", binance: "#f0b90b" };
+    const used = Object.keys(bySrc).filter((k) => bySrc[k].size);
+    const hasS = used.length > 1;
+    const bars = hasS ? used.map((k) => ({ name: SRCN[k], color: SRCC[k], values: months.map((m) => bySrc[k].get(m) || 0) }))
       : [{ name: "Put in", color: C.btc, values: months.map((k) => inv.get(k) || 0) }];
     barChart($("bc4"), months, bars, { labelFmt: monthLabel, height: 220, stack: hasS,
       tipExtra: (i) => { const s = sats.get(months[i]) || 0; return s ? `<div><span>BTC bought</span><span>${btcS(s)}</span></div><div><span>Ø price</span><span>${eur(inv.get(months[i]) / s)}</span></div>` : ""; } });
@@ -1973,10 +1984,11 @@
     if (data.strike && data.strike.at) places.push({ name: "Strike", btc: +data.strike.btc || 0, color: "#c084fc", err: data.strike.error });
     else if (M.onStrike != null) places.push({ name: "Strike (from statements)", btc: M.onStrike, color: "#c084fc" });
     else if (data.strike) places.push({ name: "Strike (not read yet – press Sync)", btc: 0, color: "#c084fc", err: data.strike.error });
+    if (data.binance) places.push({ name: data.binance.at ? "Binance" : "Binance (not read yet – press Sync)", btc: +data.binance.btc || 0, color: "#f0b90b", err: data.binance.error });
     (data.wallets || []).forEach((w, i) => places.push({ name: w.name, btc: w.balance, color: PAL[(i + 2) % PAL.length], err: w.error }));
     places.sort((a, b) => b.btc - a.btc);                    // largest holding first; the untracked rest stays last
     const rest = M.qty - sum(places.map((p) => p.btc));
-    if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : (data.strike_tx || []).length || data.strike ? "Moved off the exchanges" : "Moved off Kraken", btc: rest, color: OTHER });
+    if (rest > 1e-6) places.push({ name: (data.wallets || []).length ? "Not in a tracked wallet" : (data.strike_tx || []).length || data.strike || data.binance ? "Moved off the exchanges" : "Moved off Kraken", btc: rest, color: OTHER });
     const tot = Math.max(M.qty, sum(places.map((p) => p.btc)));
     $("where").innerHTML = `<div class="wherebox"><div class="cbw"></div>
       <table><tbody>${places.map((p) => `<tr><td><span style="color:${p.color}">●</span> ${esc(p.name)}${p.err ? ` <span class="neg" title="${esc(p.err)}">sync error</span><div class="sub neg">${esc(p.err.slice(0, 160))}</div>` : ""}</td><td>${btcF(p.btc)}</td><td>${eur(p.btc * M.spot)}</td><td><b>${tot ? Math.round((p.btc / tot) * 100) : 0}%</b></td></tr>`).join("")}</tbody></table></div>
@@ -2009,11 +2021,11 @@
     $("byYear").innerHTML = `<table><thead><tr><th>Year</th><th>Buys</th><th>Put in</th><th>BTC bought</th><th>Ø price</th><th>Fees</th><th>Sold</th><th>Rewards</th><th>Worth today</th></tr></thead><tbody>${yrs.map(([y, o]) =>
       `<tr><td>${y}</td><td>${o.buys}</td><td>${eur(o.eur)}</td><td>${btcS(o.btc)}</td><td>${o.btc ? eur(o.eur / o.btc) : "–"}</td><td>${eur(o.fee)}</td><td>${o.sold ? `${btcS(o.sold)} <span class="sub">${eur(o.soldEur)}</span>` : "–"}</td><td>${o.reward ? `${intF(o.reward * 1e8)} sats` : "–"}</td><td class="${o.btc * M.spot >= o.eur ? "pos" : "neg"}">${eur(o.btc * M.spot)}</td></tr>`).join("")}</tbody></table>`;
     // transactions
-    const groups = { Buy: ["Buy"], Sell: ["Sell"], Reward: ["Reward"], Transfers: ["Deposit", "Withdrawal", "Internal"], Wallets: ["Received", "Sent", "From Kraken", "To Kraken", "From Strike", "To Strike", "Between wallets"], Other: ["Convert in", "Convert out", "Unmatched"] };
+    const groups = { Buy: ["Buy"], Sell: ["Sell"], Reward: ["Reward"], Transfers: ["Deposit", "Withdrawal", "Internal"], Wallets: ["Received", "Sent", "From Kraken", "To Kraken", "From Strike", "To Strike", "From Binance", "To Binance", "Between wallets"], Other: ["Convert in", "Convert out", "Unmatched"] };
     const list = M.tx.filter((r) => B.filter === "All" || (groups[B.filter] || []).includes(r.type)).slice().reverse();
     const shown = B.showAll ? list : list.slice(0, 60);
     $("btcTx").innerHTML = list.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">Type</th><th>BTC</th><th>Euro</th><th>Price</th><th>Fee</th><th class="l">Source</th></tr></thead><tbody>${shown.map((r) =>
-      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}${r.ignored ? " ign" : ""}">${r.type}</span>${r.src === "wallet" && !r.conf ? ` <span class="sub">unconfirmed</span>` : ""}</td><td>${["Sell", "Withdrawal", "Convert out", "Sent", "To Kraken", "To Strike"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : r.value ? `<span class="sub">${eur2(r.value)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${r.src === "wallet" ? walletCell(r) : `${r.src === "strike" ? "Strike" : "Kraken"} · ${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${r.matched ? ` · ${r.type === "Withdrawal" ? "to" : "from"} ${esc(r.matched)}` : ""}`}${r.src === "wallet" ? "" : ""}${r.type === "Deposit" && !r.matched ? depButtons(r) : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 && !r.counted ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
+      `<tr><td>${r.date}</td><td class="l"><span class="pill ${r.type}${r.ignored ? " ign" : ""}">${r.type}</span>${r.src === "wallet" && !r.conf ? ` <span class="sub">unconfirmed</span>` : ""}</td><td>${["Sell", "Withdrawal", "Convert out", "Sent", "To Kraken", "To Strike", "To Binance"].includes(r.type) ? "−" : ""}${btcF(r.btc)}</td><td>${r.eur ? eur2(r.eur) : r.cost ? `<span class="sub">${eur2(r.cost)}</span>` : r.value ? `<span class="sub">${eur2(r.value)}</span>` : "–"}</td><td>${r.eur && r.btc ? eur(r.eur / r.btc) : "–"}</td><td>${r.feeEur ? eur2(r.feeEur) : r.feeBtc ? `${intF(r.feeBtc * 1e8)} sats` : "–"}</td><td class="l sub">${r.src === "wallet" ? walletCell(r) : `${srcName(r)} · ${esc(r.ktype)}${r.sub ? " · " + esc(r.sub) : ""}${r.other ? " · " + esc(r.other) : ""}${r.matched ? ` · ${r.type === "Withdrawal" ? "to" : "from"} ${esc(r.matched)}` : ""}`}${r.src === "wallet" ? "" : ""}${r.type === "Deposit" && !r.matched ? depButtons(r) : ""}${["Deposit", "Internal", "Unmatched", "Reward"].includes(r.type) && r.btc > 0 && !r.counted ? ` <button class="btn sm" data-rw="${esc(r.ref)}" data-on="${r.type === "Reward" ? 1 : 0}">${r.type === "Reward" ? "Not a reward" : "Count as reward"}</button>` : ""}</td></tr>`).join("")}</tbody></table></div>${list.length > shown.length ? `<button class="btn sm" id="btcMore" style="margin-top:8px">Show all ${list.length}</button>` : ""}` : `<div class="empty">Nothing of this type.</div>`;
     const more = $("btcMore"); if (more) more.addEventListener("click", () => { B.showAll = true; btcTables(M, data); });
     $("btcTx").querySelectorAll("[data-dep]").forEach((b) => b.addEventListener("click", () => {
       const ref = b.dataset.dep, act = b.dataset.act;
@@ -2056,6 +2068,14 @@
     const ch = [];
     if (data.kraken && data.balance_btc != null && Math.abs(data.balance_btc - data.ledger_btc) > 1e-6) ch.push(["warn", "Ledger and balance differ", `Kraken reports ${btcF(data.balance_btc)} BTC, the ledger entries add up to ${btcF(data.ledger_btc)} BTC. Something is booked outside the exchange ledger (for example the Krak app or a Krak card payment in BTC).`]);
     else if (data.kraken && data.balance_btc != null) ch.push(["ok", "Ledger matches your Kraken balance", `${btcF(data.balance_btc)} BTC on Kraken, and the ledger adds up to exactly that.`]);
+    if (data.binance && data.binance.at) {
+      const bt = data.binance_tx || [];
+      const calc = sum(bt.map((r) => (["Buy", "Reward", "Deposit", "Convert in"].includes(r.type) ? r.btc : r.type === "Withdrawal" ? -(r.btc + r.feeBtc) : ["Sell", "Convert out"].includes(r.type) ? -r.btc : 0)));
+      const diff = (+data.binance.btc || 0) - calc;
+      ch.push(Math.abs(diff) < 1e-6 ? ["ok", "Binance history matches the balance", `${btcF(data.binance.btc)} BTC on Binance, and the history adds up to exactly that.`]
+        : ["warn", "Binance history and balance differ", `Binance reports ${btcF(data.binance.btc)} BTC, the history adds up to ${btcF(calc)} BTC (${diff > 0 ? "+" : ""}${btcF(diff)}). Usually history before “Read history from” in Settings, or a product the API doesn't list (e.g. Earn rewards, P2P, gifts).`]);
+    }
+    if (data.binance && data.binance.error) ch.push(["warn", "Binance could not be read", data.binance.error]);
     if (data.balance_error) ch.push(["warn", "Balance could not be read", `${data.balance_error}. Give the key the “Query Funds” permission.`]);
     const cnt = (t) => M.tx.filter((r) => r.type === t).length;
     if (cnt("Unmatched")) ch.push(["warn", `${cnt("Unmatched")} entries without a euro side`, "These BTC entries look like trades, but no matching euro entry was found, so they are left out of the stack. See them under Transactions → Other."]);
@@ -2423,6 +2443,13 @@
     let btcAccs = [];
     try { btcAccs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "BTC").map((a) => a.name); } catch {}
     pick($("stAcc"), btcAccs, c.strike_account, (x) => /strike/i.test(x), "– don't change Firefly –");
+    $("bnKey").value = ""; $("bnSecret").value = "";
+    $("bnKey").placeholder = $("bnSecret").placeholder = c.binance_set ? "saved – leave empty to keep it" : "paste key";
+    $("bnFrom").value = c.binance_from || "2019-01-01";
+    pick($("bnAcc"), btcAccs, c.binance_account, (x) => /binance/i.test(x), "– don't change Firefly –");
+    D.bnRemove = false;
+    $("bnInfo").innerHTML = c.binance_set ? `Key saved. <a href="#" id="bnRemove">Remove the key</a>` : "";
+    if ($("bnRemove")) $("bnRemove").onclick = (e) => { e.preventDefault(); D.bnRemove = true; $("bnInfo").textContent = "The key will be removed when you press Save."; };
     let eurAccs = [];
     try { eurAccs = (await loadAccounts()).accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "EUR").map((a) => a.name); } catch {}
     pick($("sbFrom"), eurAccs, c.strike_from, (x) => /^strike/i.test(x), "– choose –");
@@ -2495,7 +2522,8 @@
         kraken_key: $("krKey").value, kraken_secret: $("krSecret").value, kraken_remove: $("krRemove").checked,
         mempool_url: $("mpUrl").value, savings_categories: D.savDraft || [],
         cashback_book: $("cbOn").checked, cashback_account: $("cbAcc").value, cashback_from: $("cbFrom").value, btc_balance_sync: $("cbBal").checked,
-        strike_key: $("stKey").value.trim(), strike_account: $("stAcc").value, strike_remove: D.stRemove, strike_book: $("sbOn").checked, strike_from: $("sbFrom").value, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
+        strike_key: $("stKey").value.trim(), strike_account: $("stAcc").value, strike_remove: D.stRemove, strike_book: $("sbOn").checked, strike_from: $("sbFrom").value,
+        binance_key: $("bnKey").value.trim(), binance_secret: $("bnSecret").value.trim(), binance_remove: D.bnRemove, binance_from: $("bnFrom").value, binance_account: $("bnAcc").value, wallets: (D.wdraft || []).map((w) => ({ id: w.id, name: w.name, desc: w.desc, type: w.type })) });
     } catch (er) { $("settingsMsg").textContent = er.message; return; }
     $("settings").close();
     D.p = {}; D.btcModel = null; D.rows = null;

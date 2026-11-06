@@ -34,6 +34,7 @@ CASHBACK_FILE = DATA_DIR / "cashback_booked.json"
 STRIKE_FILE = DATA_DIR / "strike.json"
 STRIKE_TX_FILE = DATA_DIR / "strike_tx.json"
 STRIKE_BOOKED_FILE = DATA_DIR / "strike_booked.json"
+BINANCE_FILE = DATA_DIR / "binance.json"
 STRIKE_API = "https://api.strike.me/v1"
 PRICES_FILE = DATA_DIR / "btc_prices.json"
 WALLETS_FILE = DATA_DIR / "wallets.json"
@@ -76,6 +77,11 @@ DEFAULTS = {
     # sends to your own wallets as transfers strike_account -> that wallet's BTC account
     "strike_book": False,
     "strike_from": "",
+    # Binance: read-only API key ("Enable Reading" only)
+    "binance_key": "",
+    "binance_secret": "",
+    "binance_from": "2019-01-01",
+    "binance_account": "",
 }
 
 cache = {}
@@ -402,7 +408,8 @@ def kraken_fetch_btc(cfg, st):
 def btc_sync(cfg):
     has_kraken = bool(cfg.get("kraken_key") and cfg.get("kraken_secret"))
     strike_book = bool(cfg.get("strike_book") and cfg.get("token") and STRIKE_TX_FILE.exists())
-    if not (has_kraken or cfg.get("wallets") or cfg.get("strike_key") or strike_book):
+    has_binance = bool(cfg.get("binance_key") and cfg.get("binance_secret"))
+    if not (has_kraken or cfg.get("wallets") or cfg.get("strike_key") or strike_book or has_binance):
         return
     with sync_lock:
         if sync_state["running"]:
@@ -419,6 +426,11 @@ def btc_sync(cfg):
             wallet_part(cfg)
         except Exception as e:  # noqa: BLE001
             errors.append(f"Wallets: {e}")
+    if has_binance:
+        try:
+            binance_part(cfg)
+        except Exception as e:  # noqa: BLE001
+            errors.append(str(e) if str(e).startswith("Binance") else f"Binance: {e}")
     if strike_book:
         set_sync(step="Booking Strike in Firefly")
         try:
@@ -503,6 +515,219 @@ def set_firefly_btc(cfg, acc, target, since):
     odate = str(at.get("opening_balance_date") or "")[:10] or (date.fromisoformat(since) - timedelta(days=1)).isoformat()
     firefly_put(cfg, f"/api/v1/accounts/{a['id']}", {"name": acc, "opening_balance": f"{opening:.8f}", "opening_balance_date": odate})
     return diff
+
+
+# ------------------------------------------------------------- binance ---
+BINANCE_PRIVATE = os.environ.get("BINANCE_PRIVATE", "https://api.binance.com")
+BINANCE_SYMBOLS = ("BTCEUR", "BTCUSDT", "BTCUSDC", "BTCFDUSD")
+DAY_MS = 86400000
+
+
+def binance_get(key, secret, path, params=None, method="GET"):
+    q = dict(params or {})
+    q.update(timestamp=int(time.time() * 1000), recvWindow=10000)
+    qs = urllib.parse.urlencode(q)
+    sig = hmac.new(secret.encode(), qs.encode(), hashlib.sha256).hexdigest()
+    url = f"{BINANCE_PRIVATE}{path}?{qs}&signature={sig}"
+    req = urllib.request.Request(url, method=method, data=b"" if method == "POST" else None,
+                                 headers={"X-MBX-APIKEY": key, "User-Agent": "spending-trends/2.18"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read() or b"null")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")[:300]
+        try:
+            msg = json.loads(body).get("msg") or body
+        except ValueError:
+            msg = body
+        raise RuntimeError(f"Binance {e.code} on {path}: {msg}") from None
+
+
+def binance_windows(start_ms, days):
+    now = int(time.time() * 1000)
+    t = start_ms
+    while t < now:
+        e = min(now, t + days * DAY_MS - 1)
+        yield t, e
+        t = e + 1
+
+
+def binance_part(cfg):
+    """Read BTC history from Binance: spot trades, Convert, card buys, deposits, withdrawals, rewards, balance.
+    Each list is fetched only from where the last sync stopped."""
+    key, sec = cfg["binance_key"], cfg["binance_secret"]
+    st = read_json(BINANCE_FILE, {})
+    for k in ("trades", "convert", "fiat", "dep", "wd", "div"):
+        st.setdefault(k, {})
+    st.setdefault("upto", {})
+    try:
+        start = int(datetime.fromisoformat(cfg.get("binance_from") or "2019-01-01").replace(tzinfo=timezone.utc).timestamp() * 1000)
+    except ValueError:
+        start = int(datetime(2019, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
+    if st.get("from") != start:                                 # start date changed: read everything again
+        st.update(upto={}, trades={}, convert={}, fiat={}, dep={}, wd={}, div={}, **{"from": start})
+    errors = []
+
+    def since(name):
+        return max(start, st["upto"].get(name, start) - 3 * DAY_MS)
+
+    def done(name):
+        st["upto"][name] = int(time.time() * 1000)
+        write_json(BINANCE_FILE, st)
+
+    # spot trades, per symbol, paged by trade id
+    for sym in BINANCE_SYMBOLS:
+        set_sync(step=f"Binance: trades {sym}")
+        try:
+            last = max([int(v["id"]) for v in st["trades"].values() if v.get("symbol") == sym] or [-1])
+            while True:
+                res = binance_get(key, sec, "/api/v3/myTrades", {"symbol": sym, "limit": 1000, "fromId": last + 1})
+                for x in res or []:
+                    x["symbol"] = sym
+                    st["trades"][f"{sym}-{x['id']}"] = x
+                    last = max(last, int(x["id"]))
+                if not res or len(res) < 1000:
+                    break
+                time.sleep(0.3)
+        except RuntimeError as e:
+            if "Invalid symbol" not in str(e):
+                errors.append(str(e))
+    write_json(BINANCE_FILE, st)
+
+    def windowed(name, path, days, extra, rows_of, key_of, sleep=0.3, pkeys=("startTime", "endTime")):
+        set_sync(step=f"Binance: {name}")
+        try:
+            for a, b in binance_windows(since(name), days):
+                res = binance_get(key, sec, path, {**extra, pkeys[0]: a, pkeys[1]: b})
+                for x in rows_of(res):
+                    st[name][key_of(x)] = x
+                time.sleep(sleep)
+            done(name)
+        except RuntimeError as e:
+            errors.append(str(e))
+
+    windowed("dep", "/sapi/v1/capital/deposit/hisrec", 89, {"coin": "BTC"}, lambda r: r or [], lambda x: x.get("txId") or f"{x.get('insertTime')}-{x.get('amount')}")
+    # Binance weighs these per account: withdraw history allows ~10 calls a minute, Convert ~60
+    windowed("wd", "/sapi/v1/capital/withdraw/history", 89, {"coin": "BTC"}, lambda r: r or [], lambda x: str(x.get("id")), sleep=6.5)
+    windowed("convert", "/sapi/v1/convert/tradeFlow", 29, {"limit": 1000}, lambda r: (r or {}).get("list") or [], lambda x: str(x.get("orderId")), sleep=1.2)
+    windowed("fiat", "/sapi/v1/fiat/payments", 89, {"transactionType": 0, "rows": 500}, lambda r: (r or {}).get("data") or [],
+             lambda x: str(x.get("orderNo")), pkeys=("beginTime", "endTime"))
+    windowed("div", "/sapi/v1/asset/assetDividend", 89, {"asset": "BTC", "limit": 500}, lambda r: (r or {}).get("rows") or [],
+             lambda x: str(x.get("tranId") or x.get("id")))
+
+    # what is on Binance right now: spot + funding + Simple Earn
+    set_sync(step="Binance: balance")
+    try:
+        btc = 0.0
+        acc = binance_get(key, sec, "/api/v3/account", {"omitZeroBalances": "true"})
+        btc += sum(float(b["free"]) + float(b["locked"]) for b in acc.get("balances", []) if b.get("asset") == "BTC")
+        for f in binance_get(key, sec, "/sapi/v1/asset/get-funding-asset", {"asset": "BTC"}, method="POST") or []:
+            btc += float(f.get("free") or 0) + float(f.get("locked") or 0) + float(f.get("freeze") or 0)
+        for path in ("/sapi/v1/simple-earn/flexible/position", "/sapi/v1/simple-earn/locked/position"):
+            try:
+                pos = binance_get(key, sec, path, {"asset": "BTC", "size": 100})
+                btc += sum(float(p.get("totalAmount") or p.get("amount") or 0) for p in (pos or {}).get("rows", []))
+            except RuntimeError:
+                pass
+        st.update(btc=round(btc, 8), at=int(time.time()), error="")
+    except RuntimeError as e:
+        st["error"] = str(e)
+        errors.append(str(e))
+    write_json(BINANCE_FILE, st)
+    acc_name = (cfg.get("binance_account") or "").strip()
+    if acc_name and cfg.get("token") and st.get("at") and not st.get("error"):
+        set_sync(step="Setting the Binance balance in Firefly")
+        set_firefly_btc(cfg, acc_name, st["btc"], f"{date.today().year}-01-01")
+    if errors:
+        raise RuntimeError(" · ".join(dict.fromkeys(errors))[:400])
+
+
+def binance_classify(st):
+    """Binance history -> transactions in the same shape as classify()."""
+    days = read_json(PRICES_FILE, {"days": {}}).get("days", {})
+
+    def eur_at(ms, btc):
+        d = datetime.fromtimestamp(ms / 1000, timezone.utc).date()
+        px = days.get(d.isoformat()) or days.get((d - timedelta(days=1)).isoformat())
+        return btc * float(px) if px else 0.0
+
+    tx = []
+
+    def add(t_ms, ref, typ, btc, **kw):
+        row = {"t": int(t_ms / 1000), "ref": ref, "src": "binance", "ktype": kw.pop("ktype", ""), "sub": kw.pop("sub", ""),
+               "btc": round(btc, 8), "eur": round(kw.pop("eur", 0.0), 2), "feeEur": round(kw.pop("feeEur", 0.0), 2),
+               "feeBtc": round(kw.pop("feeBtc", 0.0), 8), "other": kw.pop("other", ""), "type": typ, "hash": kw.pop("hash", "")}
+        tx.append(row)
+
+    # spot trades: one transaction per order
+    orders = {}
+    for x in st.get("trades", {}).values():
+        orders.setdefault((x["symbol"], x["orderId"]), []).append(x)
+    for (sym, oid), g in orders.items():
+        quote = sym[3:]
+        buy = bool(g[0].get("isBuyer"))
+        qty = sum(float(x["qty"]) for x in g)
+        qq = sum(float(x["quoteQty"]) for x in g)
+        com_btc = sum(float(x["commission"]) for x in g if x.get("commissionAsset") == "BTC")
+        com_q = sum(float(x["commission"]) for x in g if x.get("commissionAsset") == quote)
+        others = {}
+        for x in g:
+            if x.get("commissionAsset") not in ("BTC", quote):
+                others[x["commissionAsset"]] = others.get(x["commissionAsset"], 0) + float(x["commission"])
+        t = min(int(x["time"]) for x in g)
+        eur_val = qq if quote == "EUR" else eur_at(t, qty)
+        px = eur_val / qty if qty else 0
+        other = (f"paid {qq:,.2f} {quote}" if buy else f"got {qq:,.2f} {quote}") if quote != "EUR" else ""
+        if others:
+            other += (" · " if other else "") + "fee " + ", ".join(f"{v:.6f} {a}" for a, v in others.items())
+        if buy:
+            add(t, f"bn-{sym}-{oid}", "Buy", qty - com_btc, eur=eur_val + (com_q if quote == "EUR" else 0),
+                feeEur=com_btc * px + (com_q if quote == "EUR" else 0), ktype="spot", sub=sym, other=other)
+        else:
+            add(t, f"bn-{sym}-{oid}", "Sell", qty + com_btc, eur=eur_val - (com_q if quote == "EUR" else 0),
+                feeEur=com_btc * px + (com_q if quote == "EUR" else 0), ktype="spot", sub=sym, other=other)
+    for x in st.get("convert", {}).values():
+        if x.get("orderStatus") != "SUCCESS":
+            continue
+        fa, ta, fv, tv, t = x.get("fromAsset"), x.get("toAsset"), float(x.get("fromAmount") or 0), float(x.get("toAmount") or 0), int(x.get("createTime") or 0)
+        ref = f"bn-cv-{x.get('orderId')}"
+        if ta == "BTC" and fa == "EUR":
+            add(t, ref, "Buy", tv, eur=fv, ktype="convert", sub=f"{fa}→BTC")
+        elif fa == "BTC" and ta == "EUR":
+            add(t, ref, "Sell", fv, eur=tv, ktype="convert", sub=f"BTC→{ta}")
+        elif ta == "BTC":
+            add(t, ref, "Convert in", tv, ktype="convert", sub=f"{fa}→BTC", other=f"{fa} -{fv:g}")
+        elif fa == "BTC":
+            add(t, ref, "Convert out", fv, ktype="convert", sub=f"BTC→{ta}", other=f"{ta} +{tv:g}")
+    for x in st.get("fiat", {}).values():
+        if str(x.get("status", "")).lower() not in ("completed", "successful", "success") or x.get("cryptoCurrency") != "BTC":
+            continue
+        t, src_amt, fee = int(x.get("createTime") or 0), float(x.get("sourceAmount") or 0), float(x.get("totalFee") or 0)
+        cur = x.get("fiatCurrency")
+        eur = src_amt if cur == "EUR" else eur_at(t, float(x.get("obtainAmount") or 0))
+        add(t, f"bn-fiat-{x.get('orderNo')}", "Buy", float(x.get("obtainAmount") or 0), eur=eur, feeEur=fee if cur == "EUR" else 0,
+            ktype="card buy", sub=f"{src_amt:,.2f} {cur}", other="" if cur == "EUR" else f"paid {src_amt:,.2f} {cur}")
+    for x in st.get("dep", {}).values():
+        if int(x.get("status", 0)) not in (1, 6):           # 1 success, 6 credited but cannot withdraw yet
+            continue
+        add(int(x.get("insertTime") or 0), f"bn-dep-{x.get('txId') or x.get('insertTime')}", "Deposit", float(x["amount"]),
+            ktype="deposit", sub=x.get("network", ""), hash=(x.get("txId") or "").split(" ")[0])
+    for x in st.get("wd", {}).values():
+        if int(x.get("status", 0)) != 6:                    # 6 = completed
+            continue
+        t = x.get("completeTime") or x.get("applyTime") or ""
+        try:
+            ms = int(datetime.strptime(str(t)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
+        except ValueError:
+            continue
+        add(ms, f"bn-wd-{x.get('id')}", "Withdrawal", float(x["amount"]), feeBtc=float(x.get("transactionFee") or 0),
+            ktype="withdrawal", sub=x.get("network", ""), hash=x.get("txId") or "")
+    for x in st.get("div", {}).values():
+        add(int(x.get("divTime") or 0), f"bn-div-{x.get('tranId') or x.get('id')}", "Reward", float(x.get("amount") or 0),
+            ktype="reward", sub=x.get("enInfo") or "")
+    tx = [r for r in tx if r["btc"] > 0 and r["t"] > 0]
+    tx.sort(key=lambda r: r["t"])
+    return tx
 
 
 def strike_get(key, path):
@@ -1165,6 +1390,8 @@ def btc_payload(cfg):
     tx, onk = classify(st)
     stx_store = read_json(STRIKE_TX_FILE, {})
     stx = strike_classify(stx_store.get("rows", {}))
+    bst = read_json(BINANCE_FILE, {}) if cfg.get("binance_key") else {}
+    btx = binance_classify(bst) if bst else []
     bal = st.get("balance") or {}
     with sync_lock:
         sync = dict(sync_state)
@@ -1178,19 +1405,21 @@ def btc_payload(cfg):
                         "error": rec.get("error", "")})
     wts = [t["t"] for w in wallets for t in w["txs"]]
     return {
-        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets) or bool(cfg.get("strike_key")) or bool(stx),
+        "configured": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")) or bool(wallets) or bool(cfg.get("strike_key")) or bool(stx) or bool(cfg.get("binance_key")),
         "strike": ({k: v for k, v in read_json(STRIKE_FILE, {}).items() if k != "raw"} or {"btc": None}) if cfg.get("strike_key") else None,
         "kraken": bool(cfg.get("kraken_key") and cfg.get("kraken_secret")),
         "wallets": wallets,
         "tx": tx,
         "strike_tx": stx,
+        "binance_tx": btx,
+        "binance": {"btc": bst.get("btc"), "at": bst.get("at", 0), "error": bst.get("error", "")} if cfg.get("binance_key") else None,
         "strike_import": {"rows": len(stx_store.get("rows", {})), "at": stx_store.get("at", 0),
                           "first": stx[0]["t"] if stx else 0, "last": stx[-1]["t"] if stx else 0},
         "ledger_btc": round(onk, 8),
         "balance_btc": round(sum(float(v) for k, v in bal.items() if is_btc(k)), 8) if bal else None,
         "balance_at": st.get("balance_at", 0),
         "balance_error": st.get("balance_error", ""),
-        "prices": price_series(sorted(tx + stx, key=lambda r: r["t"]), min(wts) if wts else None),
+        "prices": price_series(sorted(tx + stx + btx, key=lambda r: r["t"]), min(wts) if wts else None),
         "spot": spot_price(),
         "sync": sync,
     }
@@ -1257,6 +1486,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "kraken_set": bool(cfg["kraken_key"] and cfg["kraken_secret"]),
                                     "strike_set": bool(cfg.get("strike_key")), "strike_account": cfg.get("strike_account", ""),
                                     "strike_book": bool(cfg.get("strike_book")), "strike_from": cfg.get("strike_from", ""),
+                                    "binance_set": bool(cfg.get("binance_key") and cfg.get("binance_secret")),
+                                    "binance_from": cfg.get("binance_from") or DEFAULTS["binance_from"], "binance_account": cfg.get("binance_account", ""),
                                     "strike_booked": sum(1 for v in read_json(STRIKE_BOOKED_FILE, {}).values() if str(v).isdigit()),
                                     "history_start": history_start(cfg)})
         if p == "/api/data":
@@ -1439,8 +1670,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"ok": True, "added": added, "rows": len(rows), "tx": len(strike_classify(rows))})
         if self.path == "/api/btc/sync":
             cfg = load_config()
-            if not cfg.get("kraken_key"):
-                return self._json(400, {"error": "No Kraken key set yet. Open Settings."})
+            if not (cfg.get("kraken_key") or cfg.get("binance_key") or cfg.get("wallets") or cfg.get("strike_key") or cfg.get("strike_book")):
+                return self._json(400, {"error": "Nothing to sync yet. Add Kraken, Binance, Strike or a wallet in Settings."})
             start_sync(cfg)
             return self._json(200, {"ok": True})
         self._json(404, {"error": "not found"})
@@ -1509,6 +1740,36 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": f"Cannot reach Strike: {e}"})
             strike_changed = sk != cfg.get("strike_key")
             cfg["strike_key"] = sk
+        binance_changed = False
+        if body.get("binance_key") or body.get("binance_secret"):
+            bk, bs = (body.get("binance_key") or "").strip(), (body.get("binance_secret") or "").strip()
+            if not (bk and bs):
+                return self._json(400, {"error": "Binance needs both the API key and the secret key."})
+            try:
+                binance_get(bk, bs, "/api/v3/account", {"omitZeroBalances": "true"})
+            except Exception as e:  # noqa: BLE001
+                return self._json(400, {"error": f"{e}. Use a key with only “Enable Reading”."})
+            # account flags say what the account may do, not the key: the key's own rights come from apiRestrictions
+            try:
+                r = binance_get(bk, bs, "/sapi/v1/account/apiRestrictions")
+                bad = [k for k in ("enableWithdrawals", "enableSpotAndMarginTrading", "enableMargin", "enableFutures",
+                                   "enableInternalTransfer", "permitsUniversalTransfer", "enableVanillaOptions") if r.get(k)]
+                if bad:
+                    return self._json(400, {"error": "This Binance key may do more than read (" + ", ".join(bad) + "). Make a new key with only “Enable Reading”."})
+            except Exception:  # noqa: BLE001
+                pass
+            binance_changed = (bk, bs) != (cfg.get("binance_key"), cfg.get("binance_secret"))
+            cfg["binance_key"], cfg["binance_secret"] = bk, bs
+        if body.get("binance_remove"):
+            cfg["binance_key"] = cfg["binance_secret"] = ""
+            BINANCE_FILE.unlink(missing_ok=True)
+        if "binance_from" in body:
+            bf = (body.get("binance_from") or "").strip() or DEFAULTS["binance_from"]
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", bf):
+                return self._json(400, {"error": "Binance start date must look like 2019-01-01."})
+            binance_changed = binance_changed or bf != (cfg.get("binance_from") or DEFAULTS["binance_from"])
+            cfg["binance_from"] = bf
+            cfg["binance_account"] = (body.get("binance_account") or "").strip()
         if body.get("strike_remove"):
             cfg["strike_key"] = ""
             STRIKE_FILE.unlink(missing_ok=True)
@@ -1570,7 +1831,7 @@ class Handler(BaseHTTPRequestHandler):
         save_config(cfg)
         with cache_lock:
             cache.clear()
-        if kraken_changed or wallets_changed or cashback_on or (strike_changed and (cfg.get("strike_key") or cfg.get("strike_book"))):
+        if kraken_changed or wallets_changed or cashback_on or (strike_changed and (cfg.get("strike_key") or cfg.get("strike_book"))) or (binance_changed and cfg.get("binance_key")):
             start_sync(cfg)
         self._json(200, {"ok": True})
 
