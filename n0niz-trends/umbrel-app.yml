@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.11.5"
+version: "2.11.6"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,8 +26,8 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Month at a glance: debt paid back by transfer to a liability (e.g. Kraken
-  Debt) is counted in "Paid back" and Left over; the Spending pace tile is gone.
+  Month at a glance: all amounts on one line, income, left over and cashback
+  first, the Spent tile is gone (Left over shows what was spent).
 dependencies:
   - firefly-iii
 path: ""

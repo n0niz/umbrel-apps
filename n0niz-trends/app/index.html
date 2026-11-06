@@ -103,6 +103,7 @@
   .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
   .tile { background: var(--panel2); border-radius: 10px; padding: 10px 12px; min-width: 0; }
   .tile span { display: block; color: var(--muted); font-size: 12px; }
+  .tile > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; margin: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile small { color: var(--muted); font-size: 11.5px; display: block; }
   .w .tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
@@ -336,7 +337,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.5</footer>
+  <footer class="appver">Spending Trends v2.11.6</footer>
 </div>
 
 <dialog id="settings">
@@ -975,7 +976,7 @@
     const catSum = (k, c) => sum(base.filter((r) => r[0] === k && r[1] === "e" && r[3] === c).map((r) => r[2]));
     const catAvg = (c) => { let t = 0; for (let i = 1; i <= 12; i++) t += catSum(key(y, m - i), c); return t / 12; };
     const catTiles = myCats.map((c) => { const v = catSum(cur, c), p = catSum(prev, c);
-      return `<div class="tile"><span>${esc(c)} ${MONTHS[m]}</span><b>${eur(v)}</b><small>${cmp(v, p * (day / dim))} vs same point last month · Ø ${eur(catAvg(c))}</small></div>`; }).join("");
+      return `<div class="tile"><span title="${esc(c)}">${esc(c)}</span><b>${eur(v)}</b><small>${cmp(v, p * (day / dim))} vs same point last month · Ø ${eur(catAvg(c))}</small></div>`; }).join("");
     const cbTile = cbc.length || cbp.length || cbYear.length ? `<div class="tile"><span>Cashback ${MONTHS[m]}</span><b class="pos">${eur(sum(cbc.map((r) => r[2])))}</b><small>${cbSats ? `${intF(Math.round(cbSats * 1e8))} sats${D.btcEur ? ` · today ${eur(cbSats * D.btcEur)}` : ""} · ` : ""}last month ${eur(sum(cbp.map((r) => r[2])))} · ${y} ${eur(sum(cbYear.map((r) => r[2])))}</small></div>` : "";
     // big payments coming next month (from your Firefly subscriptions): what to put aside now
     let bigTile = "";
@@ -990,14 +991,13 @@
         if (!["monthly", "weekly"].includes(x.freq) || x.skip) { if (x.amount >= minBig) big.push({ name: x.name, dt, amount: x.amount }); }
       big.sort((a, b) => b.amount - a.amount);
       const nmName = MONTHS[nmD.getMonth()];
-      bigTile = `<div class="tile"><span>To save for next month</span><b>${eur(sum(big.map((b) => b.amount)))}</b><small>due in ${nmName}</small>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>nothing besides the usual monthly costs</small>`}</div>`;
+      bigTile = `<div class="tile"><span title="To save for next month">Save for next month</span><b>${eur(sum(big.map((b) => b.amount)))}</b><small>due in ${nmName}</small>${big.length ? big.slice(0, 3).map((b) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddmm(b.dt).slice(0, 6)} ${esc(b.name)}</span><span>${eur(b.amount)}</span></small>`).join("") + (big.length > 3 ? `<small>+ ${big.length - 3} more</small>` : "") : `<small>nothing besides the usual monthly costs</small>`}</div>`;
     } catch { /* no Firefly subscriptions reachable: leave the tile out */ }
     const debtTile = crs || prs ? `<div class="tile"><span>Paid back ${MONTHS[m]}</span><b>${eur(crs)}</b><small>${debtTo ? `${esc(debtTo)} · ` : ""}last month ${eur(prs)}</small></div>` : "";
     host.innerHTML = `<div class="tiles">
       <div class="tile"><span>Income ${MONTHS[m]}</span><b class="pos">${eur(ci)}</b><small>${pd ? `incl. salary from ${pd}. ${MONTHS[(m + 11) % 12]} · ` : ""}last month ${eur(pi)} · Ø ${eur(ai)}</small></div>
-      <div class="tile"><span>Spent ${MONTHS[m]}</span><b>${eur(ce)}</b><small>${cmp(ce, pe * (day / dim))} vs same point last month · Ø ${eur(ae)}</small></div>
-      <div class="tile"><span>Left over</span><b class="${ci - ce - crs >= 0 ? "pos" : "neg"}">${eur(ci - ce - crs)}</b><small>${crs ? `after ${eur(crs)} paid back${debtTo ? ` (${esc(debtTo)})` : ""} · ` : ""}last month ${eur(pi - pe - prs)}</small></div>
-      ${bigTile}${debtTile}${cbTile}${catTiles}
+      <div class="tile"><span>Left over</span><b class="${ci - ce - crs >= 0 ? "pos" : "neg"}">${eur(ci - ce - crs)}</b><small>after ${eur(ce)} spent${crs ? ` and ${eur(crs)} paid back` : ""} · last month ${eur(pi - pe - prs)}</small></div>
+      ${cbTile}${bigTile}${debtTile}${catTiles}
       <div class="tile"><span>Top categories ${MONTHS[m]}</span>${cats.length ? cats.map((c) => `<small style="display:flex;justify-content:space-between;gap:6px;color:var(--text)"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}</span><span>${eur(c.total)}</span></small>`).join("") : "<small>no spending yet</small>"}</div>
     </div>`;
   }
