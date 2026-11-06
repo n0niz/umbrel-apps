@@ -234,6 +234,13 @@
   .agtable td.wr { min-width: 180px; }
   .agtable tr.done td { opacity: .55; }
   .appver { text-align: center; color: var(--muted, #7d8796); font-size: 12px; padding: 28px 0 18px; }
+  tr[draggable] .grip { cursor: grab; color: var(--muted); user-select: none; letter-spacing: -2px; }
+  tr.dragging { opacity: .4; }
+  tr.dropb td { box-shadow: inset 0 2px 0 var(--accent); }
+  tr.dropa td { box-shadow: inset 0 -2px 0 var(--accent); }
+  table.split th, table.split td { white-space: nowrap; font-size: 13px; padding-left: 6px; padding-right: 6px; }
+  table.split td:first-child, table.split th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
+  table.split td.click:hover { background: var(--panel2); cursor: pointer; }
   .subcal th, .subcal td { white-space: nowrap; padding-left: 6px; padding-right: 6px; font-size: 13px; }
   .subcal td:first-child, .subcal th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
   .subcal .curm { background: var(--panel2); }
@@ -329,7 +336,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.9.2</footer>
+  <footer class="appver">Spending Trends v2.10.0</footer>
 </div>
 
 <dialog id="settings">
@@ -604,13 +611,14 @@
   function barChart(host, labels, groups, o = {}) {
     host.replaceChildren(); host.classList.add("chart");
     const line = o.line;
-    const vals = groups.flatMap((g) => g.values).concat(line ? line.values : []);
+    const stackT = o.stack ? labels.map((_, i) => sum(groups.map((g) => g.values[i] || 0))) : null;
+    const vals = (o.stack ? stackT : groups.flatMap((g) => g.values)).concat(line ? line.values : []);
     if (!labels.length || !groups.length) return emptyIn(host, "No data for this selection.");
     const W = Math.max(300, host.clientWidth || 600), H = o.height || 260;
     const m = { l: 60, r: 10, t: 10, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b, n = labels.length;
     const sc = scale(Math.min(0, ...vals), Math.max(0, ...vals), 4);
     const Y = (v) => m.t + ih - ((v - sc.lo) / (sc.hi - sc.lo)) * ih;
-    const bw = iw / n, inner = Math.min(bw * 0.78, 56), gw = inner / groups.length;
+    const bw = iw / n, inner = Math.min(bw * 0.78, 56), gw = o.stack ? inner : inner / groups.length;
     const X = (i) => m.l + bw * i + bw / 2;
     const yF = o.yFmt || eurK, tF = o.tipFmt || eur2, lF = o.labelFmt || ((l) => l);
     const svg = S("svg", { viewBox: `0 0 ${W} ${H}` });
@@ -621,7 +629,17 @@
     const step = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(iw / 52))));
     for (let i = 0; i < n; i += step) S("text", { x: X(i), y: H - 8, "text-anchor": "middle", fill: "var(--muted)", "font-size": 11 }, svg).textContent = lF(labels[i]);
     const hl = S("rect", { y: m.t, height: ih, width: bw, fill: "var(--panel2)", opacity: 0 }, svg);
-    groups.forEach((g, gi) => g.values.forEach((v, i) => {
+    if (o.stack) {
+      labels.forEach((_, i) => {
+        let base = 0;
+        groups.forEach((g) => {
+          const v = g.values[i] || 0;
+          if (v <= 0) return;
+          S("rect", { x: X(i) - inner / 2 + 0.5, y: Y(base + v), width: Math.max(1, inner - 1), height: Math.max(1, Y(base) - Y(base + v) - 0.6), fill: g.color }, svg);
+          base += v;
+        });
+      });
+    } else groups.forEach((g, gi) => g.values.forEach((v, i) => {
       if (!v) return;
       const y0 = Y(Math.max(v, 0)), hh = Math.max(1, Math.abs(Y(v) - Y(0)));
       S("rect", { x: X(i) - inner / 2 + gi * gw + 0.5, y: y0, width: Math.max(1, gw - 1), height: hh, rx: Math.min(3, gw / 3), fill: g.color }, svg);
@@ -639,7 +657,9 @@
       const [i, rect] = idx(ev);
       hl.setAttribute("x", m.l + bw * i); hl.setAttribute("opacity", 0.6);
       if (o.onHover) o.onHover(i);
-      const rows = groups.map((g) => tipRow(g.color, g.name, tF(g.values[i]))).join("") + (line ? tipRow(line.color, line.name, tF(line.values[i])) : "");
+      const rows = (o.stack
+        ? groups.filter((g) => g.values[i]).slice().reverse().map((g) => tipRow(g.color, g.name, `${tF(g.values[i])}${stackT[i] ? ` · ${Math.round((g.values[i] / stackT[i]) * 100)}%` : ""}`)).join("") + tipRow("transparent", "Total", tF(stackT[i]))
+        : groups.map((g) => tipRow(g.color, g.name, tF(g.values[i]))).join("")) + (line ? tipRow(line.color, line.name, tF(line.values[i])) : "");
       placeTip(tip, host, (X(i) / W) * rect.width, `<b>${esc(lF(labels[i], true))}</b>${rows}${o.tipExtra ? o.tipExtra(i) : ""}${o.onClick ? `<div class="sub" style="margin-top:4px">${esc(o.clickHint || "Click for the bookings")}</div>` : ""}`);
     });
     svg.addEventListener("pointerleave", () => { tip.style.display = "none"; hl.setAttribute("opacity", 0); if (o.onHover) o.onHover(null); });
@@ -816,6 +836,7 @@
     }
     const N = months.map((_, i) => I[i] - E[i]), ti = sum(I), te = sum(E), ts = sum(Sv);
     const kind = spec.kind || "both";
+    if (spec.split && kind !== "both") return rSplit(host, spec, mode, months, rows.filter((r) => r[1] === kind), kind);
     host.innerHTML = `<div class="sumline">${kind !== "e" ? stat("Income", eur(ti), "pos") : ""}${kind !== "i" ? stat("Expenses", eur(te), "neg") : ""}${kind === "both" ? stat("Left over", eur(ti - te), ti - te >= 0 ? "pos" : "neg") : ""}${ts ? stat(`of which saved (${[...savCats()].join(", ")})`, eur(ts)) : ""}${kind === "both" && ti > 0 ? stat("Savings rate", pct((ti - te) / ti, 0)) : ""}${months.length > 1 ? stat(kind === "i" ? "Ø income / month" : "Ø spent / month", eur((kind === "i" ? ti : te) / months.length)) : ""}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
     const groups = [];
     if (kind !== "e") groups.push({ name: "Income", color: C.inc, values: I });
@@ -832,6 +853,35 @@
     html += `<tr><td class="sub">Ø per month</td><td>${eur2(ti / months.length)}</td><td>${eur2(te / months.length)}</td><td>${eur2((ti - te) / months.length)}</td>${ts ? `<td>${eur2(ts / months.length)}</td>` : ""}<td></td></tr></tbody></table></div>`;
     const tbl = host.querySelector(".tbl"); tbl.innerHTML = html;
     tbl.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", () => { const i = +tr.dataset.i; drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)); }));
+  }
+
+  // expenses (or income) per month, split by tag / payee / account / category: stacked bars + a table of shares
+  const SPLITS = { tag: "Tags", payee: "Payees", account: "Accounts", category: "Categories", budget: "Budgets" };
+  function rSplit(host, spec, mode, months, rows, kind) {
+    const dim = spec.split, pos = new Map(months.map((k, i) => [k, i]));
+    const all = groupBy(rows, dim), top = mode === "full" ? 8 : 6;
+    const shown = all.slice(0, top), rest = all.slice(top);
+    const series = shown.map((g, i) => ({ name: g.name, color: PAL[i % PAL.length], rows: g.rows }));
+    if (rest.length) series.push({ name: `Other (${rest.length})`, color: OTHER, rows: rest.flatMap((g) => g.rows) });
+    for (const g of series) { g.values = months.map(() => 0); for (const r of g.rows) { const i = pos.get(r[0]); if (i != null) g.values[i] += r[2]; } g.total = sum(g.values); }
+    const mt = months.map((_, i) => sum(series.map((g) => g.values[i]))), tot = sum(mt);
+    const real = sum(rows.map((r) => r[2])), overlap = dim === "tag" && tot - real > 0.5;
+    host.innerHTML = `<div class="sumline">${stat(kind === "i" ? "Income" : "Expenses", eur(real), kind === "i" ? "pos" : "neg")}${months.length > 1 ? stat("Ø / month", eur(real / months.length)) : ""}${shown[0] ? stat(`Largest: ${esc(shown[0].name)}`, `${eur(shown[0].total)} <span class="sub">${real ? Math.round((shown[0].total / real) * 100) : 0}%</span>`) : ""}</div><div class="cb"></div><div class="legend"></div>${mode === "full" ? `<div class="tbl"></div><div class="drill"></div>` : ""}`;
+    barChart(host.querySelector(".cb"), months, series, { stack: true, labelFmt: monthLabel, height: mode === "full" ? 300 : 220,
+      onClick: mode === "full" ? (i) => drill(host, rows.filter((r) => r[0] === months[i]), monthLabel(months[i], true)) : null });
+    host.querySelector(".legend").innerHTML = legendHtml(series);
+    if (mode !== "full") return;
+    const sh = (v, t) => (t ? `${Math.round((v / t) * 100)}%` : "");
+    const head = `<th class="l">${{ tag: "Tag", payee: "Payee", account: "Account", category: "Category", budget: "Budget" }[dim]}</th>${months.map((k) => `<th>${esc(monthLabel(k))}</th>`).join("")}<th>Total</th><th>Share</th>`;
+    const body = series.map((g, gi) => `<tr><td class="l wr"><span style="color:${g.color}">●</span> ${esc(g.name)}</td>${g.values.map((v, i) => `<td class="click" data-g="${gi}" data-i="${i}">${v ? `${eurK(v)}<div class="sub">${sh(v, mt[i])}</div>` : ""}</td>`).join("")}<td><b>${eur(g.total)}</b></td><td><b>${sh(g.total, tot)}</b></td></tr>`).join("");
+    const foot = `<tr class="total"><td class="l">Total</td>${mt.map((v) => `<td>${v ? eurK(v) : ""}</td>`).join("")}<td>${eur(tot)}</td><td>100%</td></tr>`;
+    const tbl = host.querySelector(".tbl");
+    tbl.innerHTML = `<div class="tablewrap"><table class="split"><thead><tr>${head}</tr></thead><tbody>${body}${foot}</tbody></table></div>
+      <div class="sub" style="margin-top:6px">% = share of that month.${overlap ? " A booking with several tags counts under each of them, so the tags add up to more than the real total." : ""} Click a cell for its bookings.</div>`;
+    tbl.querySelectorAll("td.click").forEach((td) => td.addEventListener("click", () => {
+      const g = series[+td.dataset.g], k = months[+td.dataset.i];
+      drill(host, g.rows.filter((r) => r[0] === k), `${g.name} · ${monthLabel(k, true)}`);
+    }));
   }
 
   function rBreakdown(host, spec, mode) {
@@ -1206,6 +1256,11 @@
       const w = add(`<label class="f">Show<span class="seg">${opts.map(([v, l]) => `<button type="button" data-v="${v}">${l}</button>`).join("")}</span></label>`);
       const cur = spec.kind || t.kind;
       w.querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.v === cur); b.addEventListener("click", () => { spec.kind = b.dataset.v; change(true); }); });
+      if (spec.type === "incexp" && (spec.kind || "both") !== "both") {
+        const sp = add(`<label class="f">Split each month by<select><option value="">– nothing –</option>${Object.entries(SPLITS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>`).querySelector("select");
+        sp.value = spec.split || "";
+        sp.addEventListener("change", () => { spec.split = sp.value || undefined; change(); });
+      }
     }
     if (spec.type === "trend") {
       const ds = add(`<label class="f">Compare<select><option value="category">Categories</option><option value="tag">Tags</option><option value="budget">Budgets</option><option value="payee">Payees</option></select></label>`).querySelector("select");
@@ -1379,12 +1434,34 @@
     const typeName = (t) => (TYPES[t] || { name: t }).name;
     v.innerHTML = `<div class="card" style="margin-bottom:16px"><h2>Saved reports <span class="hint">${D.reports.length ? "click to open" : ""}</span></h2>
       ${D.reports.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th class="l">Saved</th><th class="l">Type</th><th class="l">Period</th><th class="l">Comment</th><th></th></tr></thead><tbody>${D.reports.map((r) =>
-        `<tr class="click" data-id="${r.id}"><td><b>${esc(r.name)}</b></td><td class="l">${esc((r.updated || r.created || "").slice(0, 10).split("-").reverse().join("."))}</td><td class="l">${esc(typeName(r.type))}</td><td class="l">${esc(r.period ? periodText(r) : "–")}</td><td class="l wr">${esc(r.comment || "")}</td>
+        `<tr class="click" data-id="${r.id}" draggable="true"><td><span class="grip" title="Drag to reorder">⋮⋮</span> <b>${esc(r.name)}</b></td><td class="l">${esc((r.updated || r.created || "").slice(0, 10).split("-").reverse().join("."))}</td><td class="l">${esc(typeName(r.type))}</td><td class="l">${esc(r.period ? periodText(r) : "–")}</td><td class="l wr">${esc(r.comment || "")}</td>
         <td><button class="btn sm" data-pin="${r.id}">Pin to Home</button></td></tr>`).join("")}</tbody></table></div>`
         : `<div class="empty">No saved reports yet. Start one below, set the filters you like and press <b>Save</b>.</div>`}</div>
       <div class="rtypes">${Object.entries(TYPES).map(([k, t]) => `<div class="card rtype"><div class="mini">${miniIcon(k)}</div><div><h3>${esc(t.name)}</h3><p>${esc(t.desc)}</p><a class="btn sm" href="#reports/new/${k}">Start report</a></div></div>`).join("")}</div>`;
     v.querySelectorAll("tr.click").forEach((tr) => tr.addEventListener("click", (e) => { if (e.target.closest("[data-pin]")) return; location.hash = `#reports/saved/${tr.dataset.id}`; }));
     v.querySelectorAll("[data-pin]").forEach((b) => b.addEventListener("click", () => pinSaved(b.dataset.pin)));
+    // drag the rows to put the saved reports in your own order
+    let dragId = null;
+    v.querySelectorAll("tr[draggable]").forEach((tr) => {
+      tr.addEventListener("dragstart", (e) => { dragId = tr.dataset.id; tr.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", dragId); });
+      tr.addEventListener("dragend", () => { tr.classList.remove("dragging"); v.querySelectorAll("tr.dropb,tr.dropa").forEach((x) => x.classList.remove("dropb", "dropa")); });
+      tr.addEventListener("dragover", (e) => {
+        if (!dragId || dragId === tr.dataset.id) return;
+        e.preventDefault();
+        const r = tr.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+        tr.classList.toggle("dropa", after); tr.classList.toggle("dropb", !after);
+      });
+      tr.addEventListener("dragleave", () => tr.classList.remove("dropb", "dropa"));
+      tr.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const after = tr.classList.contains("dropa"), from = D.reports.findIndex((x) => x.id === dragId);
+        if (from < 0 || dragId === tr.dataset.id) return;
+        const [it] = D.reports.splice(from, 1);
+        let to = D.reports.findIndex((x) => x.id === tr.dataset.id);
+        D.reports.splice(after ? to + 1 : to, 0, it);
+        dragId = null; saveReports(); reportList(v);
+      });
+    });
   }
   async function pinSaved(id) {
     await loadLayout();
