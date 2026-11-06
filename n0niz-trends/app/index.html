@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.18.0</footer>
+  <footer class="appver">Spending Trends v2.18.1</footer>
 </div>
 
 <dialog id="settings">
@@ -1860,7 +1860,7 @@
     const tile = (label, value, small, cls = "", title = "") => `<div class="tile" title="${esc(title)}"><span>${label}</span><b class="${cls}">${value}</b><small>${small}</small></div>`;
     v.innerHTML = `
       <div class="btchead">
-        <div><div class="big">${btcF(M.qty)} <small>BTC</small></div><div class="sub">${(() => { const xs = [data.kraken && "Kraken", (data.strike_tx || []).length && "Strike", (data.binance_tx || []).length && "Binance"].filter(Boolean); return xs.length ? "bought on " + xs.join(", ").replace(/, ([^,]*)$/, " and $1") : "in your wallets"; })()}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(M.qty * 1e8)} sats</div></div>
+        <div><div class="big">${btcF(liveBtc(data, M))} <small>BTC</small></div><div class="sub">${(() => { const xs = [data.kraken && "Kraken", (data.strike_tx || []).length && "Strike", (data.binance_tx || []).length && "Binance"].filter(Boolean); return xs.length ? "bought on " + xs.join(", ").replace(/, ([^,]*)$/, " and $1") : "in your wallets"; })()}${(data.wallets || []).length ? ` · ${data.wallets.length} wallet${data.wallets.length > 1 ? "s" : ""}` : ""} · ${M.buys} buys${firstBuy ? ` since ${dayLabel(firstBuy.date, true)}` : ""} · ${intF(liveBtc(data, M) * 1e8)} sats${Math.abs(liveBtc(data, M) - M.qty) > 1e-6 ? ` · <span title="Buys and rewards minus sells and fees. Average cost and P/L are worked out from this.">history explains ${btcS(M.qty)} BTC</span>` : ""}</div></div>
         <div class="spot"><label class="sub" for="spotIn">BTC price €</label><input id="spotIn" type="text" inputmode="decimal" value="${Math.round(M.spot)}"><button class="btn sm" id="spotLive" title="Back to the live Kraken price">Live</button></div>
       </div>
       <div class="sub" id="btcSync" style="margin-bottom:12px">${syncText(data)}</div>
@@ -1909,6 +1909,15 @@
   const pref0 = () => D.prefs || {};
   /* what "not in a tracked wallet" is made of: coins that left an exchange without arriving in a tracked wallet,
      and wallet receipts counted as new coins (if one of those came from an exchange send, it is counted twice) */
+  /* what you hold right now: live balances of the exchanges and wallets (history-based stack where nothing is read live) */
+  function liveBtc(data, M) {
+    const parts = [];
+    if (data.kraken) parts.push(Math.max(0, M.onKraken || 0));
+    if (data.strike && data.strike.at) parts.push(+data.strike.btc || 0); else if (M.onStrike != null) parts.push(M.onStrike);
+    if (data.binance && data.binance.at) parts.push(+data.binance.btc || 0);
+    for (const w of data.wallets || []) parts.push(+w.balance || 0);
+    return parts.length ? sum(parts) : M.qty;
+  }
   function restBreakdown(M, rest) {
     const src = srcName;
     const outs = M.tx.filter((r) => r.type === "Withdrawal" && !r.matched);
