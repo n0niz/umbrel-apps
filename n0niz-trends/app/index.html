@@ -80,6 +80,14 @@
   .tip b { display: block; margin-bottom: 4px; }
   .tip div { display: flex; justify-content: space-between; gap: 14px; font-variant-numeric: tabular-nums; }
   .tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+  .smart { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+  .smart .sm { background: var(--panel2); border-radius: 10px; padding: 10px 12px; cursor: pointer; border: 1px solid transparent; }
+  .smart .sm:hover { border-color: var(--accent); }
+  .smart .smh { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chipv { display: inline-flex; align-items: center; }
+  .chipv .x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 4px; }
+  .chipv .x:hover { color: var(--neg, #f47067); }
   .wherebox { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
   .wherebox table { flex: 1; min-width: 260px; }
   .donut { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
@@ -301,6 +309,8 @@
   <section class="view" id="v-reports"></section>
 
   <section class="view" id="v-trends">
+    <div class="card" style="margin-bottom:14px"><h2>Suggested for you <span class="hint">picked from your bookings · click to show, ☆ to save</span></h2><div class="smart" id="tSmart"></div>
+      <div id="tMine"></div></div>
     <div class="row" style="margin-bottom:14px">
       <div class="seg" id="tDim">
         <button data-v="category">Categories</button><button data-v="tag">Tags</button><button data-v="budget">Budgets</button><button data-v="payee">Payees</button>
@@ -314,7 +324,7 @@
       <aside class="card picker">
         <h2>Select <span class="hint" id="tHint"></span></h2>
         <input type="search" id="tSearch" placeholder="Search…" aria-label="Search">
-        <div class="actions"><button class="btn" id="tTop5">Top 5</button><button class="btn" id="tClear">Clear</button></div>
+        <div class="actions"><button class="btn" id="tTop5">Top 5</button><button class="btn" id="tClear">Clear</button><button class="btn primary" id="tSave" title="Save what you see now under a name">Save view</button></div>
         <div class="list" id="tList"></div>
       </aside>
       <section class="stack">
@@ -339,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.11.7</footer>
+  <footer class="appver">Spending Trends v2.12.0</footer>
 </div>
 
 <dialog id="settings">
@@ -1588,6 +1598,96 @@
     for (const s of [$("tFrom"), $("tTo")]) { const v = s.value; s.replaceChildren(...ys.map((y) => new Option(y, y))); if (v) s.value = v; }
     T.from = Math.max(first, T.from); $("tFrom").value = T.from; $("tTo").value = T.to;
     tRender();
+    tSmart();
+  }
+  /* ---- smart suggestions + saved views ---- */
+  const TV = { list: null, failed: false };
+  async function tViews() {
+    if (TV.list && !TV.failed) return TV.list;
+    try { const r = await api("api/store/trendviews"); TV.list = Array.isArray(r.value) ? r.value : []; TV.failed = false; }
+    catch { TV.list = TV.list || []; TV.failed = true; }
+    return TV.list;
+  }
+  const tSaveViews = () => (TV.failed ? (toast("Not saved: your saved views could not be loaded. Reload the page."), Promise.resolve())
+    : put("api/store/trendviews", { value: TV.list }).catch((e) => toast("Could not save: " + e.message)));
+  function tAgg(dim, type, from, to) {        // totals per item over [from, to] (month keys)
+    const m = new Map();
+    for (const r of D.rows) {
+      if (r[1] !== type || r[7] !== D.cur || r[11] || isSav(r) || r[0] < from || r[0] > to) continue;
+      for (const k of keysOf(r, dim)) m.set(k, (m.get(k) || 0) + r[2]);
+    }
+    return m;
+  }
+  function tSuggest() {
+    const mk = (back) => { const d = new Date(now.getFullYear(), now.getMonth() - back, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+    const last = mk(1), y1 = mk(12), r3 = mk(3), p9 = mk(12), p9e = mk(4);
+    const out = [], seen = new Set();
+    const add = (v) => { const key = v.dim + v.type + v.sel.join("|"); if (!v.sel.length || seen.has(key)) return; seen.add(key); out.push(v); };
+    const isReal = (n) => !/^\(no |^\(unknown/.test(n);
+    const top = (dim, type, n) => [...tAgg(dim, type, y1, last).entries()].filter(([k]) => isReal(k)).sort((a, b) => b[1] - a[1]).slice(0, n);
+    // 1 rising fastest: last 3 months against the 9 before (per month)
+    const now3 = tAgg("category", "e", r3, last), was9 = tAgg("category", "e", p9, p9e);
+    const moves = [...now3.entries()].filter(([k]) => isReal(k)).map(([k, v]) => { const a = v / 3, b = (was9.get(k) || 0) / 9; return { k, a, b, d: a - b, p: b ? a / b - 1 : null }; }).filter((x) => x.a >= 20);
+    const up = moves.filter((x) => x.d > 0 && (x.p == null || x.p > 0.15)).sort((a, b) => b.d - a.d).slice(0, 3);
+    if (up.length) add({ name: "Rising costs", dim: "category", type: "e", sel: up.map((x) => x.k), tl: "sep",
+      why: up.map((x) => `${x.k} ${x.p == null ? "new" : `+${Math.round(x.p * 100)}%`}`).join(" · ") + " (last 3 months vs before)" });
+    // 2 the big blocks
+    const big = top("category", "e", 5);
+    if (big.length) add({ name: "Biggest costs", dim: "category", type: "e", sel: big.map(([k]) => k), tl: "sep", why: `${big[0][0]} leads with ${eur(big[0][1])} in 12 months` });
+    // 3 eating out
+    const eat = top("category", "e", 40).filter(([k]) => /restaurant|takeaway|take-away|eating|lieferando|gastro|essen gehen|imbiss|caf/i.test(k));
+    const eatP = top("payee", "e", 200).filter(([k]) => /lieferando|wolt|uber ?eats|domino|mcdonald|burger king|nordsee|pizza|kebab|döner|starbucks/i.test(k)).slice(0, 6);
+    if (eat.length) add({ name: "Eating out", dim: "category", type: "e", sel: eat.map(([k]) => k), tl: "sum", why: `${eur(sum(eat.map(([, v]) => v)) / 12)} a month on average` });
+    else if (eatP.length) add({ name: "Eating out", dim: "payee", type: "e", sel: eatP.map(([k]) => k), tl: "sum", why: `${eatP.map(([k]) => k).slice(0, 3).join(", ")} · ${eur(sum(eatP.map(([, v]) => v)) / 12)} a month` });
+    // 4 fun money
+    const fun = top("category", "e", 40).filter(([k]) => /shopping|game|leisure|hobby|entertain|freizeit|clothes|kleidung|fun/i.test(k)).slice(0, 4);
+    if (fun.length) add({ name: "Fun money", dim: "category", type: "e", sel: fun.map(([k]) => k), tl: "sep", why: `${eur(sum(fun.map(([, v]) => v)) / 12)} a month on ${fun.map(([k]) => k).join(", ")}` });
+    // 5 subscriptions
+    const subs = top("tag", "e", 40).filter(([k]) => /abo|subscription|vertrag/i.test(k));
+    if (subs.length) add({ name: "Subscriptions", dim: "tag", type: "e", sel: subs.map(([k]) => k), tl: "sum", why: `${eur(sum(subs.map(([, v]) => v)) / 12)} a month tagged ${subs.map(([k]) => k).join(", ")}` });
+    // 6 top payees
+    const pay = top("payee", "e", 5);
+    if (pay.length) add({ name: "Top payees", dim: "payee", type: "e", sel: pay.map(([k]) => k), tl: "sep", why: `${pay[0][0]} gets the most: ${eur(pay[0][1])} in 12 months` });
+    // 7 where income comes from
+    const inc = top("category", "i", 3);
+    if (inc.length) add({ name: "Income sources", dim: "category", type: "i", sel: inc.map(([k]) => k), tl: "sep", why: `${inc.map(([k]) => k).join(", ")}` });
+    // 8 falling
+    const down = moves.filter((x) => x.d < 0 && x.p != null && x.p < -0.2).sort((a, b) => a.d - b.d).slice(0, 3);
+    if (down.length) add({ name: "Costs going down", dim: "category", type: "e", sel: down.map((x) => x.k), tl: "sep", why: down.map((x) => `${x.k} ${Math.round(x.p * 100)}%`).join(" · ") });
+    return out.slice(0, 5);
+  }
+  function tApply(v) {
+    T.dim = v.dim; T.type = v.type; T.tl = v.tl || "sep"; if (v.yoy) T.yoy = v.yoy;
+    store.set("dim", T.dim); store.set("type", T.type);
+    for (const [id, key] of [["tDim", "dim"], ["tType", "type"], ["tTl", "tl"], ["tYoy", "yoy"]])
+      $(id).querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === String(T[key])));
+    tSetSel(v.sel.slice()); tRender();
+    $("tTimeline").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  async function tSaveView(base) {
+    const name = prompt("Name for this view", base.name || "");
+    if (!name || !name.trim()) return;
+    await tViews();
+    const v = { id: uid(), name: name.trim(), dim: base.dim, type: base.type, sel: base.sel.slice(), tl: base.tl || "sep", yoy: base.yoy || T.yoy };
+    const i = TV.list.findIndex((x) => x.name.toLowerCase() === v.name.toLowerCase());
+    if (i >= 0) { if (!confirm(`Replace your view “${TV.list[i].name}”?`)) return; TV.list[i] = { ...v, id: TV.list[i].id }; } else TV.list.push(v);
+    await tSaveViews(); toast(`Saved “${v.name}”`); tSmart();
+  }
+  async function tSmart() {
+    const sugg = tSuggest(), DIM = { category: "Categories", tag: "Tags", budget: "Budgets", payee: "Payees" };
+    const host = $("tSmart");
+    host.innerHTML = sugg.length ? sugg.map((v, i) => `<div class="sm" data-i="${i}"><div class="smh"><b>${esc(v.name)}</b><button class="btn sm" data-save="${i}" title="Save under a name">☆</button></div>
+      <div class="sub">${esc(v.why)}</div><div class="sub" style="margin-top:4px">${DIM[v.dim]} · ${v.type === "i" ? "income" : "expenses"} · ${v.sel.length} item${v.sel.length > 1 ? "s" : ""}</div></div>`).join("")
+      : `<div class="empty">Not enough bookings yet for suggestions.</div>`;
+    host.querySelectorAll(".sm").forEach((el) => el.addEventListener("click", (e) => { if (e.target.closest("[data-save]")) return; tApply(sugg[+el.dataset.i]); }));
+    host.querySelectorAll("[data-save]").forEach((b) => b.addEventListener("click", () => tSaveView(sugg[+b.dataset.save])));
+    const mine = await tViews();
+    $("tMine").innerHTML = mine.length ? `<div class="sub" style="margin:12px 0 6px">Your saved views</div><div class="chips">${mine.map((v, i) => `<span class="chipv"><button class="btn sm" data-open="${i}" title="${esc(DIM[v.dim])} · ${esc(v.sel.join(", "))}">${esc(v.name)}</button><button class="x" data-del="${i}" title="Delete">✕</button></span>`).join("")}</div>` : "";
+    $("tMine").querySelectorAll("[data-open]").forEach((b) => b.addEventListener("click", () => tApply(mine[+b.dataset.open])));
+    $("tMine").querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+      const v = mine[+b.dataset.del]; if (!confirm(`Delete the view “${v.name}”?`)) return;
+      TV.list = TV.list.filter((x) => x.id !== v.id); await tSaveViews(); tSmart();
+    }));
   }
   function tRender() {
     const items = tAggregate();
@@ -1666,6 +1766,7 @@
     $("tSearch").addEventListener("input", (e) => { T.search = e.target.value; tPicker(tAggregate()); });
     $("tTop5").addEventListener("click", () => { tSetSel(tAggregate().slice(0, 5).map((i) => i.name)); tRender(); });
     $("tClear").addEventListener("click", () => { tSetSel([]); tRender(); });
+    $("tSave").addEventListener("click", () => { if (!tSel().length) return toast("Select something first."); tSaveView({ name: "", dim: T.dim, type: T.type, sel: tSel(), tl: T.tl, yoy: T.yoy }); });
   }
 
   /* ============================================================ bitcoin page */
