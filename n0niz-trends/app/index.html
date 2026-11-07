@@ -349,7 +349,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.19.3</footer>
+  <footer class="appver">Spending Trends v2.20.0</footer>
 </div>
 
 <dialog id="settings">
@@ -2369,7 +2369,7 @@
         <div class="card full"><h2>News flash <span class="row"><select id="agMonth"></select></span></h2><div id="agNews"></div></div>
         <div class="card"><h2>Settings</h2><div class="ed">
           <label class="chk"><input type="checkbox" id="agAuto"> Sort new bookings automatically every day</label>
-          <div class="two"><label class="f">From<select id="agHour">${Array.from({ length: 24 }, (_, h) => `<option value="${h}">${String(h).padStart(2, "0")}:00</option>`).join("")}</select></label>
+          <div class="two"><label class="f">From<select id="agHour">${Array.from({ length: 96 }, (_, i) => { const h = Math.floor(i / 4), m = (i % 4) * 15; return `<option value="${h}:${m}">${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}</option>`; }).join("")}</select></label>
           <label class="f">Look back<select id="agDays">${[1, 2, 3, 5, 7, 14, 30].map((n) => `<option value="${n}">${n} day${n > 1 ? "s" : ""}</option>`).join("")}</select></label></div>
           <div class="two"><label class="f">AI must be at least<select id="agConf">${[[0.6, "60 % sure"], [0.75, "75 % sure"], [0.9, "90 % sure"]].map(([v2, l]) => `<option value="${v2}">${l}</option>`).join("")}</select></label>
           <label class="f">News language<select id="agLang"><option value="en">English</option><option value="de">Deutsch</option></select></label></div>
@@ -2390,12 +2390,12 @@
             : `<div class="empty">Press <b>Dry run</b> first to see what it would do, then <b>Run now</b>.</div>`}</div>
         <div class="card full"><h2>Review <span class="seg sm" id="agTabs"><button data-v="need">Needs you (${need.length})</button><button data-v="done">Done by agent (${done.length})</button><button data-v="all">All</button></span></h2><div id="agList"></div></div>
       </div>`;
-    $("agAuto").checked = !!c.agent_auto; $("agHour").value = String(c.agent_hour ?? 8); $("agDays").value = String(c.agent_days || 3);
+    $("agAuto").checked = !!c.agent_auto; $("agHour").value = `${c.agent_hour ?? 9}:${Math.floor((c.agent_minute ?? 0) / 15) * 15}`; $("agDays").value = String(c.agent_days || 14);
     $("agConf").value = String(c.agent_min_conf || 0.75); $("agLang").value = c.news_lang || "en"; $("agOllama").value = c.ollama_url || "";
     if (d.llm.model) $("agModel").value = d.llm.model;
     $("agSave").addEventListener("click", async () => {
       try {
-        await put("api/config", { agent_auto: $("agAuto").checked, agent_hour: +$("agHour").value, agent_days: +$("agDays").value, agent_min_conf: +$("agConf").value,
+        await put("api/config", { agent_auto: $("agAuto").checked, agent_hour: +$("agHour").value.split(":")[0], agent_minute: +$("agHour").value.split(":")[1], agent_days: +$("agDays").value, agent_min_conf: +$("agConf").value,
           news_lang: $("agLang").value, ollama_url: $("agOllama").value, ollama_model: $("agModel").value });
         toast("Saved"); renderAgent();
       } catch (e) { toast(e.message); }

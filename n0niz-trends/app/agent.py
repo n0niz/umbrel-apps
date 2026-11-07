@@ -113,6 +113,22 @@ def payee_key(name):
     return " ".join(words[:2])
 
 
+# payment services: the real shop is in the description, so learn those per description
+GENERIC = {"paypal", "klarna", "sumup", "visa", "mastercard", "stripe", "adyen", "lastschrift", "kartenzahlung", "zahlung",
+           "amazon payments", "google", "apple", "unzer", "computop", "mollie", "payone", "sofort", "giropay", "wero", "curve"}
+
+
+def booking_key(j):
+    """(type, payee) – for payment services (PayPal, Klarna, SumUp …) the shop from the description is added."""
+    p = payee_key(counterpart(j))
+    if p and (p in GENERIC or p.split()[0] in GENERIC):
+        d = re.sub(r"(?i)\b(paypal|klarna|sumup|ihr einkauf bei|einkauf bei|zahlung an|purchase at|europe|s a r l|et cie|s c a)\b", " ", j.get("description") or "")
+        d = payee_key(re.sub(r"[0-9]{4,}", " ", d))
+        if d:
+            return (j["type"], f"{p.split()[0]}|{d}")
+    return (j["type"], p)
+
+
 def first_word(name):
     return (payee_key(name).split() or [""])[0]
 
@@ -137,7 +153,7 @@ def learn(hist):
         jt = set(j.get("tags") or [])
         if jt & {TAG_AI, TAG_UNSURE}:
             continue                                  # never learn from the agent's own guesses
-        k = (j["type"], payee_key(counterpart(j)))
+        k = booking_key(j)
         n[k] += 1
         if j.get("category_name"):
             cats[k][j["category_name"]] += 1
@@ -189,7 +205,7 @@ def run(get, put, days=3, dry=False, min_conf=0.75, llm=None, history_days=730, 
         if progress:
             progress(n_done + 1, len(todo))
         tags = set(j.get("tags") or [])
-        k = (j["type"], payee_key(counterpart(j)))
+        k = booking_key(j)
         hc, ht, hn = lc.get(k, Counter()), lt.get(k, Counter()), ln.get(k, 0)
         act = {"date": j["date"][:10], "payee": counterpart(j), "amount": round(float(j["amount"]) * (-1 if j["type"] == "withdrawal" else 1), 2),
                "gid": gid, "jid": j["transaction_journal_id"], "account": (j.get("source_name") if j["type"] == "withdrawal" else j.get("destination_name")) or "",

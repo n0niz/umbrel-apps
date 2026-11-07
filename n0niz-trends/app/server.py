@@ -58,8 +58,9 @@ DEFAULTS = {
     "mempool_url": "",
     "wallets": [],
     "agent_auto": False,
-    "agent_hour": 8,
-    "agent_days": 3,
+    "agent_hour": 9,
+    "agent_minute": 30,
+    "agent_days": 14,
     "agent_min_conf": 0.75,
     "ollama_url": "",
     "ollama_model": "",
@@ -1064,11 +1065,13 @@ def agent_run(cfg, dry=False, days=None, auto=False):
     st = read_json(AGENT_FILE, {})
     try:
         llm = llm_for(cfg, fresh=True)
-        days = int(days or cfg.get("agent_days") or 3)
+        days = int(days or cfg.get("agent_days") or 14)
+        # learn from all your history, not just the last two years
+        hist_days = max(730, (date.today() - date.fromisoformat(history_start(cfg))).days + 1)
         stats, actions, cats = agent.run(
             lambda path, params: firefly_get(cfg, path, params), lambda path, body: firefly_put(cfg, path, body),
             days=days, dry=dry, min_conf=float(cfg.get("agent_min_conf") or 0.75), llm=llm[:2] if llm else None,
-            progress=lambda i, n: agent_state.update(step=f"Looking at booking {i} of {n}"))
+            history_days=hist_days, progress=lambda i, n: agent_state.update(step=f"Looking at booking {i} of {n}"))
         for a in actions:
             a["dry"] = dry
         keep = [a for a in st.get("actions", []) if not (dry and a.get("dry"))]
@@ -1158,7 +1161,8 @@ def agent_loop():
             if cfg.get("token"):
                 now = berlin_now()
                 st = read_json(AGENT_FILE, {})
-                if cfg.get("agent_auto") and now.hour >= int(cfg.get("agent_hour") or 8) and st.get("last_auto_day") != now.date().isoformat():
+                due = (now.hour, now.minute) >= (int(cfg.get("agent_hour") if cfg.get("agent_hour") is not None else 9), int(cfg.get("agent_minute") or 0))
+                if cfg.get("agent_auto") and due and st.get("last_auto_day") != now.date().isoformat():
                     agent_run(cfg, auto=True)
                 prev = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
                 got = read_json(NEWS_DIR / f"{prev}.json", None)
@@ -1166,7 +1170,7 @@ def agent_loop():
                     news_for(cfg, prev, refresh=bool(got))
         except Exception as e:  # noqa: BLE001
             print("agent loop:", e, flush=True)
-        time.sleep(300)
+        time.sleep(60)
 
 
 def sync_loop():
@@ -1525,7 +1529,7 @@ class Handler(BaseHTTPRequestHandler):
                 run_state = dict(agent_state)
             return self._json(200, {"state": run_state, "last": st.get("last"), "actions": st.get("actions", []),
                                     "categories": st.get("categories", []),
-                                    "config": {k: cfg.get(k) for k in ("agent_auto", "agent_hour", "agent_days", "agent_min_conf", "ollama_url", "ollama_model", "news_lang")},
+                                    "config": {k: cfg.get(k) for k in ("agent_auto", "agent_hour", "agent_minute", "agent_days", "agent_min_conf", "ollama_url", "ollama_model", "news_lang")},
                                     "llm": {"ok": bool(llm), "base": llm[0] if llm else "", "model": llm[1] if llm else "",
                                             "models": llm[2] if llm else [], "error": "" if llm else llm_cache["err"]}})
         if p == "/api/undiscovered":
@@ -1798,7 +1802,7 @@ class Handler(BaseHTTPRequestHandler):
                 new.append({"id": wid, "name": name, "desc": desc, "type": typ})
             wallets_changed = [(w["id"], w["desc"], w["type"]) for w in new] != [(w["id"], w["desc"], w.get("type", "")) for w in cfg.get("wallets", [])]
             cfg["wallets"] = new
-        for k, cast in (("agent_auto", bool), ("agent_hour", int), ("agent_days", int), ("agent_min_conf", float),
+        for k, cast in (("agent_auto", bool), ("agent_hour", int), ("agent_minute", int), ("agent_days", int), ("agent_min_conf", float),
                         ("ollama_url", str), ("ollama_model", str), ("news_lang", str)):
             if k in body:
                 try:
