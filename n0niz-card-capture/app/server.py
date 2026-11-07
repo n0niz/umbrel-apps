@@ -49,7 +49,7 @@ TEMPLATES = {
              "ignore": BASE_IGNORE + r"|top.?up|aufgeladen|deposit|einzahlung"},
     "amex": {"name": "Amex", "account": "Amex", "tag": "amex", "app": "Amex",
              "ignore": BASE_IGNORE + r"|zahlung(?:seingang| erhalten| eingegangen)|payment received|statement|kontoauszug|"
-                       r"abrechnung|membership rewards|punkte|points|limit"},
+                       r"abrechnung|membership rewards|punkte|points|limit|your payment|ihre zahlung|thank you for your payment|danke für ihre zahlung"},
     "visa": {"name": "DKB Visa", "account": "DKB Visa", "tag": "dkb-visa", "app": "DKB",
              "ignore": BASE_IGNORE + r"|geldeingang|zahlungseingang|überweisung|kontostand|saldo|freigabe|push.?tan|dauerauftrag"},
     "other": {"name": "Card", "account": "Card", "tag": "card", "app": "", "ignore": BASE_IGNORE},
@@ -123,6 +123,8 @@ AMOUNT_PATTERNS = [
     re.compile(CODE + r"\s?" + NUM, re.I),              # EUR 12.34
     re.compile(NUM + r"\s?" + CODE, re.I),              # 12.34 EUR
 ]
+# a "shop" that is no shop: the notification is about the card bill being paid, not a purchase
+GENERIC_MERCHANT = re.compile(r"(?:card |karten)?(?:payment|zahlung|bezahlung)|purchase|einkauf|transaction|umsatz|belastung", re.I)
 REFUND = re.compile(r"refund|erstatt|gutschrift|returned|zurückerstatt|reversal|storniert", re.I)
 # note: Krak adds "…Bitcoin-Cashback erhalten" to every payment, so cashback must NOT mean refund
 GENERIC_TITLES = re.compile(r"^(krak|kraken|payment|zahlung|card payment|kartenzahlung|transaction|"
@@ -444,6 +446,9 @@ def handle_notification(card, title, text, app=""):
                 ev["parsed"] = parse(title, text)
                 if ev["parsed"]["currency"] != card["currency"]:
                     ev["status"], ev["reason"] = "review", f"paid in {ev['parsed']['currency']}, enter the {card['currency']} amount"
+                elif GENERIC_MERCHANT.fullmatch(ev["parsed"].get("merchant", "").strip()):
+                    ev["status"], ev["reason"] = "review", (f"no shop in the notification (“{ev['parsed']['merchant']}”) – usually the card bill "
+                                                            "being paid from your bank account, which your bank import already has. Ignore it, or book it if it really was a purchase.")
                 elif not cfg["token"]:
                     ev["status"], ev["reason"] = "review", "no Firefly token set yet"
                 elif not merge_duplicate(cfg, events, card, ev):
