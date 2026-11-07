@@ -23,6 +23,17 @@ from datetime import date, timedelta
 TAG_AI, TAG_UNSURE, TAG_CHECK, TAG_HIST = "ai-categorized", "ai-unsure", "ai-check", "auto-categorized"
 OWN_TAGS = {TAG_AI, TAG_UNSURE, TAG_CHECK, TAG_HIST}
 NOT_LEARNED_TAGS = OWN_TAGS | {"check", "krak-card"}   # tags that describe the card or a to-do, not the payee
+# tags Card Capture puts on every booking of a card – they say which card paid, not who was paid
+CARD_TAGS = {"krak-card", "amex", "dkb-visa", "visa", "card", "mastercard", "kreditkarte", "creditcard"}
+
+
+def learnable_tag(t, j):
+    """A tag worth copying to other bookings of the same payee: not a to-do, not the agent's own, not the card or account."""
+    low = t.lower()
+    if t in NOT_LEARNED_TAGS or low in CARD_TAGS:
+        return False
+    accounts = {(j.get("source_name") or "").lower(), (j.get("destination_name") or "").lower()}
+    return not any(low and (low == a or (len(low) >= 3 and a.startswith(low + " "))) for a in accounts)
 OLLAMA_DEFAULTS = ["http://ollama_ollama_1:11434", "http://ollama_server_1:11434", "http://ollama_app_1:11434"]
 MODEL_PREF = ["qwen2.5", "qwen3", "llama3.2", "llama3.1", "gemma3", "gemma2", "mistral", "phi"]
 
@@ -157,8 +168,9 @@ def learn(hist):
         n[k] += 1
         if j.get("category_name"):
             cats[k][j["category_name"]] += 1
-        for t in jt - NOT_LEARNED_TAGS:
-            tags[k][t] += 1
+        for t in jt:
+            if learnable_tag(t, j):
+                tags[k][t] += 1
     return cats, tags, n
 
 
