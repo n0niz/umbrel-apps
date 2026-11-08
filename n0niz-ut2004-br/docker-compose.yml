@@ -1,67 +1,68 @@
 version: "3.7"
 
+# Defaults for both services. Your changes go into data/settings.env
+# (dashboard → Settings), which is kept across app updates.
+x-defaults: &defaults
+  SERVER_NAME: "n0niz UT2004 BombingRun"
+  MAP_NAME: BR-Anubis
+  GAME_TYPE: XGame.xBombingRun
+  MUTATORS: ""            # comma-separated, files go into data/addons/System
+  BOTS: "0"               # fill up with bots to this many players
+  MAX_PLAYERS: "16"       # Fair-Gamers #11 runs 16 slots
+  TICKRATE: "41"          # Fair-Gamers #11 (forum poll: 41, not 60/100)
+  MAP_REPEAT_LIMIT: "1"   # Fair-Gamers #11 (forum poll)
+  IDLE_KICK_SECONDS: "240"
+  GOAL_SCORE: ""          # empty = UT2004 default
+  TIME_LIMIT: ""          # minutes, empty = UT2004 default
+  GAME_PASSWORD: ""       # empty = no join password
+  PUBLIC_LISTING: "False" # True = master server list (needs a public IPv4)
+
 services:
   app_proxy:
     environment:
       # The format here is: <app-id>_<docker-service-name>_1
-      # The Umbrel tile opens the UT2004 web admin (Umbrel login in front of it)
-      APP_HOST: n0niz-ut2004-br_server_1
+      # The Umbrel tile opens the dashboard (Umbrel login in front of it)
+      APP_HOST: n0niz-ut2004-br_web_1
       APP_PORT: 8080
 
   server:
     image: phasecorex/ut2004-server:latest
     restart: on-failure
-    stop_grace_period: 10s
+    stop_grace_period: 15s
     ports:
       - "7777:7777/udp" # game
       - "7778:7778/udp" # query (game port + 1)
       - "7787:7787/udp" # GameSpy query (game port + 10)
     environment:
+      <<: *defaults
       PUID: "1000"
       PGID: "1000"
       TZ: Europe/Berlin
-
-      # Defaults. To change them, edit data/settings.env in the app folder
-      # (created on first start, kept across app updates).
-      SERVER_NAME: "n0niz UT2004 BombingRun"
-      MAP_NAME: BR-Anubis
-      GAME_TYPE: XGame.xBombingRun
-      # Comma-separated, no spaces, e.g. "UTCompv18a.MutUTComp,MyMod.MutFoo".
-      # Put the matching .u/.ucl/.int files into data/addons/System first.
-      MUTATORS: ""
-      MAX_PLAYERS: "16"       # Fair-Gamers #11 runs 16 slots
-      TICKRATE: "41"          # Fair-Gamers #11 (forum poll: 41, not 60/100)
-      MAP_REPEAT_LIMIT: "1"   # Fair-Gamers #11 (forum poll)
-      IDLE_KICK_SECONDS: "240"
-      GOAL_SCORE: ""          # empty = UT2004 default
-      TIME_LIMIT: ""          # minutes, empty = UT2004 default
-      GAME_PASSWORD: ""       # empty = no join password
-      PUBLIC_LISTING: "False" # True = show in the master server list (needs port forwarding)
-
       ENABLE_WEB_INTERFACE: "true"
       ADMIN_PASSWORD: ${APP_PASSWORD}
     volumes:
       - ${APP_DATA_DIR}/data:/data
-    # Bombing Run setup, then the image's normal start script.
+    # Bombing Run setup, then the image's normal start script, in a loop: the dashboard
+    # writes data/.restart to restart the game server with fresh settings.
     # Kept inline so app store updates also update it ($$ = literal $ for the shell).
     command:
       - sh
       - -c
       - |
         set -eu
-        /app/install.sh /data/server
         mkdir -p /data/config /data/addons/System /data/addons/Maps
         INI=/data/config/UT2004.ini
 
         # Your settings: data/settings.env overrides the defaults above
         if [ ! -f /data/settings.env ]; then
           {
-            echo "# UT2004 Bombing Run settings. Remove the # to use a line; restart the app to apply."
+            echo "# UT2004 Bombing Run settings (also editable in the dashboard). Remove the # to use a line."
             echo "# Mutators: comma-separated, no spaces; their files go into addons/System."
             echo "#MUTATORS=UTCompv18a.MutUTComp"
             echo "# Values with spaces need quotes, like SERVER_NAME below."
             echo '#SERVER_NAME="n0niz UT2004 BombingRun"'
             echo "#MAP_NAME=BR-Anubis"
+            echo "#BOTS=4"
             echo "#MAX_PLAYERS=16"
             echo "#TICKRATE=41"
             echo "#MAP_REPEAT_LIMIT=1"
@@ -72,8 +73,6 @@ services:
             echo "#PUBLIC_LISTING=True"
           } > /data/settings.env
         fi
-        set -a; . /data/settings.env; set +a
-        if [ ! -f "$$INI" ]; then cp /data/server/System/UT2004.ini "$$INI"; fi
 
         # setini SECTION KEY VALUE: set one key (adds key/section if missing)
         setini() {
@@ -102,6 +101,9 @@ services:
           ' "$$INI" > "$$INI.tmp" && mv "$$INI.tmp" "$$INI"
         }
 
+        configure() {
+        set -a; . /data/settings.env; set +a
+        if [ ! -f "$$INI" ]; then cp /data/server/System/UT2004.ini "$$INI"; fi
         setini IpDrv.TcpNetDriver NetServerMaxTickRate "$$TICKRATE"
         setini IpDrv.TcpNetDriver LanServerMaxTickRate "$$TICKRATE"
         setini Engine.GameInfo MaxPlayers "$$MAX_PLAYERS"
@@ -126,5 +128,87 @@ services:
         setini xVoting.xVotingHandler GameConfig "(GameClass=\"$$GAME_TYPE\",Prefix=\"BR\",Acronym=\"BR\",GameName=\"Bombing Run\",Mutators=\"$$MUTATORS\",Options=)"
         setini xVoting.DefaultMapListLoader bUseMapList False
         setini xVoting.DefaultMapListLoader MapNamePrefixes BR
+        # Bots: MinPlayers fills the server up with bots
+        setini XGame.xBombingRun MinPlayers "$${BOTS:-0}"
+        export SERVER_START_EXTRAS="$${SERVER_START_EXTRAS:-}?MinPlayers=$${BOTS:-0}"
+        }
 
-        exec /app/start_server.sh
+        pid=""
+        trap 'if [ -n "$$pid" ]; then kill "$$pid" 2>/dev/null || true; fi; exit 0' TERM INT
+        while true; do
+          rm -f /data/.restart
+          /app/install.sh /data/server
+          ( configure; exec /app/start_server.sh ) &
+          pid=$$!
+          while kill -0 "$$pid" 2>/dev/null; do
+            if [ -f /data/.restart ]; then
+              echo "Restart requested from the dashboard"
+              kill "$$pid" 2>/dev/null || true
+              for i in 1 2 3 4 5; do kill -0 "$$pid" 2>/dev/null || break; sleep 2; done
+              kill -9 "$$pid" 2>/dev/null || true
+              break
+            fi
+            sleep 2
+          done
+          wait "$$pid" || true
+          # stopped without a restart request = crashed: let Docker restart the container
+          if [ ! -f /data/.restart ]; then exit 1; fi
+        done
+
+  web:
+    image: python:3.12-alpine
+    restart: on-failure
+    init: true
+    # Umbrel's update replaces this file but not the code folder it copied at install time,
+    # so the code fetches itself: if /app is not at APP_VERSION, it is downloaded from this
+    # app store on GitHub (the release tag, else master). Without internet the old code just runs.
+    command:
+      - sh
+      - -c
+      - |
+        python - <<'PY' || true
+        import io, os, tarfile, urllib.request
+        V, APP, DST = os.environ["APP_VERSION"], os.environ["APP_DIR"], "/app"
+        try:
+            cur = open(f"{DST}/VERSION").read().strip()
+        except OSError:
+            cur = ""
+        if cur != V:
+            data = None
+            for ref in (f"refs/tags/{os.environ['APP_TAG']}{V}", "refs/heads/master"):
+                try:
+                    data = urllib.request.urlopen(f"https://codeload.github.com/n0niz/umbrel-apps/tar.gz/{ref}", timeout=60).read()
+                    break
+                except Exception as e:
+                    print("code download failed:", ref, e, flush=True)
+            if data:
+                pre, n = f"{APP}/app/", 0
+                with tarfile.open(fileobj=io.BytesIO(data)) as t:
+                    for m in t.getmembers():
+                        rel = m.name.split("/", 1)[-1]
+                        if not m.isfile() or not rel.startswith(pre) or ".." in rel:
+                            continue
+                        out = os.path.join(DST, rel[len(pre):])
+                        os.makedirs(os.path.dirname(out), exist_ok=True)
+                        with t.extractfile(m) as f, open(out, "wb") as o:
+                            o.write(f.read())
+                        n += 1
+                if n:
+                    open(f"{DST}/VERSION", "w").write(V)
+                    print(f"app code updated to {V} ({n} files)", flush=True)
+        PY
+        exec python -u /app/server.py
+    environment:
+      <<: *defaults
+      DATA_DIR: /data
+      APP_VERSION: "1.1.0"
+      APP_DIR: n0niz-ut2004-br
+      APP_TAG: ut2004-br-v
+      TZ: Europe/Berlin
+      SERVER_HOST: n0niz-ut2004-br_server_1
+      QUERY_PORT: "7778"
+      ADMIN_PASSWORD: ${APP_PASSWORD}
+      CONNECT_HOST: umbrel-1
+    volumes:
+      - ${APP_DATA_DIR}/app:/app
+      - ${APP_DATA_DIR}/data:/data

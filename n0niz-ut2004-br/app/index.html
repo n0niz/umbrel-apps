@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UT2004 Bombing Run</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%230ea5e9'/%3E%3Ccircle cx='12' cy='12' r='4' fill='white' opacity='.8'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0a0d14; --panel: #121722; --panel2: #171d2b; --line: #232b3d;
+    --text: #e6e9f0; --mute: #8a93a8; --accent: #38bdf8; --accent2: #f59e0b;
+    --red: #ef4444; --blue: #3b82f6; --ok: #22c55e; --warn: #f59e0b;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: radial-gradient(1200px 600px at 70% -10%, #13233d 0%, var(--bg) 60%);
+    color: var(--text); font: 14px/1.45 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  .logo {
+    width: 46px; height: 46px; border-radius: 12px; flex: none;
+    background: radial-gradient(circle at 38% 34%, #fff 0, #bae6fd 18%, #0284c7 60%, #0c4a6e 100%);
+    box-shadow: 0 0 24px #0ea5e966;
+  }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  .sub { color: var(--mute); font-size: 13px; }
+  .grow { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 99px;
+    background: var(--panel); border: 1px solid var(--line); font-weight: 600; font-size: 13px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); }
+  .on .dot { background: var(--ok); box-shadow: 0 0 10px var(--ok); }
+  .off .dot { background: var(--red); }
+  .busy .dot { background: var(--warn); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  button, .btn {
+    font: inherit; font-weight: 600; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover, .btn:hover { border-color: #3a4560; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #04111d; }
+  .primary:hover { filter: brightness(1.08); }
+  .danger { color: #fecaca; border-color: #5b2330; background: #2a1219; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; }
+  .stat .k { color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  .stat .v { font-size: 22px; font-weight: 700; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat .v small { font-size: 13px; color: var(--mute); font-weight: 500; }
+  .bar { height: 4px; background: var(--line); border-radius: 4px; margin-top: 10px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--mute); margin: 0 0 12px; font-weight: 650; }
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .team { border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
+  .team .th { display: flex; justify-content: space-between; padding: 10px 12px; font-weight: 700; }
+  .team.red .th { background: linear-gradient(90deg, #ef444430, transparent); border-bottom: 2px solid var(--red); }
+  .team.blue .th { background: linear-gradient(90deg, #3b82f630, transparent); border-bottom: 2px solid var(--blue); }
+  .team.none .th { border-bottom: 2px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 8px 12px; border-bottom: 1px solid #1b2232; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; color: var(--mute); width: 1%; white-space: nowrap; }
+  td.s { text-align: right; font-weight: 700; width: 1%; font-variant-numeric: tabular-nums; }
+  .tag { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 6px; background: #2a3247; color: var(--mute); margin-left: 6px; vertical-align: 1px; }
+  .empty { color: var(--mute); padding: 18px 12px; text-align: center; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; font-size: 12px; }
+  .rules { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; margin-top: 12px; }
+  .rules dt { color: var(--mute); } .rules dd { margin: 0; text-align: right; }
+
+  .ctl { display: grid; gap: 10px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  select, input {
+    font: inherit; color: var(--text); background: #0d121c; border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 10px; width: 100%; min-width: 0;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); }
+  .stepper { display: flex; align-items: center; gap: 0; }
+  .stepper button { border-radius: 10px 0 0 10px; width: 38px; justify-content: center; }
+  .stepper button + input + button { border-radius: 0 10px 10px 0; }
+  .stepper input { border-radius: 0; text-align: center; width: 60px; border-left: 0; border-right: 0; }
+
+  details.settings { margin-top: 16px; }
+  details.settings summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; }
+  details.settings summary::-webkit-details-marker { display: none; }
+  .form { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .f label { display: block; font-size: 12px; color: var(--mute); margin-bottom: 5px; font-weight: 600; }
+  .f .h { font-size: 11px; color: #5f6880; margin-top: 4px; }
+  .f.wide { grid-column: span 2; }
+  .toggle { display: flex; align-items: center; gap: 8px; padding-top: 6px; }
+  .toggle input { width: auto; }
+  .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+    background: #0f1a2b; border: 1px solid var(--accent); padding: 10px 16px; border-radius: 10px; transition: .25s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  .toast.err { border-color: var(--red); }
+  .copy { cursor: pointer; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .note { color: var(--mute); font-size: 12px; }
+
+  @media (max-width: 900px) {
+    .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } .stats .stat:first-child { grid-column: 1 / -1; }
+    .grid, .teams { grid-template-columns: 1fr; }
+    .form { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 520px) { .form { grid-template-columns: 1fr; } .f.wide { grid-column: auto; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"></div>
+    <div>
+      <h1 id="name">UT2004 Bombing Run</h1>
+      <div class="sub">Join: <span class="copy" id="connect" title="Copy">…</span></div>
+    </div>
+    <div class="grow"></div>
+    <span class="pill" id="state"><span class="dot"></span><span id="stateText">Checking…</span></span>
+    <a class="btn" href="/ServerAdmin/" target="_blank" rel="noopener">Classic admin ↗</a>
+  </header>
+
+  <section class="stats">
+    <div class="card stat"><div class="k">Map</div><div class="v" id="map">–</div></div>
+    <div class="card stat"><div class="k">Players</div><div class="v" id="players">–</div><div class="bar"><i id="fill"></i></div></div>
+    <div class="card stat"><div class="k">Bots</div><div class="v" id="bots">–</div></div>
+    <div class="card stat"><div class="k">Response</div><div class="v" id="ping">–</div></div>
+  </section>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Scoreboard</h2>
+      <div class="teams" id="teams"></div>
+    </div>
+
+    <div style="display:grid; gap:16px; align-content:start">
+      <div class="card ctl">
+        <h2>Server control</h2>
+        <label class="note" for="mapSel">Change map (restarts the match)</label>
+        <div class="row">
+          <select id="mapSel"></select>
+          <button class="primary" id="goMap">Load</button>
+        </div>
+        <label class="note">Bots (fill up to this many players)</label>
+        <div class="row">
+          <div class="stepper">
+            <button id="botMinus">−</button><input id="botN" inputmode="numeric" value="0"><button id="botPlus">+</button>
+          </div>
+          <button id="goBots">Apply</button>
+          <div class="grow"></div>
+          <button class="danger" id="restart">Restart</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Mutators &amp; rules</h2>
+        <div class="chips" id="muts"><span class="note">–</span></div>
+        <dl class="rules" id="rules"></dl>
+      </div>
+    </div>
+  </div>
+
+  <details class="card settings" id="settingsBox">
+    <summary><h2 style="margin:0">Settings</h2><span class="note">click to edit</span></summary>
+    <div class="form" id="form"></div>
+    <div class="foot">
+      <button id="save">Save</button>
+      <button class="primary" id="saveRestart">Save &amp; restart</button>
+    </div>
+  </details>
+
+  <p class="note" style="text-align:center; margin-top:24px">Kick, ban and chat: <a href="/ServerAdmin/" target="_blank" style="color:var(--accent)">classic admin</a> · <span id="ver"></span></p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let S = null, restartingSince = 0;
+
+function toast(msg, err) {
+  const t = $("toast"); t.textContent = msg; t.className = "toast show" + (err ? " err" : "");
+  clearTimeout(t._h); t._h = setTimeout(() => t.className = "toast", 2600);
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function teamBox(cls, title, list) {
+  const rows = list.length ? list.map(p => `<tr><td>${esc(p.name)}${p.bot ? '<span class="tag">BOT</span>' : ""}</td>
+      <td class="n">${p.bot ? "" : p.ping + " ms"}</td><td class="s">${p.score}</td></tr>`).join("")
+    : `<tr><td class="empty" colspan="3">Nobody here</td></tr>`;
+  return `<div class="team ${cls}"><div class="th"><span>${title}</span><span class="note">${list.length} ${list.length === 1 ? "player" : "players"}</span></div><table>${rows}</table></div>`;
+}
+
+async function poll() {
+  let d;
+  try { d = await (await fetch("/api/status")).json(); } catch { d = { online: false }; }
+  const st = $("state");
+  if (d.restarting || (restartingSince && Date.now() - restartingSince < 90000 && !d.online)) {
+    st.className = "pill busy"; $("stateText").textContent = "Restarting…";
+  } else if (d.online) {
+    restartingSince = 0; st.className = "pill on"; $("stateText").textContent = "Online";
+  } else { st.className = "pill off"; $("stateText").textContent = "Offline"; }
+  if (d.connect) $("connect").textContent = d.connect;
+  if (d.version) $("ver").textContent = "v" + d.version;
+  if (!d.online) { ["map","players","bots","ping"].forEach(k => $(k).textContent = "–"); $("fill").style.width = 0;
+    $("teams").innerHTML = `<div class="empty" style="grid-column:1/-1">Server not reachable${d.restarting ? " – restarting" : ""}.</div>`; return; }
+
+  $("name").textContent = d.name || "UT2004 Bombing Run";
+  $("map").textContent = d.map;
+  const pl = d.player_list || [], bots = pl.filter(p => p.bot).length;
+  $("players").innerHTML = `${d.players}<small> / ${d.max_players}</small>`;
+  $("fill").style.width = Math.min(100, 100 * d.players / Math.max(1, d.max_players)) + "%";
+  $("bots").textContent = bots;
+  $("ping").innerHTML = `${d.ping}<small> ms</small>`;
+
+  const red = pl.filter(p => p.team === "red"), blue = pl.filter(p => p.team === "blue"), none = pl.filter(p => !p.team);
+  $("teams").innerHTML = (red.length || blue.length)
+    ? teamBox("red", "Red team", red) + teamBox("blue", "Blue team", blue) + (none.length ? teamBox("none", "Spectators / unassigned", none) : "")
+    : teamBox("none", "Players", none).replace('class="team none"', 'class="team none" style="grid-column:1/-1"');
+
+  $("muts").innerHTML = d.mutators && d.mutators.length ? d.mutators.map(m => `<span class="chip">${esc(m)}</span>`).join("") : '<span class="note">None active</span>';
+  const show = ["goalscore", "timelimit", "minplayers", "gamestats", "translocator", "friendlyfire", "servermode", "adminname"];
+  const r = d.rules || {};
+  $("rules").innerHTML = Object.keys(r).filter(k => show.includes(k.toLowerCase())).map(k => `<dt>${esc(k)}</dt><dd>${esc(r[k])}</dd>`).join("");
+}
+
+function fieldHtml(k, f, v, def) {
+  const [label, kind, help] = f, ph = def ? `placeholder="${esc(def)}"` : "";
+  let input;
+  if (kind === "bool") input = `<div class="toggle"><input type="checkbox" id="f_${k}" ${String(v || def).toLowerCase() === "true" ? "checked" : ""}> <span>On</span></div>`;
+  else if (kind === "map") input = `<select id="f_${k}"><option value="">Default (${esc(def)})</option>${S.maps.map(m => `<option ${m === v ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>`;
+  else input = `<input id="f_${k}" ${kind === "number" ? 'inputmode="numeric"' : ""} value="${esc(v)}" ${ph}>`;
+  return `<div class="f ${k === "MUTATORS" || k === "SERVER_NAME" ? "wide" : ""}"><label for="f_${k}">${esc(label)}</label>${input}${help ? `<div class="h">${esc(help)}</div>` : ""}</div>`;
+}
+
+async function loadSettings() {
+  S = await (await fetch("/api/settings")).json();
+  $("form").innerHTML = Object.entries(S.fields).map(([k, f]) => fieldHtml(k, f, S.values[k] ?? "", S.defaults[k] ?? "")).join("");
+  const cur = S.values.MAP_NAME || S.defaults.MAP_NAME;
+  $("mapSel").innerHTML = (S.maps.length ? S.maps : [cur]).map(m => `<option ${m === cur ? "selected" : ""}>${esc(m)}</option>`).join("");
+  $("botN").value = S.values.BOTS || S.defaults.BOTS || 0;
+}
+
+function formValues() {
+  const v = { ...S.values };
+  for (const [k, f] of Object.entries(S.fields)) {
+    const el = $("f_" + k);
+    v[k] = f[1] === "bool" ? (el.checked ? "True" : "False") : el.value.trim();
+  }
+  return v;
+}
+
+async function save(values, restart, msg) {
+  const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values, restart }) });
+  const j = await r.json();
+  if (!r.ok) return toast(j.error || "Saving failed", true);
+  if (restart) restartingSince = Date.now();
+  toast(msg || (restart ? "Saved – server restarts" : "Saved – applies on next restart"));
+  await loadSettings(); poll();
+}
+
+$("save").onclick = () => save(formValues(), false);
+$("saveRestart").onclick = () => confirm("Restart the server now? Players get disconnected for ~20 s.") && save(formValues(), true);
+$("goMap").onclick = () => confirm(`Load ${$("mapSel").value}? The current match ends.`) &&
+  save({ ...S.values, MAP_NAME: $("mapSel").value }, true, "Loading " + $("mapSel").value + "…");
+const setBots = n => $("botN").value = Math.max(0, Math.min(32, (parseInt($("botN").value) || 0) + n));
+$("botMinus").onclick = () => setBots(-1);
+$("botPlus").onclick = () => setBots(1);
+$("goBots").onclick = () => confirm("Apply bots? The server restarts the match.") &&
+  save({ ...S.values, BOTS: String(parseInt($("botN").value) || 0) }, true, "Bots updated – restarting");
+$("restart").onclick = async () => {
+  if (!confirm("Restart the server? Players get disconnected for ~20 s.")) return;
+  await fetch("/api/restart", { method: "POST" }); restartingSince = Date.now(); toast("Restarting…"); poll();
+};
+$("connect").onclick = () => navigator.clipboard?.writeText($("connect").textContent).then(() => toast("Copied"));
+
+loadSettings().catch(() => {});
+poll(); setInterval(poll, 3000);
+</script>
+</body>
+</html>

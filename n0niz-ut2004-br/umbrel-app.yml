@@ -4,7 +4,7 @@ name: UT2004 Bombing Run
 tagline: Unreal Tournament 2004 dedicated server, set up for Bombing Run
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-ut2004-br/icon.png
 category: gaming
-version: "1.0.0"
+version: "1.1.0"
 port: 8777
 description: >-
   A dedicated Unreal Tournament 2004 server (v3369, ECE Bonus Pack and Megapack;
@@ -18,11 +18,11 @@ description: >-
   forward UDP 7777, 7778 and 7787 on your router.
 
 
-  This tile opens the UT2004 web admin (user: admin, password: shown on this
-  page). Settings and the mutator list are in
-  Files → Apps → n0niz-ut2004-br → data/settings.env (created on first start,
-  kept across updates). Custom maps and mutators go into data/addons
-  (Maps, System, ...). Restart the app to apply changes.
+  The tile opens a dashboard: live status, scoreboard by team, map change,
+  bots, mutators, settings and restart. Kick, ban and chat are in the classic
+  web admin, linked from the dashboard and logged in automatically.
+  Custom maps and mutators go into Files → Apps → n0niz-ut2004-br →
+  data/addons (Maps, System, ...).
 developer: n0niz
 website: https://github.com/n0niz/umbrel-apps
 submitter: n0niz
@@ -30,7 +30,10 @@ submission: https://github.com/n0niz/umbrel-apps
 repo: https://github.com/PhasecoreX/docker-ut2004-server
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
-releaseNotes: ""
+releaseNotes: >-
+  New dashboard instead of the old web admin: live scoreboard by team with
+  bots and ping, map change, bots, mutators and all settings, restart with one
+  click. The classic web admin is still there for kick, ban and chat.
 dependencies: []
 path: ""
 defaultUsername: "admin"
