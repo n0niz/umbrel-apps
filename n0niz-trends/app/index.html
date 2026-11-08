@@ -351,7 +351,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.21.3</footer>
+  <footer class="appver">Spending Trends v2.21.4</footer>
 </div>
 
 <dialog id="settings">
@@ -2739,11 +2739,11 @@
       + tile("Tightest month", mLabel(worst.ym), `${eur(worst.net)}${worst.big.length ? " · " + worst.big.map((b) => esc(b.what)).join(", ") : ""}`, worst.net < 0 ? "neg" : "")
       + tile("Big yearly bills", eur(sum(bigs.map((b) => b.amt)) / (N / 12)) + " a year", [...new Set(bigs.map((b) => b.what))].slice(0, 3).map(esc).join(" · ") || `none in the next ${N} months`)
       + (owe && loan ? tile("Debt-free", `${MONTHS[+freeAt.slice(5, 7) - 1]} ${freeAt.slice(0, 4)}`, `${eur(owe)} left at ${eur(loan.amt)} a month`) : "");
-    $("fcChart").innerHTML = `<div class="sub">Each month <span style="color:${C.inc}">● in</span> <span style="color:${C.exp}">● out</span> <span style="color:#f0883e">● loan</span></div><div id="fcBars"></div><div class="sub" style="margin-top:10px">At month end <span style="color:${C.net}">● on your accounts</span>${owe ? ` <span style="color:#f0883e">● loan left</span>` : ""}</div><div id="fcBal"></div>`;
-    barChart($("fcBars"), M.map((m) => m.ym), [{ name: "In", color: C.inc, values: M.map((m) => m.inc) }, { name: "Out", color: C.exp, values: M.map((m) => m.fixed + m.every + m.save) }, { name: "Loan", color: "#f0883e", values: M.map((m) => m.lp) }],
-      { height: 200, labelFmt: mLabel });
-    lineChart($("fcBal"), M.map((m) => m.ym), [{ name: "On your accounts", color: C.net, values: M.map((m) => m.bal), area: true },
-      ...(owe ? [{ name: "Loan left", color: "#f0883e", values: M.map((m) => m.debt), area: true }] : [])], { height: 200, labelFmt: mLabel });
+    // one chart: in and out each month (out includes the loan payment), the loan still left as a third bar, your balance as the line
+    $("fcChart").innerHTML = `<div class="sub"><span style="color:${C.inc}">● in</span> <span style="color:${C.exp}">● out (loan payment included)</span>${owe ? ` <span style="color:#f0883e">● loan left</span>` : ""} <span style="color:${C.net}">— on your accounts</span></div><div id="fcBars"></div>`;
+    barChart($("fcBars"), M.map((m) => m.ym), [{ name: "In", color: C.inc, values: M.map((m) => m.inc) }, { name: "Out", color: C.exp, values: M.map((m) => m.fixed + m.every + m.save + m.lp) },
+      ...(owe ? [{ name: "Loan left", color: "#f0883e", values: M.map((m) => m.debt) }] : [])],
+      { height: 280, labelFmt: mLabel, line: { name: "On your accounts", color: C.net, values: M.map((m) => m.bal) } });
     $("fcList").innerHTML = `<div class="tablewrap"><table><thead><tr><th class="l">Month</th><th>Salary</th><th>Fixed costs</th><th>Loan</th><th>Everyday</th>${dailySav ? "<th>Saving</th>" : ""}<th>Net</th><th>Balance</th>${owe ? "<th>Loan left</th>" : ""}</tr></thead><tbody>${M.map((m) => `<tr><td class="l">${MONTHS[+m.ym.slice(5, 7) - 1]} ${m.ym.slice(0, 4)}${m.partial ? ' <span class="sub">(rest)</span>' : ""}${m.big.length ? ` <span class="sub">· ${m.big.map((b) => esc(b.what)).join(", ")}</span>` : ""}</td><td>${eur(m.inc)}</td><td>${eur(-m.fixed)}</td><td>${m.lp ? eur(-m.lp) : "–"}</td><td>${eur(-m.every)}</td>${dailySav ? `<td>${eur(-m.save)}</td>` : ""}<td class="${m.net < 0 ? "neg" : "pos"}">${eur(m.net)}</td><td class="${m.bal < 0 ? "neg" : ""}">${eur(m.bal)}</td>${owe ? `<td>${m.debt > 0.5 ? eur(m.debt) : "paid off"}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
     $("fcMore").open = N === 12;
     fcAccPicker(rows, accounts, subs, cand, use);
