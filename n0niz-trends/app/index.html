@@ -292,6 +292,7 @@
         <a href="#home" data-v="home">Home</a>
         <a href="#reports" data-v="reports">Reports</a>
         <a href="#trends" data-v="trends">Trends</a>
+        <a href="#insights" data-v="insights">Insights</a>
         <a href="#bitcoin" data-v="bitcoin">Bitcoin</a>
         <a href="#agent" data-v="agent">Agent</a>
       </nav>
@@ -308,6 +309,7 @@
   <section class="view" id="v-home"></section>
   <section class="view" id="v-reports"></section>
 
+  <section class="view" id="v-insights"></section>
   <section class="view" id="v-trends">
     <div class="card" style="margin-bottom:14px"><h2>Suggested for you <span class="hint">picked from your bookings · click to show, ☆ to save</span></h2><div class="smart" id="tSmart"></div>
       <div id="tMine"></div></div>
@@ -349,7 +351,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.20.1</footer>
+  <footer class="appver">Spending Trends v2.21.0</footer>
 </div>
 
 <dialog id="settings">
@@ -2560,10 +2562,261 @@
 
   /* ============================================================ router */
   const current = () => (location.hash.slice(1) || "home").split("/")[0];
+  /* ============================================================ insights: forecast · personal inflation · money flow */
+  const IN = { per: "1", fc: "pay" };
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const median = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), k = s.length >> 1; return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2; };
+  async function renderInsights() {
+    const v = $("v-insights");
+    v.classList.add("loading");
+    let d, acc, cfg, prefs, subs = [];
+    try {
+      const yNow = new Date().getFullYear();
+      [d, acc, cfg, prefs] = await Promise.all([loadRows(), loadAccounts(), loadCfg(), api("api/store/prefs").catch(() => ({}))]);
+      const sc = await Promise.all([yNow, yNow + 1].map((y) => once(`subcal${y}`, () => api(`api/subcal?year=${y}`)).catch(() => ({ items: [] }))));
+      subs = sc[0].items;
+    } catch (e) { v.innerHTML = errorHtml(e); v.classList.remove("loading"); return; }
+    v.classList.remove("loading");
+    D.prefs = { ...(prefs.value || {}), ...(D.prefs || {}) };
+    v.innerHTML = `
+      <div class="card" style="margin-bottom:14px"><h2>Cash-flow forecast <span class="seg sm" id="fcMode"><button data-v="pay">Until payday</button><button data-v="12">Next 12 months</button></span></h2>
+        <div class="sub" id="fcHint" style="margin:-4px 0 10px"></div>
+        <div class="tiles" id="fcTiles"></div><div id="fcChart" style="margin-top:12px"></div>
+        <details style="margin-top:8px" id="fcMore"><summary class="sub" style="cursor:pointer" id="fcMoreT"></summary><div id="fcList"></div><div class="sub" id="fcAcc" style="margin-top:8px"></div></details></div>
+      <div class="card" style="margin-bottom:14px"><h2>Your inflation <span class="hint" id="infHint"></span></h2><div class="tiles" id="infTiles"></div><div id="infBody"></div></div>
+      <div class="card"><h2>Money flow <span class="seg sm" id="sfPer"><button data-v="1">Last month</button><button data-v="3">Ø 3 months</button><button data-v="12">Ø 12 months</button></span></h2><div id="sfChart"></div></div>`;
+    inForecast(d.rows, acc.accounts || [], subs);
+    inFlow(d.rows);
+    inInflation(d.rows);
+    v.querySelectorAll("#fcMode button").forEach((b) => { b.classList.toggle("on", b.dataset.v === IN.fc); b.addEventListener("click", () => { IN.fc = b.dataset.v; v.querySelectorAll("#fcMode button").forEach((x) => x.classList.toggle("on", x === b)); inForecast(d.rows, acc.accounts || [], subs); }); });
+    v.querySelectorAll("#sfPer button").forEach((b) => { b.classList.toggle("on", b.dataset.v === IN.per); b.addEventListener("click", () => { IN.per = b.dataset.v; v.querySelectorAll("#sfPer button").forEach((x) => x.classList.toggle("on", x === b)); inFlow(d.rows); }); });
+  }
+
+  /* ---- 1. forecast ---- */
+  function inForecast(rows, accounts, subs) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const tIso = isoD(today), sav = savCats();
+    // salary: the biggest regular income – median amount and day of month of the last 3 months
+    const since90 = isoD(addDays(today, -90));
+    const inc = rows.filter((r) => r[1] === "i" && r[9] >= isoD(addDays(today, -100)) && r[2] >= 500);
+    const byPayee = {};
+    for (const r of inc) (byPayee[r[6] || "?"] = byPayee[r[6] || "?"] || []).push(r);
+    const top = Object.entries(byPayee).sort((a, b) => sum(b[1].map((r) => r[2])) - sum(a[1].map((r) => r[2])))[0];
+    const salary = top ? { who: top[0], amt: median(top[1].map((r) => r[2])), day: Math.round(median(top[1].map((r) => +r[9].slice(8, 10)))) } : null;
+    // loan repayments: monthly median of the last 3 months, on their usual day
+    const loans = rows.filter((r) => r[1] === "e" && r[11] && r[9] >= since90);
+    const loanM = {};
+    for (const r of loans) loanM[r[0]] = (loanM[r[0]] || 0) + r[2];
+    const loan = loans.length ? { amt: median(Object.values(loanM)), day: Math.round(median(loans.map((r) => +r[9].slice(8, 10)))) } : null;
+    // everyday spending: expenses of the last 90 days without subscriptions, loans and savings, per day
+    const daily = sum(rows.filter((r) => r[1] === "e" && r[9] >= since90 && r[9] < tIso && !r[11] && !r[12] && !sav.has(r[3])).map((r) => r[2])) / 90;
+    // what you put aside (savings categories, e.g. Bitcoin buys) also leaves the account
+    const dailySav = sum(rows.filter((r) => r[1] === "e" && r[9] >= since90 && r[9] < tIso && !r[11] && !r[12] && sav.has(r[3])).map((r) => r[2])) / 90;
+    // horizon: up to the payday after next
+    const pd = salary ? salary.day : 28;
+    let next = new Date(today.getFullYear(), today.getMonth(), pd); if (next <= today) next = new Date(today.getFullYear(), today.getMonth() + 1, pd);
+    const end = new Date(next.getFullYear(), next.getMonth() + 1, pd);
+    const ev = [];
+    for (const x of subs) for (const dt of schedule(x, tIso, isoD(end))) if (dt > tIso || dt === tIso) ev.push({ dt, what: x.name, amt: -x.amount, kind: "fixed" });
+    const dayIn = (y, m, dd) => isoD(new Date(y, m, Math.min(dd, new Date(y, m + 1, 0).getDate())));
+    for (let k = 0; k < 3; k++) {
+      const y = today.getFullYear(), m = today.getMonth() + k;
+      if (salary) { const dt = dayIn(y, m, salary.day); if (dt > tIso && dt <= isoD(end)) ev.push({ dt, what: `Salary (${salary.who})`, amt: salary.amt, kind: "salary" }); }
+      if (loan) { const dt = dayIn(y, m, loan.day); if (dt > tIso && dt <= isoD(end) && !loanM[dt.slice(0, 7)]) ev.push({ dt, what: "Loan repayment", amt: -loan.amt, kind: "loan" }); }
+    }
+    ev.sort((a, b) => (a.dt < b.dt ? -1 : 1));
+    // start: what is on your everyday accounts now (EUR, in net worth, not savings)
+    const pick = (D.prefs.fcAcc && D.prefs.fcAcc.length) ? new Set(D.prefs.fcAcc) : null;
+    const cand = accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "EUR" && a.net);
+    const use = cand.filter((a) => (pick ? pick.has(a.name) : a.role !== "savingAsset"));
+    if (IN.fc === "12") return inForecast12({ rows, accounts, subs, today, salary, loan, daily, dailySav, use, cand });
+    $("fcHint").textContent = "Day by day until the payday after next · fixed costs from your Firefly subscriptions, everyday spending from the last 90 days";
+    $("fcMoreT").textContent = "What's coming and which accounts count";
+    let bal = sum(use.map((a) => a.balance));
+    const labels = [], vals = [], marks = [];
+    let low = { v: bal, dt: tIso }, beforePay = null, fixedUntilPay = 0;
+    const evByDay = {};
+    for (const e of ev) (evByDay[e.dt] = evByDay[e.dt] || []).push(e);
+    for (let x = new Date(today), i = 0; x <= end; x = addDays(x, 1), i++) {
+      const dt = isoD(x);
+      if (i > 0) bal -= daily + dailySav;
+      for (const e of evByDay[dt] || []) {
+        if (e.kind === "salary" && !beforePay && dt >= isoD(next)) beforePay = { v: bal, dt };
+        bal += e.amt; e.after = bal;
+        if (e.kind !== "salary" && dt < isoD(next)) fixedUntilPay -= e.amt;
+        if (Math.abs(e.amt) >= 100) marks.push({ i, v: bal, color: e.amt > 0 ? C.inc : C.exp, r: 4 });
+      }
+      labels.push(dt); vals.push(Math.round(bal * 100) / 100);
+      if (bal < low.v) low = { v: bal, dt };
+    }
+    const dfmt = (dt) => new Date(dt).toLocaleDateString([], { day: "numeric", month: "short" });
+    const tile = (l, val, s, cls = "") => `<div class="tile"><span>${l}</span><b class="${cls}">${val}</b><small>${s}</small></div>`;
+    $("fcTiles").innerHTML = tile("On your accounts now", eur(sum(use.map((a) => a.balance))), use.map((a) => esc(a.name)).join(", ") || "no account picked")
+      + tile("Lowest point", eur(low.v), `on ${dfmt(low.dt)}`, low.v < 0 ? "neg" : low.v < 500 ? "neg" : "")
+      + tile("Just before payday", beforePay ? eur(beforePay.v) : "–", beforePay ? `${dfmt(beforePay.dt)}, before the salary` : "no salary found", beforePay && beforePay.v < 0 ? "neg" : "")
+      + tile("Fixed costs until payday", eur(fixedUntilPay), `${ev.filter((e) => e.kind !== "salary" && e.dt < isoD(next)).length} payments`)
+      + tile("Everyday spending", eur(daily * 30), `per 30 days · ${eur(daily)} a day${dailySav ? ` · plus ${eur(dailySav * 30)} saving` : ""}`);
+    lineChart($("fcChart"), labels, [{ name: "Balance", color: C.net, values: vals, area: true, noDots: true }],
+      { height: 240, zero: true, marks, labelFmt: (l) => dfmt(l), tipExtra: (i) => (evByDay[labels[i]] || []).map((e) => tipRow(e.amt > 0 ? C.inc : C.exp, e.what, eur2(e.amt))).join("") });
+    $("fcList").innerHTML = ev.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">What</th><th>Amount</th><th>Balance after</th></tr></thead><tbody>${ev.map((e) => `<tr><td>${dfmt(e.dt)}</td><td class="l">${esc(e.what)}</td><td class="${e.amt > 0 ? "pos" : ""}">${eur2(e.amt)}</td><td class="${e.after < 0 ? "neg" : ""}">${eur(e.after)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No subscriptions or salary found.</div>`;
+    fcAccPicker(rows, accounts, subs, cand, use);
+  }
+  function fcAccPicker(rows, accounts, subs, cand, use) {
+    $("fcAcc").innerHTML = `Counts: ${cand.map((a) => `<label style="margin-right:10px;white-space:nowrap"><input type="checkbox" data-fc="${esc(a.name)}" ${use.includes(a) ? "checked" : ""} style="width:auto"> ${esc(a.name)} (${eur(a.balance)})</label>`).join("")}`;
+    $("fcAcc").querySelectorAll("[data-fc]").forEach((c) => c.addEventListener("change", () => {
+      D.prefs.fcAcc = [...$("fcAcc").querySelectorAll("[data-fc]:checked")].map((x) => x.dataset.fc);
+      put("api/store/prefs", { value: D.prefs }).catch(() => {}); inForecast(rows, accounts, subs);
+    }));
+  }
+
+  // month by month for the next 12 months: salary in; subscriptions, loan and everyday spending out
+  function inForecast12({ rows, accounts, subs, today, salary, loan, daily, dailySav, use, cand }) {
+    $("fcHint").textContent = "Month by month · salary and loan from your last 3 months, fixed costs from your Firefly subscriptions (yearly ones in their month), everyday spending and saving from the last 90 days";
+    $("fcMoreT").textContent = "Month by month and which accounts count";
+    const owe = -sum(accounts.filter((a) => a.kind === "liability" && a.active && a.balance < 0).map((a) => a.balance));
+    let bal = sum(use.map((a) => a.balance)), left = owe;
+    const M = [];
+    for (let k = 0; k < 12; k++) {
+      const first = new Date(today.getFullYear(), today.getMonth() + k, 1), last = new Date(today.getFullYear(), today.getMonth() + k + 1, 0);
+      const from = k === 0 ? isoD(addDays(today, 1)) : isoD(first), to = isoD(last);
+      const days = Math.round((last - (k === 0 ? today : addDays(first, -1))) / 864e5);
+      const fixedL = [];
+      for (const x of subs) for (const dt of schedule(x, from, to)) fixedL.push({ what: x.name, amt: x.amount, dt, freq: x.freq });
+      const fixed = sum(fixedL.map((f) => f.amt));
+      const salDt = salary ? isoD(new Date(first.getFullYear(), first.getMonth(), Math.min(salary.day, last.getDate()))) : null;
+      const inc = salary && salDt >= from ? salary.amt : 0;
+      let lp = 0;
+      if (loan && left > 0) { const ldt = isoD(new Date(first.getFullYear(), first.getMonth(), Math.min(loan.day, last.getDate()))); if (ldt >= from) { lp = Math.min(loan.amt, left); left -= lp; } }
+      const every = daily * days, save = dailySav * days;
+      const net = inc - fixed - lp - every - save;
+      bal += net;
+      const big = fixedL.filter((f) => f.amt >= 100 && f.freq !== "monthly" && f.freq !== "weekly");
+      M.push({ ym: to.slice(0, 7), inc, fixed, lp, every, save, net, bal, big, partial: k === 0 });
+    }
+    const mLabel = (ym) => `${MONTHS[+ym.slice(5, 7) - 1]}${ym.slice(5, 7) === "01" ? " " + ym.slice(2, 4) : ""}`;
+    const tile = (l, val, s2, cls = "") => `<div class="tile"><span>${l}</span><b class="${cls}">${val}</b><small>${s2}</small></div>`;
+    const full = M.slice(1);
+    const worst = full.reduce((a, b) => (b.net < a.net ? b : a), full[0]);
+    const bigs = M.flatMap((m) => m.big.map((b) => ({ ...b, ym: m.ym })));
+    const lastPay = M.filter((m) => m.lp > 0).pop();
+    const freeAt = (() => { if (!loan || !owe) return ""; if (left <= 0.5 && lastPay) return lastPay.ym; const x = new Date(today.getFullYear(), today.getMonth() + 11 + Math.ceil(left / loan.amt), 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`; })();
+    $("fcTiles").innerHTML = tile("In 12 months", eur(M[11].bal), `on your accounts · now ${eur(sum(use.map((a) => a.balance)))}`, M[11].bal < 0 ? "neg" : "")
+      + tile("Left a month", eur(sum(full.map((m) => m.net)) / full.length), "Ø of the full months", sum(full.map((m) => m.net)) < 0 ? "neg" : "pos")
+      + tile("Tightest month", mLabel(worst.ym), `${eur(worst.net)}${worst.big.length ? " · " + worst.big.map((b) => esc(b.what)).join(", ") : ""}`, worst.net < 0 ? "neg" : "")
+      + tile("Big yearly bills", String(bigs.length), bigs.slice(0, 3).map((b) => `${esc(b.what)} (${mLabel(b.ym)})`).join(" · ") || "none in the next 12 months")
+      + (owe && loan ? tile("Debt-free", `${MONTHS[+freeAt.slice(5, 7) - 1]} ${freeAt.slice(0, 4)}`, `${eur(owe)} left at ${eur(loan.amt)} a month`) : "");
+    barChart($("fcChart"), M.map((m) => m.ym), [{ name: "In", color: C.inc, values: M.map((m) => m.inc) }, { name: "Out", color: C.exp, values: M.map((m) => m.fixed + m.lp + m.every + m.save) }],
+      { height: 240, labelFmt: mLabel, line: { name: "Balance at month end", color: C.net, values: M.map((m) => m.bal) } });
+    $("fcList").innerHTML = `<div class="tablewrap"><table><thead><tr><th class="l">Month</th><th>Salary</th><th>Fixed costs</th><th>Loan</th><th>Everyday</th>${dailySav ? "<th>Saving</th>" : ""}<th>Net</th><th>Balance</th></tr></thead><tbody>${M.map((m) => `<tr><td class="l">${MONTHS[+m.ym.slice(5, 7) - 1]} ${m.ym.slice(0, 4)}${m.partial ? ' <span class="sub">(rest)</span>' : ""}${m.big.length ? ` <span class="sub">· ${m.big.map((b) => esc(b.what)).join(", ")}</span>` : ""}</td><td>${eur(m.inc)}</td><td>${eur(-m.fixed)}</td><td>${m.lp ? eur(-m.lp) : "–"}</td><td>${eur(-m.every)}</td>${dailySav ? `<td>${eur(-m.save)}</td>` : ""}<td class="${m.net < 0 ? "neg" : "pos"}">${eur(m.net)}</td><td class="${m.bal < 0 ? "neg" : ""}">${eur(m.bal)}</td></tr>`).join("")}</tbody></table></div>`;
+    $("fcMore").open = true;
+    fcAccPicker(rows, accounts, subs, cand, use);
+  }
+
+  /* ---- 2. money flow (Sankey) ---- */
+  function inFlow(rows) {
+    const host = $("sfChart"), n = +IN.per;
+    const now = new Date(), months = [];
+    for (let k = n; k >= 1; k--) { const x = new Date(now.getFullYear(), now.getMonth() - k, 1); months.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`); }
+    const inM = new Set(months), R = rows.filter((r) => inM.has(r[0]));
+    const agg = (f, key) => { const o = {}; for (const r of R.filter(f)) { const k = key(r); o[k] = (o[k] || 0) + r[2] / n; } return o; };
+    const ins = agg((r) => r[1] === "i" && !r[11], (r) => r[6] || r[3] || "Other income");
+    // the middle node is as tall as the bigger side
+    const outs = agg((r) => r[1] === "e" && !r[11], (r) => r[3] || "No category");
+    const loan = sum(R.filter((r) => r[1] === "e" && r[11]).map((r) => r[2])) / n;
+    const top = (o, k, other) => { const e = Object.entries(o).filter(([, x]) => x > 0.5).sort((a, b) => b[1] - a[1]); const t = e.slice(0, k); const rest = sum(e.slice(k).map((x) => x[1])); if (rest > 0.5) t.push([other, rest]); return t; };
+    const L = top(ins, 4, "Other income"), Rt = top(outs, 9, "Other");
+    if (loan > 0.5) Rt.push(["Loan repayment", loan]);
+    const totIn = sum(L.map((x) => x[1])), totOut = sum(Rt.map((x) => x[1]));
+    if (totIn - totOut > 0.5) Rt.push(["Left over", totIn - totOut]);
+    if (totOut - totIn > 0.5) L.push(["From your savings", totOut - totIn]);
+    if (!L.length || !Rt.length) return emptyIn(host, "No bookings in this period.");
+    const W = Math.max(320, host.clientWidth || 700), H = Math.max(260, 27 * Math.max(L.length, Rt.length) + 30);
+    const total = Math.max(sum(L.map((x) => x[1])), sum(Rt.map((x) => x[1]))), gap = 6, nodeW = 12;
+    const kk = (H - 20 - (gap + 15) * Math.max(L.length, Rt.length)) / total;
+    const cx = [W * 0.2, W * 0.48, W * 0.72];
+    const svg = S("svg", { viewBox: `0 0 ${W} ${H}` });
+    const SPAL = ["#6ea8fe", "#f0883e", "#d2a8ff", "#e3b341", "#39c5cf", "#ff9bce", "#a5d6ff", "#ffa657", "#bc8cff", "#8b949e"];
+    const layout = (list, x) => { let y = 10; return list.map(([name, val], i) => { const h = Math.max(2, val * kk); const o = { name, val, x, y, h, color: name === "Left over" ? C.inc : name === "Loan repayment" ? C.exp : name === "From your savings" ? "#e3b341" : SPAL[i % SPAL.length] }; y += Math.max(h, 15) + gap; return o; }); };
+    const lN = layout(L, cx[0]), rN = layout(Rt, cx[2]);
+    const midH = total * kk + 0, mid = { x: cx[1], y: (H - midH) / 2, h: midH };
+    const band = (x1, y1, x2, y2, h, color, title) => {
+      const m = (x1 + x2) / 2;
+      const p = S("path", { d: `M${x1},${y1}C${m},${y1} ${m},${y2} ${x2},${y2}L${x2},${y2 + h}C${m},${y2 + h} ${m},${y1 + h} ${x1},${y1 + h}Z`, fill: color, opacity: 0.35 }, svg);
+      S("title", {}, p).textContent = title;
+      p.addEventListener("mouseenter", () => p.setAttribute("opacity", 0.6)); p.addEventListener("mouseleave", () => p.setAttribute("opacity", 0.35));
+    };
+    let yi = mid.y; for (const a of lN) { band(a.x + nodeW, a.y, mid.x, yi, a.h, a.color, `${a.name}: ${eur(a.val)}${n > 1 ? " a month" : ""}`); yi += a.h; }
+    let yo = mid.y; for (const b of rN) { band(mid.x + nodeW, yo, b.x, b.y, b.h, b.color, `${b.name}: ${eur(b.val)}${n > 1 ? " a month" : ""} · ${Math.round((b.val / totIn) * 100)} % of income`); yo += b.h; }
+    const node = (o, anchor, dx) => {
+      S("rect", { x: o.x, y: o.y, width: nodeW, height: o.h, rx: 2, fill: o.color }, svg);
+      const t = S("text", { x: o.x + dx, y: o.y + o.h / 2 + 4, "text-anchor": anchor, fill: "var(--text)", "font-size": 12 }, svg);
+      t.textContent = `${o.name} `; const s2 = S("tspan", { fill: "var(--muted)" }, t); s2.textContent = eur(o.val);
+    };
+    lN.forEach((o) => node(o, "end", -6)); rN.forEach((o) => node(o, "start", nodeW + 6));
+    S("rect", { x: mid.x, y: mid.y, width: nodeW, height: mid.h, rx: 2, fill: "var(--muted)" }, svg);
+    const t = S("text", { x: mid.x + nodeW / 2, y: mid.y - 6, "text-anchor": "middle", fill: "var(--muted)", "font-size": 12 }, svg); t.textContent = `Income ${eur(totIn)}${n > 1 ? " / month" : ""}`;
+    host.replaceChildren(svg);
+  }
+
+  /* ---- 3. personal inflation ---- */
+  function inInflation(rows) {
+    const now = new Date(), ym = (k) => { const x = new Date(now.getFullYear(), now.getMonth() - k, 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`; };
+    const aFrom = ym(12), aTo = ym(1), bFrom = ym(24), bTo = ym(13);
+    const sav = savCats();
+    const E = rows.filter((r) => r[1] === "e" && !r[11] && r[2] > 0 && !sav.has(r[3]) && !/crypto|bitcoin|sparen|savings/i.test(r[3] || ""));
+    const A = E.filter((r) => r[0] >= aFrom && r[0] <= aTo), B = E.filter((r) => r[0] >= bFrom && r[0] <= bTo);
+    const span = (f, t) => `${MONTHS[+f.slice(5, 7) - 1]} ${f.slice(2, 4)} – ${MONTHS[+t.slice(5, 7) - 1]} ${t.slice(2, 4)}`;
+    const thenL = span(bFrom, bTo), nowL = span(aFrom, aTo);
+    $("infHint").textContent = `what you paid ${nowL} compared with ${thenL}`;
+    // price changes of things you pay regularly: the amount changed and then stayed
+    const byP = {};
+    for (const r of E.filter((r) => r[0] >= bFrom)) (byP[r[6] || "?"] = byP[r[6] || "?"] || []).push(r);
+    const changes = [], fixed = {};
+    for (const [p, list] of Object.entries(byP)) {
+      if (list.length < 5) continue;
+      list.sort((a, b) => (a[9] < b[9] ? -1 : 1));
+      const amts = list.map((r) => Math.round(r[2] * 100) / 100);
+      const vals = new Set(amts); if (vals.size > Math.max(3, amts.length / 3)) continue;   // varies too much: shopping, not a fixed price
+      fixed[p] = { now: amts[amts.length - 1], first: amts.find((_, i) => list[i][0] >= aFrom) ?? amts[amts.length - 1], spend: sum(list.filter((r) => r[0] >= aFrom).map((r) => r[2])) };
+      for (let i = 2; i < amts.length - 1; i++) {
+        if (amts[i] !== amts[i - 1] && amts[i - 1] === amts[i - 2] && amts[i + 1] === amts[i])
+          changes.push({ p, from: amts[i - 1], to: amts[i], since: list[i][9], cat: list[i][3] });
+      }
+    }
+    changes.sort((a, b) => (a.since < b.since ? 1 : -1));
+    // shops you use often: average receipt then vs. now
+    const stat = (L) => { const o = {}; for (const r of L) { const k = r[6] || "?"; (o[k] = o[k] || { n: 0, s: 0 }); o[k].n++; o[k].s += r[2]; } return o; };
+    const sa = stat(A), sb = stat(B);
+    const shops = Object.keys(sa).filter((k) => sb[k] && sa[k].n >= 4 && sb[k].n >= 4 && !fixed[k])
+      .map((k) => ({ p: k, a: sa[k].s / sa[k].n, b: sb[k].s / sb[k].n, spend: sa[k].s, n: sa[k].n }))
+      .map((x) => ({ ...x, chg: x.a / x.b - 1 })).sort((x, y) => y.spend - x.spend).slice(0, 12);
+    // categories per month
+    const catM = (L) => { const o = {}; for (const r of L) o[r[3] || "No category"] = (o[r[3] || "No category"] || 0) + r[2] / 12; return o; };
+    const ca = catM(A), cb = catM(B);
+    const cats = Object.keys(ca).filter((k) => cb[k] > 5).map((k) => ({ k, a: ca[k], b: cb[k], chg: ca[k] / cb[k] - 1 })).sort((x, y) => Math.abs(y.a - y.b) - Math.abs(x.a - x.b)).slice(0, 8);
+    // your rate: the price changes and receipts, weighted by what you spend there
+    // fixed prices count with what they changed by in the last 12 months – unchanged rent counts as 0 %
+    const ago = (p) => { const c = changes.find((x) => x.p === p && x.since >= ym(12) + "-01"); return c ? c.to / c.from - 1 : 0; };
+    const parts = [...shops.map((s) => ({ w: s.spend, c: Math.max(-0.5, Math.min(0.5, s.chg)) })),
+      ...Object.entries(fixed).filter(([, f]) => f.spend > 0).map(([p, f]) => ({ w: f.spend, c: ago(p) }))];
+    const rate = parts.length ? sum(parts.map((x) => x.w * x.c)) / sum(parts.map((x) => x.w)) : null;
+    const tile = (l, val, s, cls = "") => `<div class="tile"><span>${l}</span><b class="${cls}">${val}</b><small>${s}</small></div>`;
+    const totA = sum(A.map((r) => r[2])), totB = sum(B.map((r) => r[2]));
+    $("infTiles").innerHTML = (rate == null ? tile("Your inflation", "–", "needs 2 years of bookings") : tile("Your inflation", pct(rate), `${shops.length} shops and ${Object.keys(fixed).length} fixed costs, weighted by what you spend`, rate > 0.02 ? "neg" : "pos"))
+      + tile("Price changes", String(changes.filter((c) => c.since >= ym(12) + "-01").length), `since ${MONTHS[+aFrom.slice(5, 7) - 1]} ${aFrom.slice(0, 4)}`)
+      + (totB ? tile("All spending", pct(totA / totB - 1), `${eur(totA / 12)} a month (${nowL}), was ${eur(totB / 12)}`, totA > totB ? "neg" : "pos") : "");
+    const chgCell = (c) => `<td class="${c > 0.005 ? "neg" : c < -0.005 ? "pos" : ""}">${pct(c)}</td>`;
+    $("infBody").innerHTML = `
+      ${changes.length ? `<h3 style="margin:14px 0 4px;font-size:13px">Price changes <span class="sub">fixed amounts that went up or down and stayed</span></h3><div class="tablewrap"><table><thead><tr><th class="l">What</th><th>Since</th><th>Before</th><th>Now</th><th>Change</th><th>Extra a year</th></tr></thead><tbody>${changes.slice(0, 10).map((c) => `<tr><td class="l">${esc(c.p)}</td><td>${c.since.slice(0, 7)}</td><td>${eur2(c.from)}</td><td>${eur2(c.to)}</td>${chgCell(c.to / c.from - 1)}<td class="${c.to > c.from ? "neg" : "pos"}">${eur2((c.to - c.from) * 12)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+      ${shops.length ? `<h3 style="margin:14px 0 4px;font-size:13px">Your shops <span class="sub">average receipt – a bigger basket counts too, so read it as a hint, not as prices</span></h3><div class="tablewrap"><table><thead><tr><th class="l">Shop</th><th>Visits</th><th>Ø ${thenL}</th><th>Ø ${nowL}</th><th>Change</th></tr></thead><tbody>${shops.map((s) => `<tr><td class="l">${esc(s.p)}</td><td>${s.n}</td><td>${eur2(s.b)}</td><td>${eur2(s.a)}</td>${chgCell(s.chg)}</tr>`).join("")}</tbody></table></div>` : ""}
+      ${cats.length ? `<h3 style="margin:14px 0 4px;font-size:13px">Categories <span class="sub">Ø per month</span></h3><div class="tablewrap"><table><thead><tr><th class="l">Category</th><th>${thenL}</th><th>${nowL}</th><th>Change</th></tr></thead><tbody>${cats.map((c) => `<tr><td class="l">${esc(c.k)}</td><td>${eur(c.b)}</td><td>${eur(c.a)}</td>${chgCell(c.chg)}</tr>`).join("")}</tbody></table></div>` : ""}
+      ${!changes.length && !shops.length && !cats.length ? `<div class="empty">Needs bookings from two years to compare.</div>` : ""}`;
+  }
+
   function route() {
     const parts = (location.hash.slice(1) || "home").split("/").map(decodeURIComponent);
     let view = parts[0];
-    if (!["home", "reports", "trends", "bitcoin", "agent"].includes(view)) view = "home";
+    if (!["home", "reports", "trends", "insights", "bitcoin", "agent"].includes(view)) view = "home";
     document.querySelectorAll(".view").forEach((s) => s.classList.toggle("on", s.id === "v-" + view));
     document.querySelectorAll("#nav a").forEach((a) => a.classList.toggle("on", a.dataset.v === view));
     if (view !== "reports") D.cur_report = null;
@@ -2571,6 +2824,7 @@
     else if (view === "reports") renderReports(parts.slice(1));
     else if (view === "trends") renderTrends();
     else if (view === "agent") renderAgent();
+    else if (view === "insights") renderInsights();
     else renderBtc();
   }
   window.addEventListener("hashchange", () => { window.scrollTo(0, 0); route(); });
