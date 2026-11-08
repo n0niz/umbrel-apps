@@ -351,7 +351,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.21.1</footer>
+  <footer class="appver">Spending Trends v2.21.2</footer>
 </div>
 
 <dialog id="settings">
@@ -2579,7 +2579,7 @@
     v.classList.remove("loading");
     D.prefs = { ...(prefs.value || {}), ...(D.prefs || {}) };
     v.innerHTML = `
-      <div class="card" style="margin-bottom:14px"><h2>Cash-flow forecast <span class="seg sm" id="fcMode"><button data-v="pay">Until payday</button><button data-v="12">Next 12 months</button></span></h2>
+      <div class="card" style="margin-bottom:14px"><h2>Cash-flow forecast <span class="seg sm" id="fcMode"><button data-v="pay">Until payday</button><button data-v="12">12 months</button><button data-v="24">24</button><button data-v="36">36</button><button data-v="48">48</button></span></h2>
         <div class="sub" id="fcHint" style="margin:-4px 0 10px"></div>
         <div class="row" id="fcSet" style="gap:14px;flex-wrap:wrap;margin-bottom:12px"></div>
         <div class="tiles" id="fcTiles"></div><div id="fcChart" style="margin-top:12px"></div>
@@ -2646,7 +2646,7 @@
     const pick = (D.prefs.fcAcc && D.prefs.fcAcc.length) ? new Set(D.prefs.fcAcc) : null;
     const cand = accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "EUR" && a.net);
     const use = cand.filter((a) => (pick ? pick.has(a.name) : a.role !== "savingAsset"));
-    if (IN.fc === "12") return inForecast12({ rows, accounts, subs, today, salary, loan, daily, dailySav, use, cand });
+    if (IN.fc !== "pay") return inForecast12({ rows, accounts, subs, today, salary, loan, daily, dailySav, use, cand });
     $("fcHint").textContent = "Day by day until the payday after next · fixed costs from your Firefly subscriptions · change the amounts below if they don't fit";
     $("fcMoreT").textContent = "What's coming and which accounts count";
     let bal = sum(use.map((a) => a.balance));
@@ -2709,7 +2709,8 @@
     const owe = -sum(accounts.filter((a) => a.kind === "liability" && a.active && a.balance < 0).map((a) => a.balance));
     let bal = sum(use.map((a) => a.balance)), left = owe;
     const M = [];
-    for (let k = 0; k < 12; k++) {
+    const N = +IN.fc || 12;
+    for (let k = 0; k < N; k++) {
       const first = new Date(today.getFullYear(), today.getMonth() + k, 1), last = new Date(today.getFullYear(), today.getMonth() + k + 1, 0);
       const from = k === 0 ? isoD(addDays(today, 1)) : isoD(first), to = isoD(last);
       const days = Math.round((last - (k === 0 ? today : addDays(first, -1))) / 864e5);
@@ -2732,16 +2733,18 @@
     const worst = full.reduce((a, b) => (b.net < a.net ? b : a), full[0]);
     const bigs = M.flatMap((m) => m.big.map((b) => ({ ...b, ym: m.ym })));
     const lastPay = M.filter((m) => m.lp > 0).pop();
-    const freeAt = (() => { if (!loan || !owe) return ""; if (left <= 0.5 && lastPay) return lastPay.ym; const x = new Date(today.getFullYear(), today.getMonth() + 11 + Math.ceil(left / loan.amt), 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`; })();
-    $("fcTiles").innerHTML = tile("In 12 months", eur(M[11].bal), `on your accounts · now ${eur(sum(use.map((a) => a.balance)))}`, M[11].bal < 0 ? "neg" : "")
+    const freeAt = (() => { if (!loan || !owe) return ""; if (left <= 0.5 && lastPay) return lastPay.ym; const x = new Date(today.getFullYear(), today.getMonth() + N - 1 + Math.ceil(left / loan.amt), 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}`; })();
+    $("fcTiles").innerHTML = tile(`In ${N} months`, eur(M[N - 1].bal), `on your accounts · now ${eur(sum(use.map((a) => a.balance)))}`, M[N - 1].bal < 0 ? "neg" : "")
       + tile("Left a month", eur(sum(full.map((m) => m.net)) / full.length), "Ø of the full months", sum(full.map((m) => m.net)) < 0 ? "neg" : "pos")
       + tile("Tightest month", mLabel(worst.ym), `${eur(worst.net)}${worst.big.length ? " · " + worst.big.map((b) => esc(b.what)).join(", ") : ""}`, worst.net < 0 ? "neg" : "")
-      + tile("Big yearly bills", String(bigs.length), bigs.slice(0, 3).map((b) => `${esc(b.what)} (${mLabel(b.ym)})`).join(" · ") || "none in the next 12 months")
+      + tile("Big yearly bills", eur(sum(bigs.map((b) => b.amt)) / (N / 12)) + " a year", [...new Set(bigs.map((b) => b.what))].slice(0, 3).map(esc).join(" · ") || `none in the next ${N} months`)
       + (owe && loan ? tile("Debt-free", `${MONTHS[+freeAt.slice(5, 7) - 1]} ${freeAt.slice(0, 4)}`, `${eur(owe)} left at ${eur(loan.amt)} a month`) : "");
-    barChart($("fcChart"), M.map((m) => m.ym), [{ name: "In", color: C.inc, values: M.map((m) => m.inc) }, { name: "Out", color: C.exp, values: M.map((m) => m.fixed + m.lp + m.every + m.save) }],
-      { height: 240, labelFmt: mLabel, line: { name: "Balance at month end", color: C.net, values: M.map((m) => m.bal) } });
+    $("fcChart").innerHTML = `<div class="sub">Each month <span style="color:${C.inc}">● in</span> <span style="color:${C.exp}">● out</span> <span style="color:#f0883e">● loan</span></div><div id="fcBars"></div><div class="sub" style="margin-top:10px">On your accounts at month end</div><div id="fcBal"></div>`;
+    barChart($("fcBars"), M.map((m) => m.ym), [{ name: "In", color: C.inc, values: M.map((m) => m.inc) }, { name: "Out", color: C.exp, values: M.map((m) => m.fixed + m.every + m.save) }, { name: "Loan", color: "#f0883e", values: M.map((m) => m.lp) }],
+      { height: 200, labelFmt: mLabel });
+    lineChart($("fcBal"), M.map((m) => m.ym), [{ name: "Balance at month end", color: C.net, values: M.map((m) => m.bal), area: true }], { height: 180, labelFmt: mLabel });
     $("fcList").innerHTML = `<div class="tablewrap"><table><thead><tr><th class="l">Month</th><th>Salary</th><th>Fixed costs</th><th>Loan</th><th>Everyday</th>${dailySav ? "<th>Saving</th>" : ""}<th>Net</th><th>Balance</th></tr></thead><tbody>${M.map((m) => `<tr><td class="l">${MONTHS[+m.ym.slice(5, 7) - 1]} ${m.ym.slice(0, 4)}${m.partial ? ' <span class="sub">(rest)</span>' : ""}${m.big.length ? ` <span class="sub">· ${m.big.map((b) => esc(b.what)).join(", ")}</span>` : ""}</td><td>${eur(m.inc)}</td><td>${eur(-m.fixed)}</td><td>${m.lp ? eur(-m.lp) : "–"}</td><td>${eur(-m.every)}</td>${dailySav ? `<td>${eur(-m.save)}</td>` : ""}<td class="${m.net < 0 ? "neg" : "pos"}">${eur(m.net)}</td><td class="${m.bal < 0 ? "neg" : ""}">${eur(m.bal)}</td></tr>`).join("")}</tbody></table></div>`;
-    $("fcMore").open = true;
+    $("fcMore").open = N === 12;
     fcAccPicker(rows, accounts, subs, cand, use);
   }
 
