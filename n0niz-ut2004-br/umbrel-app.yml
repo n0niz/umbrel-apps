@@ -1,0 +1,37 @@
+manifestVersion: 1
+id: n0niz-ut2004-br
+name: UT2004 Bombing Run
+tagline: Unreal Tournament 2004 dedicated server, set up for Bombing Run
+icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-ut2004-br/icon.svg
+category: gaming
+version: "1.0.0"
+port: 8777
+description: >-
+  A dedicated Unreal Tournament 2004 server (v3369, ECE Bonus Pack and Megapack;
+  players on OldUnreal's 3374 patch can join) set up like the Fair-Gamers
+  BombingRun Server #11: Bombing Run only, 16 slots, tick rate 41, map vote with
+  a repeat limit of 1 and kick votes.
+
+
+  Players join on UDP port 7777, for example over Tailscale at umbrel-1:7777.
+  The server isn't listed publicly unless you set PUBLIC_LISTING to True and
+  forward UDP 7777, 7778 and 7787 on your router.
+
+
+  This tile opens the UT2004 web admin (user: admin, password: shown on this
+  page). Settings and the mutator list are in
+  Files → Apps → n0niz-ut2004-br → data/settings.env (created on first start,
+  kept across updates). Custom maps and mutators go into data/addons
+  (Maps, System, ...). Restart the app to apply changes.
+developer: n0niz
+website: https://github.com/n0niz/umbrel-apps
+submitter: n0niz
+submission: https://github.com/n0niz/umbrel-apps
+repo: https://github.com/PhasecoreX/docker-ut2004-server
+support: https://github.com/n0niz/umbrel-apps/issues
+gallery: []
+releaseNotes: ""
+dependencies: []
+path: ""
+defaultUsername: "admin"
+deterministicPassword: true

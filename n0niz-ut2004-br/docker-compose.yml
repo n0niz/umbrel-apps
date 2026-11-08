@@ -1,0 +1,130 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      # The format here is: <app-id>_<docker-service-name>_1
+      # The Umbrel tile opens the UT2004 web admin (Umbrel login in front of it)
+      APP_HOST: n0niz-ut2004-br_server_1
+      APP_PORT: 8080
+
+  server:
+    image: phasecorex/ut2004-server:latest
+    restart: on-failure
+    stop_grace_period: 10s
+    ports:
+      - "7777:7777/udp" # game
+      - "7778:7778/udp" # query (game port + 1)
+      - "7787:7787/udp" # GameSpy query (game port + 10)
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: Europe/Berlin
+
+      # Defaults. To change them, edit data/settings.env in the app folder
+      # (created on first start, kept across app updates).
+      SERVER_NAME: "n0niz UT2004 BombingRun"
+      MAP_NAME: BR-Anubis
+      GAME_TYPE: XGame.xBombingRun
+      # Comma-separated, no spaces, e.g. "UTCompv18a.MutUTComp,MyMod.MutFoo".
+      # Put the matching .u/.ucl/.int files into data/addons/System first.
+      MUTATORS: ""
+      MAX_PLAYERS: "16"       # Fair-Gamers #11 runs 16 slots
+      TICKRATE: "41"          # Fair-Gamers #11 (forum poll: 41, not 60/100)
+      MAP_REPEAT_LIMIT: "1"   # Fair-Gamers #11 (forum poll)
+      IDLE_KICK_SECONDS: "240"
+      GOAL_SCORE: ""          # empty = UT2004 default
+      TIME_LIMIT: ""          # minutes, empty = UT2004 default
+      GAME_PASSWORD: ""       # empty = no join password
+      PUBLIC_LISTING: "False" # True = show in the master server list (needs port forwarding)
+
+      ENABLE_WEB_INTERFACE: "true"
+      ADMIN_PASSWORD: ${APP_PASSWORD}
+    volumes:
+      - ${APP_DATA_DIR}/data:/data
+    # Bombing Run setup, then the image's normal start script.
+    # Kept inline so app store updates also update it ($$ = literal $ for the shell).
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        /app/install.sh /data/server
+        mkdir -p /data/config /data/addons/System /data/addons/Maps
+        INI=/data/config/UT2004.ini
+
+        # Your settings: data/settings.env overrides the defaults above
+        if [ ! -f /data/settings.env ]; then
+          {
+            echo "# UT2004 Bombing Run settings. Remove the # to use a line; restart the app to apply."
+            echo "# Mutators: comma-separated, no spaces; their files go into addons/System."
+            echo "#MUTATORS=UTCompv18a.MutUTComp"
+            echo "# Values with spaces need quotes, like SERVER_NAME below."
+            echo '#SERVER_NAME="n0niz UT2004 BombingRun"'
+            echo "#MAP_NAME=BR-Anubis"
+            echo "#MAX_PLAYERS=16"
+            echo "#TICKRATE=41"
+            echo "#MAP_REPEAT_LIMIT=1"
+            echo "#IDLE_KICK_SECONDS=240"
+            echo "#GOAL_SCORE=15"
+            echo "#TIME_LIMIT=20"
+            echo "#GAME_PASSWORD=secret"
+            echo "#PUBLIC_LISTING=True"
+          } > /data/settings.env
+        fi
+        set -a; . /data/settings.env; set +a
+        if [ ! -f "$$INI" ]; then cp /data/server/System/UT2004.ini "$$INI"; fi
+
+        # setini SECTION KEY VALUE: set one key (adds key/section if missing)
+        setini() {
+          awk -v s="[$$1]" -v k="$$2" -v v="$$3" '
+            function put() { print k "=" v; done = 1 }
+            function flush() { for (; nb > 0; nb--) print "" }
+            { sub(/\r$$/, "") }
+            insec && /^\[/ { if (!done) put(); flush(); insec = 0 }
+            $$0 == s { print; insec = 1; next }
+            insec && $$0 == "" { nb++; next }
+            insec { flush() }
+            insec && index($$0, k "=") == 1 { if (!done) put(); next }
+            { print }
+            END { if (insec && !done) put(); flush(); if (!done) { print "\n" s; put() } }
+          ' "$$INI" > "$$INI.tmp" && mv "$$INI.tmp" "$$INI"
+        }
+        # setopt SECTION KEY VALUE: like setini, skipped when VALUE is empty
+        setopt() { if [ -n "$$3" ]; then setini "$$1" "$$2" "$$3"; fi; }
+        # delkey SECTION KEY: remove every KEY= line in that section
+        delkey() {
+          awk -v s="[$$1]" -v k="$$2" '
+            { sub(/\r$$/, "") }
+            /^\[/ { insec = ($$0 == s) }
+            insec && index($$0, k "=") == 1 { next }
+            { print }
+          ' "$$INI" > "$$INI.tmp" && mv "$$INI.tmp" "$$INI"
+        }
+
+        setini IpDrv.TcpNetDriver NetServerMaxTickRate "$$TICKRATE"
+        setini IpDrv.TcpNetDriver LanServerMaxTickRate "$$TICKRATE"
+        setini Engine.GameInfo MaxPlayers "$$MAX_PLAYERS"
+        setini Engine.GameInfo MaxIdleTime "$$IDLE_KICK_SECONDS"
+        setini Engine.GameInfo VotingHandlerType xVoting.xVotingHandler
+        setini Engine.AccessControl GamePassword "$$GAME_PASSWORD"
+        setopt XGame.xBombingRun GoalScore "$$GOAL_SCORE"
+        setopt XGame.xBombingRun TimeLimit "$$TIME_LIMIT"
+        setini IpDrv.MasterServerUplink DoUplink "$$PUBLIC_LISTING"
+        setini IpDrv.MasterServerUplink UplinkToGamespy False
+        setini UWeb.WebServer ListenPort 8080
+
+        # Map vote: Bombing Run only, BR- maps only, kick votes on
+        setini xVoting.xVotingHandler bMapVote True
+        setini xVoting.xVotingHandler bKickVote True
+        setini xVoting.xVotingHandler bAutoOpen True
+        setini xVoting.xVotingHandler RepeatLimit "$$MAP_REPEAT_LIMIT"
+        setini xVoting.xVotingHandler DefaultGameConfig 0
+        setini xVoting.xVotingHandler CurrentGameConfig 0
+        setini xVoting.xVotingHandler bDefaultToCurrentGameType True
+        delkey xVoting.xVotingHandler GameConfig
+        setini xVoting.xVotingHandler GameConfig "(GameClass=\"$$GAME_TYPE\",Prefix=\"BR\",Acronym=\"BR\",GameName=\"Bombing Run\",Mutators=\"$$MUTATORS\",Options=)"
+        setini xVoting.DefaultMapListLoader bUseMapList False
+        setini xVoting.DefaultMapListLoader MapNamePrefixes BR
+
+        exec /app/start_server.sh
