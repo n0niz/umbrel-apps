@@ -351,7 +351,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.21.0</footer>
+  <footer class="appver">Spending Trends v2.21.1</footer>
 </div>
 
 <dialog id="settings">
@@ -2581,6 +2581,7 @@
     v.innerHTML = `
       <div class="card" style="margin-bottom:14px"><h2>Cash-flow forecast <span class="seg sm" id="fcMode"><button data-v="pay">Until payday</button><button data-v="12">Next 12 months</button></span></h2>
         <div class="sub" id="fcHint" style="margin:-4px 0 10px"></div>
+        <div class="row" id="fcSet" style="gap:14px;flex-wrap:wrap;margin-bottom:12px"></div>
         <div class="tiles" id="fcTiles"></div><div id="fcChart" style="margin-top:12px"></div>
         <details style="margin-top:8px" id="fcMore"><summary class="sub" style="cursor:pointer" id="fcMoreT"></summary><div id="fcList"></div><div class="sub" id="fcAcc" style="margin-top:8px"></div></details></div>
       <div class="card" style="margin-bottom:14px"><h2>Your inflation <span class="hint" id="infHint"></span></h2><div class="tiles" id="infTiles"></div><div id="infBody"></div></div>
@@ -2609,9 +2610,25 @@
     for (const r of loans) loanM[r[0]] = (loanM[r[0]] || 0) + r[2];
     const loan = loans.length ? { amt: median(Object.values(loanM)), day: Math.round(median(loans.map((r) => +r[9].slice(8, 10)))) } : null;
     // everyday spending: expenses of the last 90 days without subscriptions, loans and savings, per day
-    const daily = sum(rows.filter((r) => r[1] === "e" && r[9] >= since90 && r[9] < tIso && !r[11] && !r[12] && !sav.has(r[3])).map((r) => r[2])) / 90;
-    // what you put aside (savings categories, e.g. Bitcoin buys) also leaves the account
-    const dailySav = sum(rows.filter((r) => r[1] === "e" && r[9] >= since90 && r[9] < tIso && !r[11] && !r[12] && sav.has(r[3])).map((r) => r[2])) / 90;
+    // everyday spending: what is not already counted as a fixed cost – bookings Firefly linked to a subscription,
+    // bookings that look like one (same name or same amount), loan payments, savings and paying off a credit card
+    const words = (x) => String(x || "").toLowerCase().split(/[^a-zäöüß0-9]+/).filter((w) => w.length >= 4);
+    const subW = subs.map((x) => ({ w: words(x.name), amt: x.amount }));
+    const looksFixed = (r) => {
+      const txt = `${r[6]} ${r[10] || ""}`.toLowerCase();
+      return subW.some((x) => x.w.some((w) => txt.includes(w)) || (Math.abs(r[2] - x.amt) <= Math.max(0.5, x.amt * 0.01) && x.amt >= 20));
+    };
+    const cardBill = (r) => r[2] >= 100 && /card payment|kreditkarte|kartenabrechnung|american express|\bamex\b|visa.?abrechnung|mastercard.?abrechnung/i.test(`${r[6]} ${r[10] || ""}`);
+    const last90 = rows.filter((r) => r[1] === "e" && r[9] >= since90 && r[9] < tIso && !r[11] && !r[12]);
+    const autoDaily = sum(last90.filter((r) => !sav.has(r[3]) && !looksFixed(r) && !cardBill(r)).map((r) => r[2])) / 90;
+    const autoSav = sum(last90.filter((r) => sav.has(r[3])).map((r) => r[2])) / 90;
+    // your own values win: loan payment, everyday spending and saving per month
+    const P = D.prefs || {}, own = (k) => (P[k] === undefined || P[k] === null || P[k] === "" ? null : +P[k]);
+    const daily = own("fcDaily") != null ? own("fcDaily") / 30 : autoDaily;
+    const dailySav = own("fcSave") != null ? own("fcSave") / 30 : 0;
+    if (loan && own("fcLoan") != null) loan.amt = own("fcLoan");
+    const autoLoan = loans.length ? median(Object.values(loanM)) : 0;
+    fcSettings(rows, accounts, subs, { autoDaily, autoSav, autoLoan, hasLoan: !!loan });
     // horizon: up to the payday after next
     const pd = salary ? salary.day : 28;
     let next = new Date(today.getFullYear(), today.getMonth(), pd); if (next <= today) next = new Date(today.getFullYear(), today.getMonth() + 1, pd);
@@ -2630,7 +2647,7 @@
     const cand = accounts.filter((a) => a.kind === "asset" && a.active && a.currency === "EUR" && a.net);
     const use = cand.filter((a) => (pick ? pick.has(a.name) : a.role !== "savingAsset"));
     if (IN.fc === "12") return inForecast12({ rows, accounts, subs, today, salary, loan, daily, dailySav, use, cand });
-    $("fcHint").textContent = "Day by day until the payday after next · fixed costs from your Firefly subscriptions, everyday spending from the last 90 days";
+    $("fcHint").textContent = "Day by day until the payday after next · fixed costs from your Firefly subscriptions · change the amounts below if they don't fit";
     $("fcMoreT").textContent = "What's coming and which accounts count";
     let bal = sum(use.map((a) => a.balance));
     const labels = [], vals = [], marks = [];
@@ -2655,11 +2672,27 @@
       + tile("Lowest point", eur(low.v), `on ${dfmt(low.dt)}`, low.v < 0 ? "neg" : low.v < 500 ? "neg" : "")
       + tile("Just before payday", beforePay ? eur(beforePay.v) : "–", beforePay ? `${dfmt(beforePay.dt)}, before the salary` : "no salary found", beforePay && beforePay.v < 0 ? "neg" : "")
       + tile("Fixed costs until payday", eur(fixedUntilPay), `${ev.filter((e) => e.kind !== "salary" && e.dt < isoD(next)).length} payments`)
-      + tile("Everyday spending", eur(daily * 30), `per 30 days · ${eur(daily)} a day${dailySav ? ` · plus ${eur(dailySav * 30)} saving` : ""}`);
+      + tile("Everyday spending", eur(daily * 30), `a month${(D.prefs || {}).fcDaily != null ? " (your value)" : " (last 90 days)"}${dailySav ? ` · plus ${eur(dailySav * 30)} saving` : ""}`);
     lineChart($("fcChart"), labels, [{ name: "Balance", color: C.net, values: vals, area: true, noDots: true }],
       { height: 240, zero: true, marks, labelFmt: (l) => dfmt(l), tipExtra: (i) => (evByDay[labels[i]] || []).map((e) => tipRow(e.amt > 0 ? C.inc : C.exp, e.what, eur2(e.amt))).join("") });
     $("fcList").innerHTML = ev.length ? `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">What</th><th>Amount</th><th>Balance after</th></tr></thead><tbody>${ev.map((e) => `<tr><td>${dfmt(e.dt)}</td><td class="l">${esc(e.what)}</td><td class="${e.amt > 0 ? "pos" : ""}">${eur2(e.amt)}</td><td class="${e.after < 0 ? "neg" : ""}">${eur(e.after)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No subscriptions or salary found.</div>`;
     fcAccPicker(rows, accounts, subs, cand, use);
+  }
+  function fcSettings(rows, accounts, subs, a) {
+    const P = D.prefs || {};
+    const field = (k, label, auto, hint) => `<label class="sub" style="display:flex;flex-direction:column;gap:3px">${label}
+      <span style="display:flex;gap:6px;align-items:center"><input type="text" inputmode="decimal" data-fcset="${k}" value="${P[k] != null && P[k] !== "" ? String(P[k]).replace(".", ",") : ""}" placeholder="${Math.round(auto)}" style="width:96px"> € / month</span>
+      <small>${hint}</small></label>`;
+    $("fcSet").innerHTML = (a.hasLoan ? field("fcLoan", "Loan payment", a.autoLoan, `last 3 months: ${eur(a.autoLoan)}`) : "")
+      + field("fcDaily", "Everyday spending", a.autoDaily * 30, `last 90 days: ${eur(a.autoDaily * 30)} · without fixed costs`)
+      + field("fcSave", "Saving", 0, `optional · last 90 days: ${eur(a.autoSav * 30)}`);
+    $("fcSet").querySelectorAll("[data-fcset]").forEach((inp) => inp.addEventListener("change", () => {
+      const v = inp.value.trim(), n = parseFloat(v.replace(/\./g, "").replace(",", "."));
+      D.prefs = D.prefs || {};
+      if (!v) delete D.prefs[inp.dataset.fcset]; else if (isFinite(n) && n >= 0) D.prefs[inp.dataset.fcset] = n; else return;
+      put("api/store/prefs", { value: D.prefs }).catch(() => {});
+      inForecast(rows, accounts, subs);
+    }));
   }
   function fcAccPicker(rows, accounts, subs, cand, use) {
     $("fcAcc").innerHTML = `Counts: ${cand.map((a) => `<label style="margin-right:10px;white-space:nowrap"><input type="checkbox" data-fc="${esc(a.name)}" ${use.includes(a) ? "checked" : ""} style="width:auto"> ${esc(a.name)} (${eur(a.balance)})</label>`).join("")}`;
@@ -2671,7 +2704,7 @@
 
   // month by month for the next 12 months: salary in; subscriptions, loan and everyday spending out
   function inForecast12({ rows, accounts, subs, today, salary, loan, daily, dailySav, use, cand }) {
-    $("fcHint").textContent = "Month by month · salary and loan from your last 3 months, fixed costs from your Firefly subscriptions (yearly ones in their month), everyday spending and saving from the last 90 days";
+    $("fcHint").textContent = "Month by month · salary from your last 3 months, fixed costs from your Firefly subscriptions (yearly ones in their month) · change the amounts below if they don't fit";
     $("fcMoreT").textContent = "Month by month and which accounts count";
     const owe = -sum(accounts.filter((a) => a.kind === "liability" && a.active && a.balance < 0).map((a) => a.balance));
     let bal = sum(use.map((a) => a.balance)), left = owe;
