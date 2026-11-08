@@ -2,7 +2,7 @@ manifestVersion: 1
 id: n0niz-ut2004-br
 name: UT2004 Bombing Run
 tagline: Unreal Tournament 2004 dedicated server, set up for Bombing Run
-icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-ut2004-br/icon.svg
+icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-ut2004-br/icon.png
 category: gaming
 version: "1.0.0"
 port: 8777
