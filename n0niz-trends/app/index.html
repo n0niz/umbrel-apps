@@ -351,7 +351,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.21.2</footer>
+  <footer class="appver">Spending Trends v2.21.3</footer>
 </div>
 
 <dialog id="settings">
@@ -2725,7 +2725,7 @@
       const net = inc - fixed - lp - every - save;
       bal += net;
       const big = fixedL.filter((f) => f.amt >= 100 && f.freq !== "monthly" && f.freq !== "weekly");
-      M.push({ ym: to.slice(0, 7), inc, fixed, lp, every, save, net, bal, big, partial: k === 0 });
+      M.push({ ym: to.slice(0, 7), inc, fixed, lp, every, save, net, bal, debt: Math.max(0, left), big, partial: k === 0 });
     }
     const mLabel = (ym) => `${MONTHS[+ym.slice(5, 7) - 1]}${ym.slice(5, 7) === "01" ? " " + ym.slice(2, 4) : ""}`;
     const tile = (l, val, s2, cls = "") => `<div class="tile"><span>${l}</span><b class="${cls}">${val}</b><small>${s2}</small></div>`;
@@ -2739,11 +2739,12 @@
       + tile("Tightest month", mLabel(worst.ym), `${eur(worst.net)}${worst.big.length ? " · " + worst.big.map((b) => esc(b.what)).join(", ") : ""}`, worst.net < 0 ? "neg" : "")
       + tile("Big yearly bills", eur(sum(bigs.map((b) => b.amt)) / (N / 12)) + " a year", [...new Set(bigs.map((b) => b.what))].slice(0, 3).map(esc).join(" · ") || `none in the next ${N} months`)
       + (owe && loan ? tile("Debt-free", `${MONTHS[+freeAt.slice(5, 7) - 1]} ${freeAt.slice(0, 4)}`, `${eur(owe)} left at ${eur(loan.amt)} a month`) : "");
-    $("fcChart").innerHTML = `<div class="sub">Each month <span style="color:${C.inc}">● in</span> <span style="color:${C.exp}">● out</span> <span style="color:#f0883e">● loan</span></div><div id="fcBars"></div><div class="sub" style="margin-top:10px">On your accounts at month end</div><div id="fcBal"></div>`;
+    $("fcChart").innerHTML = `<div class="sub">Each month <span style="color:${C.inc}">● in</span> <span style="color:${C.exp}">● out</span> <span style="color:#f0883e">● loan</span></div><div id="fcBars"></div><div class="sub" style="margin-top:10px">At month end <span style="color:${C.net}">● on your accounts</span>${owe ? ` <span style="color:#f0883e">● loan left</span>` : ""}</div><div id="fcBal"></div>`;
     barChart($("fcBars"), M.map((m) => m.ym), [{ name: "In", color: C.inc, values: M.map((m) => m.inc) }, { name: "Out", color: C.exp, values: M.map((m) => m.fixed + m.every + m.save) }, { name: "Loan", color: "#f0883e", values: M.map((m) => m.lp) }],
       { height: 200, labelFmt: mLabel });
-    lineChart($("fcBal"), M.map((m) => m.ym), [{ name: "Balance at month end", color: C.net, values: M.map((m) => m.bal), area: true }], { height: 180, labelFmt: mLabel });
-    $("fcList").innerHTML = `<div class="tablewrap"><table><thead><tr><th class="l">Month</th><th>Salary</th><th>Fixed costs</th><th>Loan</th><th>Everyday</th>${dailySav ? "<th>Saving</th>" : ""}<th>Net</th><th>Balance</th></tr></thead><tbody>${M.map((m) => `<tr><td class="l">${MONTHS[+m.ym.slice(5, 7) - 1]} ${m.ym.slice(0, 4)}${m.partial ? ' <span class="sub">(rest)</span>' : ""}${m.big.length ? ` <span class="sub">· ${m.big.map((b) => esc(b.what)).join(", ")}</span>` : ""}</td><td>${eur(m.inc)}</td><td>${eur(-m.fixed)}</td><td>${m.lp ? eur(-m.lp) : "–"}</td><td>${eur(-m.every)}</td>${dailySav ? `<td>${eur(-m.save)}</td>` : ""}<td class="${m.net < 0 ? "neg" : "pos"}">${eur(m.net)}</td><td class="${m.bal < 0 ? "neg" : ""}">${eur(m.bal)}</td></tr>`).join("")}</tbody></table></div>`;
+    lineChart($("fcBal"), M.map((m) => m.ym), [{ name: "On your accounts", color: C.net, values: M.map((m) => m.bal), area: true },
+      ...(owe ? [{ name: "Loan left", color: "#f0883e", values: M.map((m) => m.debt), area: true }] : [])], { height: 200, labelFmt: mLabel });
+    $("fcList").innerHTML = `<div class="tablewrap"><table><thead><tr><th class="l">Month</th><th>Salary</th><th>Fixed costs</th><th>Loan</th><th>Everyday</th>${dailySav ? "<th>Saving</th>" : ""}<th>Net</th><th>Balance</th>${owe ? "<th>Loan left</th>" : ""}</tr></thead><tbody>${M.map((m) => `<tr><td class="l">${MONTHS[+m.ym.slice(5, 7) - 1]} ${m.ym.slice(0, 4)}${m.partial ? ' <span class="sub">(rest)</span>' : ""}${m.big.length ? ` <span class="sub">· ${m.big.map((b) => esc(b.what)).join(", ")}</span>` : ""}</td><td>${eur(m.inc)}</td><td>${eur(-m.fixed)}</td><td>${m.lp ? eur(-m.lp) : "–"}</td><td>${eur(-m.every)}</td>${dailySav ? `<td>${eur(-m.save)}</td>` : ""}<td class="${m.net < 0 ? "neg" : "pos"}">${eur(m.net)}</td><td class="${m.bal < 0 ? "neg" : ""}">${eur(m.bal)}</td>${owe ? `<td>${m.debt > 0.5 ? eur(m.debt) : "paid off"}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
     $("fcMore").open = N === 12;
     fcAccPicker(rows, accounts, subs, cand, use);
   }
