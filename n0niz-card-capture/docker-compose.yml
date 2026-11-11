@@ -55,7 +55,7 @@ services:
         exec python -u /app/server.py
     environment:
       DATA_DIR: /data
-      APP_VERSION: "1.3.4"
+      APP_VERSION: "1.3.5"
       APP_DIR: n0niz-card-capture
       APP_TAG: card-capture-v
       TZ: Europe/Berlin

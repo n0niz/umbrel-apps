@@ -369,19 +369,26 @@ def route_card(cfg, card, full):
     return card, ""
 
 
+# names that say how it was paid, not where: the shop name from the other app is the better one
+PROCESSORS = {"card payment", "sumup", "paypal", "stripe", "klarna", "zettle", "square", "sq", "adyen", "payone",
+              "unzer", "mollie", "computop", "worldline", "nexi", "google pay", "apple pay", "krak", "curve"}
+
+
+def generic_merchant(m):
+    return (m or "").strip().lower() in PROCESSORS
+
+
 def same_payment(a, b):
-    """Two notifications about one payment: same card, kind and amount, within 2 minutes,
-    from two DIFFERENT apps, and at most one of them names a merchant (or both the same).
+    """Two notifications about one payment: same card, kind and amount, within 2 minutes, from two DIFFERENT apps.
+    The shop names may differ – one app says "SumUp", the other "Treff Bochum".
     Two notifications from the same app are always two payments."""
     pa, pb = a.get("parsed"), b.get("parsed")
     if not pa or not pb or a is b:
         return False
     apps = (a.get("app") or "").strip().lower(), (b.get("app") or "").strip().lower()
-    merchants_fit = "Card payment" in (pa["merchant"], pb["merchant"]) or pa["merchant"] == pb["merchant"]
     return (a.get("card") == b.get("card") and pa["kind"] == pb["kind"]
             and abs(pa["amount"] - pb["amount"]) < 0.005
             and all(apps) and apps[0] != apps[1]
-            and merchants_fit
             and abs(datetime.fromisoformat(a["received"]).timestamp()
                     - datetime.fromisoformat(b["received"]).timestamp()) < MERGE_SECONDS)
 
@@ -397,11 +404,11 @@ def merge_duplicate(cfg, events, card, ev):
         op = old["parsed"]
         if old["status"] != "booked":              # the first one is still waiting here
             ev["status"], ev["reason"] = "duplicate", "same payment as the other notification still waiting here – book that one"
-            if op["merchant"] == "Card payment" and p["merchant"] != "Card payment":
+            if generic_merchant(op["merchant"]) and not generic_merchant(p["merchant"]):
                 op["merchant"] = p["merchant"]
             return True
         ev["status"], ev["reason"] = "duplicate", "same payment as an earlier notification from another app"
-        if op["merchant"] == "Card payment" and p["merchant"] != "Card payment" and old.get("firefly_id"):
+        if generic_merchant(op["merchant"]) and not generic_merchant(p["merchant"]) and old.get("firefly_id"):
             try:
                 res = ff(cfg, "GET", f"/api/v1/transactions/{old['firefly_id']}")
                 j = res["data"]["attributes"]["transactions"][0]
