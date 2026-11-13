@@ -8,6 +8,8 @@
   let OPENSET;
   try { OPENSET = new Set(JSON.parse(localStorage.getItem(OPENK) || '["f:root","f:unfiled"]')); } catch (e) { OPENSET = new Set(["f:root", "f:unfiled"]); }
   const saveOpen = () => { try { localStorage.setItem(OPENK, JSON.stringify([...OPENSET])); } catch (e) { /* ignore */ } };
+  let HIDECASE;
+  try { HIDECASE = new Set(JSON.parse(localStorage.getItem("docsorter.hidecase") || "[]")); } catch (e) { HIDECASE = new Set(); }
   let TSEL = null, TDRAG = null, ROWS = [], UNDO = [], CLS = {};
 
   const fmt = (d) => (d || "").split("-").reverse().join(".");
@@ -300,7 +302,20 @@
     if (!r || r.type === "root" || r.type === "unfiled") {
       const unf = DOCS.filter((d) => !(d.tags || []).some(isFolder)).length, cases = new Set([...components(linkMap()).values()]).size;
       pane.innerHTML = `<h3>Overview</h3><div class="stats"><div><b>${DOCS.length}</b>documents</div><div><b>${folders().length}</b>folders</div><div><b>${cases}</b>case files</div><div><b>${unf}</b>not in a folder</div></div>
-        <p class="thint" style="margin-top:14px">A <b>case file</b> 🗂 is a group of connected documents, e.g. a contract with its invoices and the termination letter, sorted by date. Drag a document onto another one to start one.</p>`;
+        <p class="thint" style="margin-top:14px">A <b>case file</b> 🗂 is a group of connected documents, e.g. a contract with its invoices and the termination letter, sorted by date. Drag a document onto another one to start one.</p>
+        <h4>💡 Suggested case files</h4><div id="pCases"><p class="thint">Looking for documents that belong together…</p></div>`;
+      let G = [];
+      try { G = (await api("/_lib/api/cases")).groups; } catch (e) { /* ignore */ }
+      if (!$("#pCases")) return;
+      G = G.filter((g) => !HIDECASE.has(g.ids.join(",")));
+      $("#pCases").innerHTML = G.length ? G.map((g, i) => `<div class="cprop"><div class="minis">${g.ids.map((id) => `<img src="/_lib/thumb/${id}" data-g="${i}" data-x="${id}" title="${esc((docById(id) || {}).title || "")} – click to leave out, double-click to open">`).join("")}</div>
+          <div><b>${esc(g.name)}</b> · ${g.ids.length} documents <span class="thint">${esc(g.span[0])} – ${esc(g.span[1])}</span><br><span class="thint">${esc(g.ids.map((id) => (docById(id) || {}).title || "#" + id).slice(0, 4).join(", "))}${g.ids.length > 4 ? " …" : ""}</span></div>
+          <div style="display:flex;gap:6px;margin-top:6px"><button class="btn" data-mk="${i}">🗂 Connect</button><button class="btn sec" data-hide="${i}">Not related</button></div></div>`).join("") : `<p class="thint">No suggestions right now.</p>`;
+      bindOpen(pane);
+      $$("[data-x]", pane).forEach((im) => { im.onclick = () => im.classList.toggle("off"); im.ondblclick = () => openDoc(+im.dataset.x); });
+      $$("[data-mk]", pane).forEach((b) => (b.onclick = () => { const g0 = G[+b.dataset.mk], off = new Set($$(`[data-g="${b.dataset.mk}"].off`, pane).map((x) => +x.dataset.x)), g = { ids: g0.ids.filter((x) => !off.has(x)) };
+        if (g.ids.length < 2) return toast("Keep at least two documents"); run(`🗂 Case file “${(docById(g.ids[0]) || {}).title}” with ${g.ids.length} documents`, [["/_lib/api/cases", { ids: g.ids }]], g.ids.slice(1).map((i) => ["/_lib/api/link", { a: i, b: g.ids[0], on: false }])); }));
+      $$("[data-hide]", pane).forEach((b) => (b.onclick = () => { HIDECASE.add(G[+b.dataset.hide].ids.join(",")); try { localStorage.setItem("docsorter.hidecase", JSON.stringify([...HIDECASE])); } catch (e) { /* ignore */ } paintPane(); }));
       return;
     }
     if (r.type === "folder") {

@@ -442,6 +442,60 @@ def proposals():
     return sorted(out, key=lambda g: -len(g["ids"]))[:8]
 
 
+CASE_CACHE = {"t": 0, "v": []}
+
+
+def case_proposals():
+    """Documents of the same sender that resemble each other and aren't connected yet -> 'make a case file?'"""
+    if time.time() - CASE_CACHE["t"] < 300:
+        return CASE_CACHE["v"]
+    rows = docs()
+    corrs = {c["id"]: c["name"] for c in all_pages("/api/correspondents/?page_size=500")}
+    groups = {}
+    for d in rows:
+        if d.get("correspondent"):
+            groups.setdefault(d["correspondent"], []).append(d)
+    out, calls = [], 0
+    for cid, ds in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        free = [d for d in ds if not d.get("links")]
+        if len(free) < 2 or calls > 80:
+            continue
+        ids = {d["id"] for d in ds}
+        # union-find over "similar and same sender"
+        parent = {d["id"]: d["id"] for d in free}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        for d in free[:15]:
+            calls += 1
+            for r in related(d["id"], 6)[:4]:
+                if r["id"] in parent and r["id"] in ids:
+                    parent[find(r["id"])] = find(d["id"])
+        clusters = {}
+        for d in free:
+            clusters.setdefault(find(d["id"]), []).append(d)
+        for cl in clusters.values():
+            if 2 <= len(cl) <= 15:
+                cl.sort(key=lambda d: d.get("created") or "")
+                out.append({"name": corrs.get(cid, "?"), "title": cl[0].get("title"), "ids": [d["id"] for d in cl],
+                            "span": [(cl[0].get("created") or "")[:7], (cl[-1].get("created") or "")[:7]]})
+    out.sort(key=lambda g: -len(g["ids"]))
+    CASE_CACHE.update(t=time.time(), v=out[:10])
+    return CASE_CACHE["v"]
+
+
+def make_case(ids):
+    ids = [int(i) for i in ids]
+    root = ids[0]
+    for i in ids[1:]:
+        link(i, root)
+    CASE_CACHE["t"] = 0
+    return {"ok": True}
+
+
 def link_field():
     fid = find_link_field()
     if fid:
@@ -470,6 +524,7 @@ def set_links(did, ids):
 
 def link(a, b, on=True):
     """Connect two documents both ways (Paperless shows the link field on each)."""
+    CASE_CACHE["t"] = 0
     for x, y in ((a, b), (b, a)):
         cur = links_of(x)
         new = (cur + [y]) if on and y not in cur else [i for i in cur if i != y] if not on else cur
@@ -536,6 +591,10 @@ def handle(h, path):
             return h.send(200, folder_merge(tid, int(body["into"])))
         if path == "/_lib/api/proposals":
             return h.send(200, {"groups": proposals()})
+        if path == "/_lib/api/cases" and h.command == "POST":
+            return h.send(200, make_case(body.get("ids") or []))
+        if path == "/_lib/api/cases":
+            return h.send(200, {"groups": case_proposals()})
         if path == "/_lib/api/link":
             return h.send(200, link(int(body["a"]), int(body["b"]), body.get("on", True)))
         if path == "/_lib/api/bulk":
