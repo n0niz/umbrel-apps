@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doc Sorter · Library</title>
+<style>
+  :root { --bg:#0f1115; --side:#12151b; --card:#171a21; --line:#262b35; --tx:#e5e7eb; --mut:#8b93a1; --acc:#3b82f6; --ai:#facc15; --ok:#22c55e; --bad:#ef4444; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--tx); font:14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+  button { font:inherit; color:inherit; cursor:pointer; }
+  input, select { font:inherit; color:var(--tx); background:#0b0d11; border:1px solid var(--line); border-radius:8px; padding:7px 9px; }
+  a { color:#60a5fa; }
+  .app { display:grid; grid-template-columns:250px 1fr; grid-template-rows:56px 1fr; height:100vh; }
+  header { grid-column:1/3; display:flex; align-items:center; gap:12px; padding:0 16px; border-bottom:1px solid var(--line); background:var(--side); }
+  header h1 { font-size:17px; margin:0; white-space:nowrap; } header h1 span { color:var(--ai); }
+  #search { flex:1; max-width:520px; background:#0b0d11 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238b93a1' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 4 4'/%3E%3C/svg%3E") no-repeat 10px 50%; padding-left:32px; border-radius:999px; }
+  .hbtn { background:transparent; border:1px solid var(--line); border-radius:999px; padding:6px 12px; text-decoration:none; color:var(--tx); white-space:nowrap; }
+  .hbtn:hover { border-color:#3b4250; }
+  #aipill { display:none; border-color:#715c0b; color:var(--ai); }
+  aside { overflow:auto; border-right:1px solid var(--line); background:var(--side); padding:10px 8px 40px; }
+  .nav { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; user-select:none; color:var(--tx); }
+  .nav:hover { background:#1b1f27; } .nav.on { background:#1e293b; color:#bfdbfe; }
+  .nav .n { margin-left:auto; color:var(--mut); font-size:12px; } .nav.drop { outline:2px dashed var(--acc); background:#172554; }
+  .nav .dot { width:9px; height:9px; border-radius:3px; flex:none; }
+  .nav .add { opacity:0; margin-left:4px; border:0; background:none; color:var(--mut); padding:0 4px; } .nav:hover .add { opacity:1; }
+  .sect { display:flex; align-items:center; justify-content:space-between; color:var(--mut); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:16px 10px 4px; }
+  .sect button { background:none; border:0; color:var(--mut); font-size:16px; line-height:1; padding:0 4px; } .sect button:hover { color:var(--tx); }
+  .newin { margin:4px 10px; width:calc(100% - 20px); }
+  .more { color:var(--mut); font-size:12px; padding:4px 10px; cursor:pointer; }
+  main { overflow:auto; position:relative; padding:0 48px 120px 22px; }
+  .bar { position:sticky; top:0; z-index:5; background:linear-gradient(var(--bg) 80%, transparent); padding:14px 0 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .bar h2 { margin:0; font-size:20px; } .bar .cnt { color:var(--mut); }
+  .chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:12px; background:#151922; }
+  .chip.ai { border-color:#715c0b; color:var(--ai); }
+  .month { margin:18px 0 8px; display:flex; align-items:center; gap:10px; }
+  .month h3 { margin:0; font-size:15px; } .month .cnt { color:var(--mut); font-size:12px; }
+  .month input { width:auto; opacity:.6; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:14px; }
+  .card { position:relative; border-radius:10px; background:var(--card); border:1px solid var(--line); overflow:hidden; cursor:pointer; transition:transform .08s, border-color .08s; }
+  .card:hover { border-color:#3b4250; } .card.sel { border-color:var(--acc); box-shadow:0 0 0 2px var(--acc); }
+  .card .th { aspect-ratio:3/4; background:#0b0d11; display:block; width:100%; object-fit:cover; object-position:top; }
+  .card .ck { position:absolute; left:7px; top:7px; width:22px; height:22px; border-radius:50%; border:2px solid #fff; background:rgba(0,0,0,.35); opacity:0; display:grid; place-items:center; font-size:12px; }
+  .card:hover .ck, .card.sel .ck, body.selecting .card .ck { opacity:1; } .card.sel .ck { background:var(--acc); border-color:var(--acc); }
+  .card .aib { position:absolute; right:7px; top:7px; background:rgba(15,17,21,.85); border:1px solid #715c0b; color:var(--ai); border-radius:999px; font-size:11px; padding:1px 8px; max-width:calc(100% - 44px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card .aib.busy { border-color:var(--line); color:var(--mut); } .card .aib.err { border-color:#7f1d1d; color:#fca5a5; }
+  .card .cap { padding:7px 9px 9px; } .card .t { font-weight:600; font-size:13px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; min-height:2.6em; }
+  .card .m { color:var(--mut); font-size:11.5px; display:flex; gap:6px; align-items:center; margin-top:3px; white-space:nowrap; overflow:hidden; }
+  .card .ty { color:#c4b5fd; overflow:hidden; text-overflow:ellipsis; }
+  .card .quick { position:absolute; left:0; right:0; bottom:0; padding:8px; background:linear-gradient(transparent, rgba(0,0,0,.92) 30%); display:none; font-size:11.5px; }
+  .card:hover .quick { display:block; } .quick button { margin-top:5px; width:100%; background:var(--ai); color:#111; border:0; border-radius:6px; padding:4px; font-weight:700; }
+  #years { position:fixed; right:6px; top:70px; bottom:20px; display:flex; flex-direction:column; gap:2px; z-index:6; }
+  #years a { color:var(--mut); font-size:11px; text-decoration:none; padding:2px 6px; border-radius:6px; text-align:right; } #years a:hover { color:var(--tx); background:#1b1f27; }
+  #sel { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:20; display:none; align-items:center; gap:8px; background:#1e293b; border:1px solid #334155; border-radius:14px; padding:8px 10px; box-shadow:0 8px 30px rgba(0,0,0,.5); }
+  #sel b { padding:0 8px; } #sel button { background:#0f172a; border:1px solid #334155; border-radius:9px; padding:6px 11px; }
+  #sel button.ai { background:var(--ai); color:#111; border:0; font-weight:700; }
+  .menu { position:fixed; z-index:40; width:260px; max-height:360px; display:flex; flex-direction:column; background:#151922; border:1px solid #334155; border-radius:12px; box-shadow:0 12px 40px rgba(0,0,0,.6); overflow:hidden; }
+  .menu input { margin:8px; } .menu .list { overflow:auto; padding:0 6px 6px; }
+  .menu .it { padding:6px 10px; border-radius:7px; cursor:pointer; display:flex; justify-content:space-between; } .menu .it:hover, .menu .it.hl { background:#1e293b; }
+  .menu .it.new { color:#93c5fd; }
+  #drawer { position:fixed; top:0; right:0; bottom:0; width:min(540px, 100vw); z-index:30; background:var(--side); border-left:1px solid var(--line); transform:translateX(100%); transition:transform .15s; display:flex; flex-direction:column; }
+  #drawer.open { transform:none; box-shadow:-10px 0 40px rgba(0,0,0,.5); }
+  #drawer .top { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  #drawer .top b { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #drawer .x { background:none; border:0; font-size:20px; color:var(--mut); }
+  #drawer iframe { width:100%; height:44vh; border:0; background:#fff; flex:none; }
+  #drawer .body { overflow:auto; padding:12px 14px 30px; }
+  #drawer label { display:block; color:var(--mut); font-size:12px; margin:10px 0 3px; } #drawer input, #drawer select { width:100%; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .tags .chip button { background:none; border:0; color:var(--mut); padding:0; }
+  .btn { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:8px 14px; font-weight:600; }
+  .btn.sec { background:transparent; border:1px solid var(--line); color:var(--tx); } .btn.ai { background:var(--ai); color:#111; }
+  .sugg { margin-top:14px; border:1px solid #715c0b; border-radius:12px; padding:10px 12px; background:#1a1608; }
+  .sugg h4 { margin:0 0 6px; color:var(--ai); font-size:13px; } .sugg label { display:flex !important; gap:8px; align-items:flex-start; color:var(--tx) !important; font-size:13px !important; margin:5px 0 !important; }
+  .sugg input { width:auto !important; margin-top:3px; } .sugg small { color:var(--mut); }
+  .new { color:#93c5fd; font-size:11px; }
+  #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); z-index:50; background:#1e293b; border:1px solid #334155; padding:8px 14px; border-radius:10px; display:none; }
+  .empty { color:var(--mut); padding:60px 0; text-align:center; }
+  .ghost { position:fixed; top:-100px; left:-100px; background:var(--acc); color:#fff; padding:4px 10px; border-radius:999px; font-weight:600; }
+  @media (max-width:760px) { .app { grid-template-columns:1fr; } aside { display:none; } #years { display:none; } main { padding:0 10px 120px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Doc Sorter <span>✦</span></h1>
+    <input id="search" placeholder="Search title, sender, type, folder…">
+    <button class="hbtn" id="aipill" title="AI recognition running"></button>
+    <a class="hbtn" href="/" title="Review queue of the sorting engine">Review queue</a>
+    <a class="hbtn" href="/_setup">⚙</a>
+  </header>
+  <aside id="side"></aside>
+  <main id="main"><div class="empty">Loading your documents…</div></main>
+</div>
+<nav id="years"></nav>
+<div id="sel"><b id="selN"></b>
+  <button id="sFolder">📁 Add to folder</button><button id="sType">🏷 Type</button><button id="sCorr">✉ From</button>
+  <button class="ai" id="sAI">✨ Recognize</button><button id="sApply" style="display:none">✓ Apply suggestions</button><button id="sClear">✕</button></div>
+<div id="drawer"></div>
+<div id="toast"></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+let M = { tags: [], types: [], corrs: [] }, DOCS = [], AI = { queue: [], results: {}, errors: {}, busy: null };
+let OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
+const byId = (arr, id) => arr.find((x) => x.id === id);
+const tagName = (id) => (byId(M.tags, id) || {}).name || "?";
+
+async function api(path, body, method) {
+  const r = await fetch(path, body === undefined ? {} : { method: method || "POST", body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+function toast(t, ms = 2600) { const e = $("#toast"); e.textContent = t; e.style.display = "block"; clearTimeout(e._t); e._t = setTimeout(() => (e.style.display = "none"), ms); }
+
+async function loadAll() {
+  try {
+    const [m, d, a] = await Promise.all([api("/_lib/api/meta"), api("/_lib/api/docs"), api("/_lib/api/ai")]);
+    M = m; DOCS = d.docs; AI = a;
+    render();
+  } catch (e) { $("#main").innerHTML = `<div class="empty">${esc(e.message)}<br><br><a href="/_setup">Open setup</a></div>`; }
+}
+async function reloadDocs() { const [m, d] = await Promise.all([api("/_lib/api/meta"), api("/_lib/api/docs")]); M = m; DOCS = d.docs; render(); }
+
+// ---------------------------------------------------------------- sidebar
+const visibleTags = () => M.tags.filter((t) => !t.system);
+function tagTree() {
+  const tags = visibleTags(), kids = {};
+  tags.forEach((t) => (kids[t.parent || 0] = kids[t.parent || 0] || []).push(t));
+  Object.values(kids).forEach((l) => l.sort((a, b) => a.name.localeCompare(b.name)));
+  const out = [], walk = (p, depth) => (kids[p] || []).forEach((t) => { out.push([t, depth]); walk(t.id, depth + 1); });
+  walk(0, 0);
+  const seen = new Set(out.map(([t]) => t.id));
+  tags.filter((t) => !seen.has(t.id)).forEach((t) => out.push([t, 0]));
+  return out;
+}
+function nav(kind, id, label, n, extra = "") {
+  const on = F.kind === kind && F.id === id ? " on" : "";
+  return `<div class="nav${on}" data-k="${kind}" data-id="${id ?? ""}" ${extra}>${label}<span class="n">${n ?? ""}</span></div>`;
+}
+function renderSide() {
+  const unsorted = DOCS.filter((d) => !d.document_type).length, nAI = Object.keys(AI.results).length;
+  let h = nav("all", null, "📄 All documents", DOCS.length) + nav("unsorted", null, "📥 Without type", unsorted) + nav("ai", null, "✨ AI suggestions", nAI || "");
+  h += `<div class="sect">Types<button data-new="type" title="New type">+</button></div>`;
+  h += M.types.slice().sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).map((t) => nav("type", t.id, `<span>${esc(t.name)}</span>`, t.count, 'data-drop="type"')).join("");
+  h += `<div class="sect">Folders<button data-new="tag" title="New folder">+</button></div>`;
+  h += tagTree().map(([t, d]) => nav("tag", t.id, `<span class="dot" style="background:${esc(t.color || "#64748b")};margin-left:${d * 14}px"></span><span>${esc(t.name)}</span><button class="add" data-sub="${t.id}" title="New subfolder">+</button>`, t.count, 'data-drop="tag"')).join("");
+  h += `<div class="sect">From<button data-new="corr" title="New correspondent">+</button></div>`;
+  const corrs = M.corrs.slice().sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  h += (showAllCorr ? corrs : corrs.slice(0, 12)).map((c) => nav("corr", c.id, `<span>${esc(c.name)}</span>`, c.count, 'data-drop="corr"')).join("");
+  if (corrs.length > 12) h += `<div class="more" id="moreCorr">${showAllCorr ? "show less" : `show all ${corrs.length}`}</div>`;
+  $("#side").innerHTML = h;
+  $$(".nav", $("#side")).forEach((el) => {
+    el.onclick = (e) => { if (e.target.dataset.sub) return; F = { kind: el.dataset.k, id: el.dataset.id ? +el.dataset.id : null }; render(); $("#main").scrollTop = 0; };
+    if (el.dataset.drop) {
+      el.ondragover = (e) => { e.preventDefault(); el.classList.add("drop"); };
+      el.ondragleave = () => el.classList.remove("drop");
+      el.ondrop = (e) => { e.preventDefault(); el.classList.remove("drop"); dropOn(el.dataset.drop, +el.dataset.id); };
+    }
+  });
+  $$("[data-new]", $("#side")).forEach((b) => (b.onclick = () => newItem(b.dataset.new, null, b)));
+  $$("[data-sub]", $("#side")).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); newItem("tag", +b.dataset.sub, b); }));
+  if ($("#moreCorr")) $("#moreCorr").onclick = () => { showAllCorr = !showAllCorr; renderSide(); };
+}
+function newItem(kind, parent, anchor) {
+  const what = { tag: parent ? `Subfolder of “${tagName(parent)}”` : "New folder", type: "New type (e.g. Vertrag)", corr: "New correspondent" }[kind];
+  const inp = document.createElement("input");
+  inp.className = "newin"; inp.placeholder = what + " – Enter";
+  (anchor.closest(".nav") || anchor.closest(".sect")).after(inp); inp.focus();
+  inp.onkeydown = async (e) => {
+    if (e.key === "Escape") return inp.remove();
+    if (e.key !== "Enter" || !inp.value.trim()) return;
+    try {
+      const r = await api(`/_lib/api/create/${kind}`, { name: inp.value.trim(), parent });
+      toast(`Created “${r.name}”` + (SEL.size ? ` – drag documents onto it` : ""));
+      await reloadDocs();
+    } catch (err) { toast(err.message, 5000); }
+  };
+  inp.onblur = () => setTimeout(() => inp.remove(), 150);
+}
+
+// ---------------------------------------------------------------- filtering + timeline
+function docText(d) {
+  return [d.title, d.original_file_name, (byId(M.types, d.document_type) || {}).name, (byId(M.corrs, d.correspondent) || {}).name, ...(d.tags || []).map(tagName), d.created].join(" ").toLowerCase();
+}
+function descendants(id) { const out = new Set([id]); let grew = true; while (grew) { grew = false; M.tags.forEach((t) => { if (t.parent && out.has(t.parent) && !out.has(t.id)) { out.add(t.id); grew = true; } }); } return out; }
+function filtered() {
+  let L = DOCS;
+  if (F.kind === "unsorted") L = L.filter((d) => !d.document_type);
+  if (F.kind === "ai") L = L.filter((d) => AI.results[d.id] || AI.errors[d.id] || AI.queue.includes(d.id) || AI.busy === d.id);
+  if (F.kind === "type") L = L.filter((d) => d.document_type === F.id);
+  if (F.kind === "corr") L = L.filter((d) => d.correspondent === F.id);
+  if (F.kind === "tag") { const ids = descendants(F.id); L = L.filter((d) => (d.tags || []).some((t) => ids.has(t))); }
+  if (Q) { const words = Q.toLowerCase().split(/\s+/).filter(Boolean); L = L.filter((d) => { const t = docText(d); return words.every((w) => t.includes(w)); }); }
+  return L;
+}
+function title() {
+  return { all: "All documents", unsorted: "Without type", ai: "AI suggestions" }[F.kind]
+    || (F.kind === "type" ? (byId(M.types, F.id) || {}).name : F.kind === "corr" ? (byId(M.corrs, F.id) || {}).name : tagName(F.id));
+}
+function aiBadge(d) {
+  if (AI.busy === d.id) return `<span class="aib busy">✨ reading…</span>`;
+  if (AI.queue.includes(d.id)) return `<span class="aib busy">✨ waiting</span>`;
+  if (AI.errors[d.id]) return `<span class="aib err" title="${esc(AI.errors[d.id])}">✨ failed</span>`;
+  const s = AI.results[d.id];
+  if (s) return `<span class="aib" title="AI suggestion">✨ ${esc((s.type && s.type.name) || s.title || "suggestion")}</span>`;
+  return "";
+}
+function card(d) {
+  const ty = byId(M.types, d.document_type), s = AI.results[d.id];
+  const date = d.created ? d.created.split("-").reverse().join(".") : "";
+  const quick = s ? `<div class="quick">${s.title ? `<div>“${esc(s.title)}”</div>` : ""}${s.folders && s.folders.length ? `<div>📁 ${esc(s.folders.map((f) => f.name).join(", "))}</div>` : ""}${s.date ? `<div>📅 ${esc(s.date.split("-").reverse().join("."))}</div>` : ""}<button data-apply="${d.id}">✓ Apply</button></div>` : "";
+  return `<div class="card${SEL.has(d.id) ? " sel" : ""}" data-id="${d.id}" draggable="true">
+    <img class="th" loading="lazy" src="/_lib/thumb/${d.id}" alt="">
+    <span class="ck">${SEL.has(d.id) ? "✓" : ""}</span>${aiBadge(d)}
+    <div class="cap"><div class="t">${esc(d.title || d.original_file_name || "#" + d.id)}</div>
+    <div class="m"><span>${esc(date)}</span>${ty ? `<span class="ty">· ${esc(ty.name)}</span>` : ""}</div></div>${quick}</div>`;
+}
+let ORDER = [];
+function renderMain() {
+  const L = filtered();
+  ORDER = L.map((d) => d.id);
+  const groups = new Map();
+  L.forEach((d) => { const k = (d.created || "0000-00").slice(0, 7); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); });
+  const keys = [...groups.keys()].sort().reverse();
+  let h = `<div class="bar"><h2>${esc(title())}</h2><span class="cnt">${L.length} document${L.length === 1 ? "" : "s"}</span>`;
+  if (F.kind === "unsorted" && L.length) h += `<button class="btn ai" id="aiAll" style="margin-left:auto">✨ Recognize all ${L.length}</button>`;
+  if (F.kind === "ai" && Object.keys(AI.results).length) h += `<button class="btn ai" id="applyAll" style="margin-left:auto">✓ Apply all ${L.filter((d) => AI.results[d.id]).length} suggestions</button><button class="btn sec" id="dropAll">Discard all</button>`;
+  h += `</div>`;
+  if (!L.length) h += `<div class="empty">${F.kind === "ai" ? "No AI suggestions yet. Select documents and click ✨ Recognize." : "Nothing here."}</div>`;
+  const years = [];
+  for (const k of keys) {
+    const [y, m] = k.split("-");
+    if (!years.includes(y)) years.push(y);
+    const ids = groups.get(k).map((d) => d.id), all = ids.every((i) => SEL.has(i));
+    h += `<div class="month" id="m-${k}"><input type="checkbox" data-month="${k}" ${all ? "checked" : ""} title="Select month"><h3>${y === "0000" ? "No date" : MONTHS[+m - 1] + " " + y}</h3><span class="cnt">${ids.length}</span></div>`;
+    h += `<div class="grid">${groups.get(k).map(card).join("")}</div>`;
+  }
+  $("#main").innerHTML = h;
+  $("#years").innerHTML = years.length > 1 ? years.map((y) => `<a href="#" data-y="${y}">${y === "0000" ? "–" : y}</a>`).join("") : "";
+  $$("#years a").forEach((a) => (a.onclick = (e) => { e.preventDefault(); const el = $$(".month").find((m) => m.id.startsWith("m-" + a.dataset.y)); if (el) el.scrollIntoView({ behavior: "smooth" }); }));
+  $$("[data-month]").forEach((cb) => (cb.onchange = () => { groups.get(cb.dataset.month).forEach((d) => (cb.checked ? SEL.add(d.id) : SEL.delete(d.id))); refreshSel(); }));
+  $$(".card").forEach((el) => {
+    const id = +el.dataset.id;
+    el.onclick = (e) => {
+      if (e.target.dataset.apply) return applyOne(+e.target.dataset.apply);
+      if (e.target.classList.contains("ck") || SEL.size || e.shiftKey || e.ctrlKey || e.metaKey) return toggleSel(id, e.shiftKey);
+      openDoc(id);
+    };
+    el.ondragstart = (e) => {
+      DRAG = SEL.has(id) ? [...SEL] : [id];
+      const g = document.createElement("div"); g.className = "ghost"; g.textContent = DRAG.length + " document" + (DRAG.length > 1 ? "s" : "");
+      document.body.appendChild(g); e.dataTransfer.setDragImage(g, 10, 10); setTimeout(() => g.remove(), 0);
+      e.dataTransfer.effectAllowed = "copy";
+    };
+  });
+  if ($("#aiAll")) $("#aiAll").onclick = () => recognize(L.map((d) => d.id));
+  if ($("#applyAll")) $("#applyAll").onclick = () => applyMany(L.filter((d) => AI.results[d.id]).map((d) => d.id));
+  if ($("#dropAll")) $("#dropAll").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: L.map((d) => d.id) }); render(); };
+}
+function render() { renderSide(); renderMain(); refreshSel(); refreshAI(); }
+
+// ---------------------------------------------------------------- selection
+function toggleSel(id, range) {
+  if (range && lastClick !== null) {
+    const a = ORDER.indexOf(lastClick), b = ORDER.indexOf(id);
+    ORDER.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((i) => SEL.add(i));
+  } else SEL.has(id) ? SEL.delete(id) : SEL.add(id);
+  lastClick = id; refreshSel();
+}
+function refreshSel() {
+  $$(".card").forEach((el) => { const on = SEL.has(+el.dataset.id); el.classList.toggle("sel", on); $(".ck", el).textContent = on ? "✓" : ""; });
+  document.body.classList.toggle("selecting", SEL.size > 0);
+  $("#sel").style.display = SEL.size ? "flex" : "none";
+  $("#selN").textContent = SEL.size + " selected";
+  const withS = [...SEL].filter((i) => AI.results[i]).length;
+  $("#sApply").style.display = withS ? "" : "none"; $("#sApply").textContent = `✓ Apply ${withS} suggestion${withS > 1 ? "s" : ""}`;
+}
+$("#sClear").onclick = () => { SEL.clear(); refreshSel(); };
+$("#sAI").onclick = () => recognize([...SEL]);
+$("#sApply").onclick = () => applyMany([...SEL].filter((i) => AI.results[i]));
+$("#sFolder").onclick = (e) => pickMenu(e.target, "tag", (id) => dropOn("tag", id, [...SEL]));
+$("#sType").onclick = (e) => pickMenu(e.target, "type", (id) => dropOn("type", id, [...SEL]));
+$("#sCorr").onclick = (e) => pickMenu(e.target, "corr", (id) => dropOn("corr", id, [...SEL]));
+
+async function dropOn(kind, id, ids) {
+  ids = ids || DRAG || []; DRAG = null;
+  if (!ids.length) return;
+  const body = { ids };
+  if (kind === "tag") body.add_tags = [id];
+  if (kind === "type") body.document_type = id;
+  if (kind === "corr") body.correspondent = id;
+  try {
+    await api("/_lib/api/bulk", body);
+    const name = kind === "tag" ? tagName(id) : (byId(kind === "type" ? M.types : M.corrs, id) || {}).name;
+    toast(`${ids.length} document${ids.length > 1 ? "s" : ""} → ${name}`);
+    SEL.clear(); await reloadDocs();
+  } catch (e) { toast(e.message, 5000); }
+}
+
+// menu with search + "create"
+function pickMenu(anchor, kind, cb) {
+  $$(".menu").forEach((m) => m.remove());
+  const items = kind === "tag" ? tagTree().map(([t, d]) => ({ id: t.id, name: " ".repeat(d * 3) + t.name, raw: t.name })) : (kind === "type" ? M.types : M.corrs).map((x) => ({ id: x.id, name: x.name, raw: x.name }));
+  const m = document.createElement("div"); m.className = "menu";
+  m.innerHTML = `<input placeholder="Search or create…"><div class="list"></div>`;
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.left = Math.min(r.left, innerWidth - 270) + "px";
+  m.style.top = (r.top > 380 ? r.top - Math.min(370, 60 + items.length * 32) : r.bottom + 6) + "px";
+  const inp = $("input", m), list = $(".list", m);
+  const draw = () => {
+    const q = inp.value.trim().toLowerCase();
+    const L = items.filter((i) => i.raw.toLowerCase().includes(q));
+    list.innerHTML = L.map((i, n) => `<div class="it${n === 0 && q ? " hl" : ""}" data-id="${i.id}">${esc(i.name)}</div>`).join("")
+      + (q && !items.some((i) => i.raw.toLowerCase() === q) ? `<div class="it new" data-new="1">+ Create “${esc(inp.value.trim())}”</div>` : "");
+    $$(".it", list).forEach((el) => (el.onclick = () => choose(el)));
+  };
+  const choose = async (el) => {
+    m.remove();
+    if (el.dataset.new) {
+      try { const c = await api(`/_lib/api/create/${kind}`, { name: inp.value.trim() }); await reloadDocs(); cb(c.id); } catch (e) { toast(e.message, 5000); }
+    } else cb(+el.dataset.id);
+  };
+  inp.oninput = draw;
+  inp.onkeydown = (e) => { if (e.key === "Enter") { const el = $(".it.hl", list) || $(".it", list); if (el) choose(el); } if (e.key === "Escape") m.remove(); };
+  draw(); inp.focus();
+  setTimeout(() => document.addEventListener("mousedown", function off(e) { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("mousedown", off); } }), 0);
+}
+
+// ---------------------------------------------------------------- AI
+async function recognize(ids) {
+  if (!ids.length) return;
+  AI = await api("/_lib/api/ai", { ids });
+  toast(`✨ ${ids.length} document${ids.length > 1 ? "s" : ""} queued for AI recognition`);
+  SEL.clear(); render();
+}
+function suggestionBody(s, fields) { return { suggestion: s, fields }; }
+async function applyOne(id, fields) {
+  try {
+    await api(`/_lib/api/ai/apply/${id}`, suggestionBody(AI.results[id], fields));
+    delete AI.results[id]; toast("Applied"); await reloadDocs(); if ($("#drawer").classList.contains("open")) openDoc(id);
+  } catch (e) { toast(e.message, 6000); }
+}
+async function applyMany(ids) {
+  let ok = 0;
+  for (const id of ids) {
+    try { await api(`/_lib/api/ai/apply/${id}`, suggestionBody(AI.results[id])); delete AI.results[id]; ok++; toast(`Applying… ${ok}/${ids.length}`, 10000); } catch (e) { toast(`#${id}: ${e.message}`, 5000); }
+  }
+  toast(`✓ ${ok} document${ok === 1 ? "" : "s"} sorted`); SEL.clear(); await reloadDocs();
+}
+let aiTimer = null, lastAI = "";
+async function pollAI() {
+  try {
+    const a = await api("/_lib/api/ai"), sig = JSON.stringify([a.queue, a.busy, Object.keys(a.results).length, Object.keys(a.errors).length]);
+    AI = a;
+    if (sig !== lastAI) {
+      const wasWaiting = OPEN && !AI.results[OPEN];
+      lastAI = sig; renderSide(); renderMain(); refreshSel();
+      if (wasWaiting && (a.results[OPEN] || a.errors[OPEN])) openDoc(OPEN);
+    }
+  } catch (e) { /* ignore */ }
+  refreshAI();
+}
+function refreshAI() {
+  const n = AI.queue.length + (AI.busy ? 1 : 0), p = $("#aipill");
+  p.style.display = n ? "" : "none"; p.textContent = `✨ ${n} in AI queue`;
+  p.onclick = () => { F = { kind: "ai", id: null }; render(); };
+  clearTimeout(aiTimer); aiTimer = setTimeout(pollAI, n ? 2500 : 15000);
+}
+
+// ---------------------------------------------------------------- detail drawer
+async function openDoc(id) {
+  OPEN = id;
+  const D = $("#drawer"); D.classList.add("open");
+  D.innerHTML = `<div class="top"><b>Loading…</b><button class="x" id="dx">×</button></div>`;
+  $("#dx").onclick = closeDoc;
+  let d;
+  try { d = await api(`/_lib/api/doc/${id}`); } catch (e) { D.innerHTML += `<p style="padding:14px">${esc(e.message)}</p>`; return; }
+  const s = AI.results[id];
+  const opt = (arr, cur) => `<option value="">–</option>` + arr.slice().sort((a, b) => a.name.localeCompare(b.name)).map((x) => `<option value="${x.id}" ${x.id === cur ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+  const tagsHtml = (ids) => ids.map((t) => `<span class="chip">${esc(tagName(t))}<button data-rm="${t}">×</button></span>`).join("") + `<button class="chip" id="addTag">+ folder</button>`;
+  let tags = [...(d.tags || [])];
+  const sugg = s ? `<div class="sugg"><h4>✨ AI suggestion <small>(${s.secs}s)</small></h4>
+      ${s.title ? `<label><input type="checkbox" data-f="title" checked><span>Title: <b>${esc(s.title)}</b></span></label>` : ""}
+      ${s.type ? `<label><input type="checkbox" data-f="type" checked><span>Type: <b>${esc(s.type.name)}</b>${s.type.id ? "" : ' <span class="new">new</span>'}</span></label>` : ""}
+      ${s.folders && s.folders.length ? `<label><input type="checkbox" data-f="folders" checked><span>Folders: <b>${s.folders.map((f) => esc(f.name) + (f.id ? "" : ' <span class="new">new</span>')).join(", ")}</b></span></label>` : ""}
+      ${s.corr ? `<label><input type="checkbox" data-f="corr" checked><span>From: <b>${esc(s.corr.name)}</b>${s.corr.id ? "" : ' <span class="new">new</span>'}</span></label>` : ""}
+      ${s.date ? `<label><input type="checkbox" data-f="date" checked><span>Date: <b>${esc(s.date.split("-").reverse().join("."))}</b></span></label>` : ""}
+      <div style="display:flex;gap:8px;margin-top:8px"><button class="btn ai" id="dApply">✓ Apply ticked</button><button class="btn sec" id="dDrop">Discard</button></div></div>`
+    : AI.errors[id] ? `<div class="sugg"><h4>✨ AI failed</h4><small>${esc(AI.errors[id])}</small></div>` : "";
+  D.innerHTML = `<div class="top"><b title="${esc(d.title)}">${esc(d.title)}</b>
+      <a class="hbtn" target="_blank" href="${esc((M.paperless || "") + "/documents/" + id + "/details")}">Paperless ↗</a><button class="x" id="dx">×</button></div>
+    <iframe src="/_lib/preview/${id}" title="preview"></iframe>
+    <div class="body">
+      ${sugg}
+      <label>Title</label><input id="fTitle" value="${esc(d.title)}">
+      <div class="row2"><div><label>Date</label><input type="date" id="fDate" value="${esc((d.created || "").slice(0, 10))}"></div>
+        <div><label>Type</label><select id="fType">${opt(M.types, d.document_type)}</select></div></div>
+      <label>From</label><select id="fCorr">${opt(M.corrs, d.correspondent)}</select>
+      <label>Folders</label><div class="tags" id="fTags">${tagsHtml(tags)}</div>
+      <div style="display:flex;gap:8px;margin-top:16px"><button class="btn" id="dSave">Save</button>
+        ${s ? "" : `<button class="btn ai" id="dAI">${AI.queue.includes(id) || AI.busy === id ? "✨ AI is reading…" : "✨ Recognize with AI"}</button>`}</div>
+      <p style="color:var(--mut);font-size:12px">${esc(d.original_file_name || "")}${d.page_count ? " · " + d.page_count + " pages" : ""}</p>
+    </div>`;
+  $("#dx").onclick = closeDoc;
+  const bindTags = () => {
+    $$("[data-rm]", D).forEach((b) => (b.onclick = () => { tags = tags.filter((t) => t !== +b.dataset.rm); $("#fTags").innerHTML = tagsHtml(tags); bindTags(); }));
+    $("#addTag").onclick = (e) => pickMenu(e.target, "tag", (tid) => { if (!tags.includes(tid)) tags.push(tid); $("#fTags").innerHTML = tagsHtml(tags); bindTags(); });
+  };
+  bindTags();
+  $("#dSave").onclick = async () => {
+    try {
+      await api(`/_lib/api/doc/${id}`, { title: $("#fTitle").value, created: $("#fDate").value || undefined, document_type: +$("#fType").value || null, correspondent: +$("#fCorr").value || null, tags }, "PATCH");
+      toast("Saved"); await reloadDocs();
+    } catch (e) { toast(e.message, 5000); }
+  };
+  if ($("#dAI")) $("#dAI").onclick = async () => { await recognize([id]); openDoc(id); };
+  if ($("#dApply")) $("#dApply").onclick = () => applyOne(id, $$("[data-f]:checked", D).map((c) => c.dataset.f));
+  if ($("#dDrop")) $("#dDrop").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: [id] }); render(); openDoc(id); };
+}
+function closeDoc() { OPEN = null; $("#drawer").classList.remove("open"); }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("#drawer").classList.contains("open")) closeDoc(); else { SEL.clear(); refreshSel(); } } });
+let qT; $("#search").oninput = (e) => { clearTimeout(qT); qT = setTimeout(() => { Q = e.target.value.trim(); renderMain(); refreshSel(); }, 150); };
+loadAll();
+</script>
+</body>
+</html>

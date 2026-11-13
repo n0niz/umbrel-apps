@@ -265,7 +265,7 @@ def status():
     s = {"version": ver, "configured": bool(c.get("token") and c.get("model")), "user": c.get("user", ""), "model": c.get("model", ""),
          "vision": c.get("vision", ""), "mode": c.get("mode", "review"), "language": c.get("language", "German"),
          "think": c.get("think", "auto"), "ctx": c.get("ctx", ""), "new_tags": bool(c.get("new_tags")), "tags": TAGS,
-         "limit": c.get("limit", 1500), "fields": c.get("fields") or list(FIELDS)}
+         "limit": c.get("limit", 1500), "lib_auto": c.get("lib_auto", True) is not False, "fields": c.get("fields") or list(FIELDS)}
     try:
         http_json(PAPERLESS + "/api/", timeout=6)
         s["paperless"] = "ok"
@@ -316,7 +316,8 @@ def do_save(body, host):
              language=(body.get("language") or "German").strip(), think=body.get("think") or "auto",
              ctx=int(body["ctx"]) if str(body.get("ctx") or "").isdigit() else "", new_tags=bool(body.get("new_tags")),
              limit=int(body["limit"]) if str(body.get("limit", "")).isdigit() else 1500,
-             fields=[f for f in (body.get("fields") or FIELDS) if f in FIELDS] or list(FIELDS))
+             fields=[f for f in (body.get("fields") or FIELDS) if f in FIELDS] or list(FIELDS),
+             lib_auto=body.get("lib_auto", True) is not False)
     msgs = []
     try:
         ids = ensure_tags(c["token"])
@@ -327,9 +328,10 @@ def do_save(body, host):
             msgs.append("Could not set the Paperless workflow (%s) – create it by hand, see below." % err_text(e))
     except Exception as e:
         msgs.append("Could not create the tags (%s)." % err_text(e))
-    save_cfg(c)
     hostname = (host or "umbrel.local").split(":")[0]
-    write_env(c, f"http://{hostname}:{PAPERLESS_PORT}")
+    c["public_url"] = f"http://{hostname}:{PAPERLESS_PORT}"
+    save_cfg(c)
+    write_env(c, c["public_url"])
     msgs.append("Saved. The sorter restarts – give it 10 seconds.")
     return 200, {"ok": True, "messages": msgs}
 
@@ -337,9 +339,11 @@ def do_save(body, host):
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers",
        "transfer-encoding", "upgrade", "content-length", "host"}
 
-SETUP_LINK = (b'<a href="/_setup" title="Doc Sorter setup" style="position:fixed;right:14px;bottom:14px;z-index:99999;'
-              b'background:#1f2937;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:999px;'
-              b'text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.3)">&#9881; Setup</a>')
+_BTN = (b'background:#1f2937;color:#fff;font:600 13px system-ui;padding:8px 12px;border-radius:999px;'
+        b'text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.3)')
+SETUP_LINK = (b'<div style="position:fixed;right:14px;bottom:14px;z-index:99999;display:flex;gap:8px">'
+              b'<a href="/library" style="' + _BTN + b'">&#128218; Library</a>'
+              b'<a href="/_setup" title="Doc Sorter setup" style="' + _BTN + b'">&#9881; Setup</a></div>')
 
 WAIT_PAGE = """<!doctype html><meta charset=utf-8><meta http-equiv=refresh content=5>
 <title>Doc Sorter</title><body style="font:16px system-ui;background:#0f1115;color:#e5e7eb;display:grid;place-items:center;height:90vh">
@@ -389,13 +393,24 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True})
         if path.startswith("/_setup"):
             return self.send(404, {"error": "not found"})
+        if path in ("/library", "/library/"):
+            if not load_cfg().get("token"):
+                return self.redirect("/_setup")
+            with open(os.path.join(HERE, "library.html"), "rb") as f:
+                return self.send(200, f.read(), "text/html; charset=utf-8")
+        if path.startswith("/_lib/") or path.startswith("/library"):
+            import library  # noqa: F401  (starts the AI worker)
+        if path.startswith("/_lib/"):
+            return library.handle(self, path)
         if not load_cfg().get("model") or not os.path.exists(ENV):
-            self.send_response(302)
-            self.send_header("Location", "/_setup")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
+            return self.redirect("/_setup")
         return self.proxy()
+
+    def redirect(self, to):
+        self.send_response(302)
+        self.send_header("Location", to)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def proxy(self, host=None, port=None, host_header=None, rewrite=None):
         data = self.body()
@@ -472,6 +487,10 @@ class Relay(H):
 def main():
     os.makedirs(CFG_DIR, exist_ok=True)
     threading.Thread(target=ThreadingHTTPServer(("0.0.0.0", RELAY_PORT), Relay).serve_forever, daemon=True).start()
+    try:
+        import library  # noqa: F401  (AI worker + recognition of new documents)
+    except Exception as e:
+        print("library not started:", e, flush=True)
     port = int(os.environ.get("PORT", "8080"))
     print(f"Doc Sorter gateway on :{port}, engine {ENGINE_HOST}:{ENGINE_PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()

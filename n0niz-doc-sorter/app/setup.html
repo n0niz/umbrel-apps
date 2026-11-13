@@ -42,7 +42,7 @@
 <main>
   <div class="top">
     <div><h1>Doc Sorter <span id="ver" style="font-size:13px;color:var(--mut);font-weight:400"></span></h1><p class="sub">Suggests title, tags, correspondent, type and date for your Paperless documents – you confirm. Runs on your Umbrel with Ollama.</p></div>
-    <button id="open" class="sec" onclick="location.href='/'" disabled>Open sorter →</button>
+    <span style="display:flex;gap:8px"><button id="lib" onclick="location.href='/library'" disabled>📚 Library</button><button id="open" class="sec" onclick="location.href='/'" disabled>Review queue →</button></span>
   </div>
 
   <div class="card"><h2>Status</h2><div class="pills" id="pills"><span class="pill wait">checking…</span></div></div>
@@ -89,6 +89,7 @@
         <div><label>What to fill in</label><div id="fields" style="display:flex;flex-wrap:wrap;gap:4px 14px;padding-top:6px"></div></div>
       </div>
       <p class="hint">Speed: each ticked field is one AI request per document, and a shorter read is much faster. 1500 tokens ≈ the first 1–2 pages, enough for letters and invoices. The model stays loaded 30 min between documents.</p>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="libauto" style="width:auto"> Library: recognize new documents by themselves (suggestions only, you apply them)</label>
       <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="newtags" style="width:auto"> Allow new tags (otherwise only your existing tags are suggested)</label>
     </details>
     <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button id="save">Save</button><span class="hint" id="saving"></span></div>
@@ -127,7 +128,7 @@ async function load() {
   $("pills").innerHTML = pill("Paperless", S.paperless) + pill("Ollama", S.ollama)
     + (S.token ? pill("Paperless key", S.token) : `<span class="pill wait">not connected yet</span>`)
     + (S.configured ? pill("Sorter", S.engine ? true : "starting") : "");
-  $("open").disabled = !S.configured;
+  $("open").disabled = !S.configured; $("lib").disabled = S.token !== "ok";
   $("ver").textContent = "v" + S.version;
   if (S.token === "ok") $("tokinfo").textContent = "Connected" + (S.user ? " as " + S.user : "") + ". Enter the password again only to reconnect.";
   const cur = $("model").value || S.model;
@@ -145,7 +146,7 @@ async function load() {
     document.querySelector(`input[name=mode][value=${S.mode}]`).checked = true;
     $("language").value = S.language; $("ctx").value = S.ctx || ""; $("think").value = S.think; $("newtags").checked = S.new_tags;
     if (S.user) $("user").value = S.user;
-    $("limit").value = S.limit;
+    $("limit").value = S.limit; $("libauto").checked = S.lib_auto;
     $("fields").innerHTML = FIELDS.map(([f, t]) => `<label style="display:flex;gap:6px;align-items:center;color:var(--tx);margin:0"><input type="checkbox" value="${f}" style="width:auto" ${S.fields.includes(f) ? "checked" : ""}> ${t}</label>`).join("");
   }
   const p = S.pull;
@@ -167,7 +168,7 @@ $("save").onclick = async () => {
   const body = {
     user: $("user").value, password: $("pw").value, token: $("token").value, model: $("model").value,
     mode: document.querySelector("input[name=mode]:checked").value, language: $("language").value,
-    ctx: $("ctx").value, think: $("think").value, vision: $("vision").value, new_tags: $("newtags").checked,
+    ctx: $("ctx").value, think: $("think").value, vision: $("vision").value, new_tags: $("newtags").checked, lib_auto: $("libauto").checked,
     limit: $("limit").value || "1500", fields: [...document.querySelectorAll("#fields input:checked")].map((i) => i.value),
   };
   try {

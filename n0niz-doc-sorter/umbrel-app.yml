@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.0.3"
+version: "1.1.0"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,11 +25,13 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Faster: reads only the start of long documents (adjustable), keeps the model
-  loaded between documents, and lets you choose which fields are filled in.
+  New Library: all documents as a timeline by date, folders and types in the
+  sidebar, drag documents onto a folder, create folders with one click, and AI
+  recognition (type, title, folder, sender, date) in one request per document,
+  new documents are recognized by themselves and you apply with one click.
 dependencies:
   - paperless
   - ollama
-path: ""
+path: "/library"
 defaultUsername: ""
 defaultPassword: ""
