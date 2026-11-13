@@ -41,7 +41,7 @@
 <body>
 <main>
   <div class="top">
-    <div><h1>Doc Sorter</h1><p class="sub">Suggests title, tags, correspondent, type and date for your Paperless documents – you confirm. Runs on your Umbrel with Ollama.</p></div>
+    <div><h1>Doc Sorter <span id="ver" style="font-size:13px;color:var(--mut);font-weight:400"></span></h1><p class="sub">Suggests title, tags, correspondent, type and date for your Paperless documents – you confirm. Runs on your Umbrel with Ollama.</p></div>
     <button id="open" class="sec" onclick="location.href='/'" disabled>Open sorter →</button>
   </div>
 
@@ -122,6 +122,7 @@ async function load() {
     + (S.token ? pill("Paperless key", S.token) : `<span class="pill wait">not connected yet</span>`)
     + (S.configured ? pill("Sorter", S.engine ? true : "starting") : "");
   $("open").disabled = !S.configured;
+  $("ver").textContent = "v" + S.version;
   if (S.token === "ok") $("tokinfo").textContent = "Connected" + (S.user ? " as " + S.user : "") + ". Enter the password again only to reconnect.";
   const cur = $("model").value || S.model;
   const opts = [...new Set([...S.models, ...(S.model ? [S.model] : [])])];

@@ -228,7 +228,11 @@ def engine_up():
 
 def status():
     c = load_cfg()
-    s = {"configured": bool(c.get("token") and c.get("model")), "user": c.get("user", ""), "model": c.get("model", ""),
+    try:
+        ver = open(os.path.join(HERE, "VERSION")).read().strip()
+    except OSError:
+        ver = "?"
+    s = {"version": ver, "configured": bool(c.get("token") and c.get("model")), "user": c.get("user", ""), "model": c.get("model", ""),
          "vision": c.get("vision", ""), "mode": c.get("mode", "review"), "language": c.get("language", "German"),
          "think": c.get("think", "auto"), "ctx": c.get("ctx", ""), "new_tags": bool(c.get("new_tags")), "tags": TAGS}
     try:
