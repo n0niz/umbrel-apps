@@ -52,7 +52,7 @@ services:
         exec python -u /app/server.py
     environment:
       DATA_DIR: /data
-      APP_VERSION: "1.0.2"
+      APP_VERSION: "1.0.3"
       APP_DIR: n0niz-doc-sorter
       APP_TAG: doc-sorter-v
       TZ: Europe/Berlin

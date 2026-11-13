@@ -84,6 +84,11 @@
         <div><label>Thinking</label><select id="think"><option value="auto">automatic (off for thinking models)</option><option value="false">always off</option><option value="true">on (slow)</option></select></div>
         <div><label>AI re-read of bad scans (vision model, optional)</label><select id="vision"></select></div>
       </div>
+      <div class="row">
+        <div><label>Read at most (tokens of each document, 0 = all)</label><input id="limit" placeholder="1500"></div>
+        <div><label>What to fill in</label><div id="fields" style="display:flex;flex-wrap:wrap;gap:4px 14px;padding-top:6px"></div></div>
+      </div>
+      <p class="hint">Speed: each ticked field is one AI request per document, and a shorter read is much faster. 1500 tokens ≈ the first 1–2 pages, enough for letters and invoices. The model stays loaded 30 min between documents.</p>
       <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="newtags" style="width:auto"> Allow new tags (otherwise only your existing tags are suggested)</label>
     </details>
     <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button id="save">Save</button><span class="hint" id="saving"></span></div>
@@ -108,6 +113,7 @@ const REC = [
   ["qwen3:8b", "better German and tags · 5.2 GB · needs ~10 GB RAM"],
   ["gemma3:12b", "best of these, slow on Umbrel · 8.1 GB · needs ~16 GB RAM"],
 ];
+const FIELDS = [["title", "Title"], ["tags", "Tags"], ["correspondents", "Correspondent"], ["document_type", "Type"], ["created_date", "Date"]];
 const VIS = [["", "off"], ["qwen2.5vl:3b", "qwen2.5vl:3b (small)"], ["qwen2.5vl:7b", "qwen2.5vl:7b"], ["minicpm-v", "minicpm-v"]];
 let S = null, first = true;
 
@@ -139,6 +145,8 @@ async function load() {
     document.querySelector(`input[name=mode][value=${S.mode}]`).checked = true;
     $("language").value = S.language; $("ctx").value = S.ctx || ""; $("think").value = S.think; $("newtags").checked = S.new_tags;
     if (S.user) $("user").value = S.user;
+    $("limit").value = S.limit;
+    $("fields").innerHTML = FIELDS.map(([f, t]) => `<label style="display:flex;gap:6px;align-items:center;color:var(--tx);margin:0"><input type="checkbox" value="${f}" style="width:auto" ${S.fields.includes(f) ? "checked" : ""}> ${t}</label>`).join("");
   }
   const p = S.pull;
   if (p.running || p.error || p.status === "success") {
@@ -160,6 +168,7 @@ $("save").onclick = async () => {
     user: $("user").value, password: $("pw").value, token: $("token").value, model: $("model").value,
     mode: document.querySelector("input[name=mode]:checked").value, language: $("language").value,
     ctx: $("ctx").value, think: $("think").value, vision: $("vision").value, new_tags: $("newtags").checked,
+    limit: $("limit").value || "1500", fields: [...document.querySelectorAll("#fields input:checked")].map((i) => i.value),
   };
   try {
     const r = await fetch("/_setup/api/save", { method: "POST", body: JSON.stringify(body) });

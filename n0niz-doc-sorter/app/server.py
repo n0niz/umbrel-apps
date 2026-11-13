@@ -39,6 +39,7 @@ TAGS = {
     "ocr_done": "ki-ocr-fertig",
 }
 WORKFLOW_NAME = "Doc Sorter: neue Dokumente"
+FIELDS = ("title", "tags", "correspondents", "document_type", "created_date")
 THINKING = ("qwen3", "deepseek-r1", "qwq", "gpt-oss", "magistral")
 
 PULL = {"model": "", "status": "", "done": 0, "total": 0, "error": "", "running": False}
@@ -201,6 +202,11 @@ def write_env(c, public_url):
     }
     if think:
         env["OLLAMA_THINK"] = think
+    env["TOKEN_LIMIT"] = str(c.get("limit", 1500))  # read only the start of long documents -> much faster
+    env["OLLAMA_KEEP_ALIVE"] = "30m"  # keep the model loaded between documents
+    fields = c.get("fields") or list(FIELDS)
+    for f in FIELDS:
+        env["AUTO_GENERATE_" + f.upper()] = "true" if f in fields else "false"
     if c.get("ctx"):
         env["OLLAMA_CONTEXT_LENGTH"] = str(c["ctx"])
     if c.get("vision"):
@@ -258,7 +264,8 @@ def status():
         ver = "?"
     s = {"version": ver, "configured": bool(c.get("token") and c.get("model")), "user": c.get("user", ""), "model": c.get("model", ""),
          "vision": c.get("vision", ""), "mode": c.get("mode", "review"), "language": c.get("language", "German"),
-         "think": c.get("think", "auto"), "ctx": c.get("ctx", ""), "new_tags": bool(c.get("new_tags")), "tags": TAGS}
+         "think": c.get("think", "auto"), "ctx": c.get("ctx", ""), "new_tags": bool(c.get("new_tags")), "tags": TAGS,
+         "limit": c.get("limit", 1500), "fields": c.get("fields") or list(FIELDS)}
     try:
         http_json(PAPERLESS + "/api/", timeout=6)
         s["paperless"] = "ok"
@@ -307,7 +314,9 @@ def do_save(body, host):
         return 400, {"error": "Choose a model."}
     c.update(model=model, vision=(body.get("vision") or "").strip(), mode=body.get("mode") or "review",
              language=(body.get("language") or "German").strip(), think=body.get("think") or "auto",
-             ctx=int(body["ctx"]) if str(body.get("ctx") or "").isdigit() else "", new_tags=bool(body.get("new_tags")))
+             ctx=int(body["ctx"]) if str(body.get("ctx") or "").isdigit() else "", new_tags=bool(body.get("new_tags")),
+             limit=int(body["limit"]) if str(body.get("limit", "")).isdigit() else 1500,
+             fields=[f for f in (body.get("fields") or FIELDS) if f in FIELDS] or list(FIELDS))
     msgs = []
     try:
         ids = ensure_tags(c["token"])
