@@ -1,0 +1,93 @@
+version: "3.7"
+
+services:
+  app_proxy:
+    environment:
+      # The format here is: <app-id>_<docker-service-name>_1
+      APP_HOST: n0niz-doc-sorter_web_1
+      APP_PORT: 8080
+      PROXY_AUTH_ADD: "true"
+
+  # setup page + gateway (the sorter itself has no login, so it is only reachable through this
+  # service, behind the Umbrel login)
+  web:
+    image: python:3.12-alpine
+    restart: on-failure
+    init: true
+    command:
+      - sh
+      - -c
+      - |
+        python - <<'PY' || true
+        import io, os, tarfile, urllib.request
+        V, APP, DST = os.environ["APP_VERSION"], os.environ["APP_DIR"], "/app"
+        try:
+            cur = open(f"{DST}/VERSION").read().strip()
+        except OSError:
+            cur = ""
+        if cur != V:
+            data = None
+            for ref in (f"refs/tags/{os.environ['APP_TAG']}{V}", "refs/heads/master"):
+                try:
+                    data = urllib.request.urlopen(f"https://codeload.github.com/n0niz/umbrel-apps/tar.gz/{ref}", timeout=60).read()
+                    break
+                except Exception as e:
+                    print("code download failed:", ref, e, flush=True)
+            if data:
+                pre, n = f"{APP}/app/", 0
+                with tarfile.open(fileobj=io.BytesIO(data)) as t:
+                    for m in t.getmembers():
+                        rel = m.name.split("/", 1)[-1]
+                        if not m.isfile() or not rel.startswith(pre) or ".." in rel:
+                            continue
+                        out = os.path.join(DST, rel[len(pre):])
+                        os.makedirs(os.path.dirname(out), exist_ok=True)
+                        with t.extractfile(m) as f, open(out, "wb") as o:
+                            o.write(f.read())
+                        n += 1
+                if n:
+                    open(f"{DST}/VERSION", "w").write(V)
+                    print(f"app code updated to {V} ({n} files)", flush=True)
+        PY
+        exec python -u /app/server.py
+    environment:
+      DATA_DIR: /data
+      APP_VERSION: "1.0.0"
+      APP_DIR: n0niz-doc-sorter
+      APP_TAG: doc-sorter-v
+      TZ: Europe/Berlin
+      PAPERLESS_URL: http://paperless_webserver_1:8000
+      PAPERLESS_PUBLIC_PORT: "2349"
+      OLLAMA_URL: http://ollama_ollama_1:11434
+      ENGINE_HOST: n0niz-doc-sorter_engine_1
+      ENGINE_PORT: "8080"
+    volumes:
+      - ${APP_DATA_DIR}/app:/app
+      - ${APP_DATA_DIR}/data:/data
+
+  # the sorting engine (icereed/paperless-gpt, MIT). It waits until the setup page has written
+  # its settings and restarts by itself whenever they change.
+  engine:
+    image: icereed/paperless-gpt:v0.31.0
+    restart: on-failure
+    init: true
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while [ ! -s /cfg/engine.env ]; do echo "waiting for the setup page"; sleep 5; done
+        while true; do
+          M=$$(stat -c %Y /cfg/engine.env)
+          (set -a; . /cfg/engine.env; set +a; exec /app/entrypoint.sh) &
+          P=$$!
+          while kill -0 $$P 2>/dev/null && [ "$$(stat -c %Y /cfg/engine.env 2>/dev/null)" = "$$M" ]; do sleep 3; done
+          kill $$P 2>/dev/null; wait $$P
+          echo "settings changed or engine stopped - restarting"; sleep 3
+        done
+    environment:
+      TZ: Europe/Berlin
+    volumes:
+      - ${APP_DATA_DIR}/data/cfg:/cfg:ro
+      - ${APP_DATA_DIR}/engine/prompts:/app/prompts
+      - ${APP_DATA_DIR}/engine/db:/app/db
+      - ${APP_DATA_DIR}/engine/config:/app/config

@@ -1,0 +1,34 @@
+manifestVersion: 1
+id: n0niz-doc-sorter
+name: Doc Sorter
+tagline: AI suggestions for your Paperless documents – you confirm
+icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
+category: files
+version: "1.0.0"
+port: 4951
+description: >-
+  Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
+  New documents land in a review queue: for each one you get a suggested title,
+  tags, correspondent, document type and date, tick what fits, change the rest
+  and apply it to Paperless. Can also sort automatically, re-read bad scans with
+  a vision model, and every change can be undone. A setup page connects
+  Paperless and Ollama, downloads a model and creates the Paperless workflow
+  for you. Nothing leaves your Umbrel.
+
+
+  The sorting engine is paperless-gpt by icereed (MIT license).
+developer: n0niz
+website: https://github.com/n0niz/umbrel-apps
+submitter: n0niz
+submission: https://github.com/n0niz/umbrel-apps
+repo: https://github.com/n0niz/umbrel-apps
+support: https://github.com/n0niz/umbrel-apps/issues
+gallery: []
+releaseNotes: >-
+  First version.
+dependencies:
+  - paperless
+  - ollama
+path: ""
+defaultUsername: ""
+defaultPassword: ""

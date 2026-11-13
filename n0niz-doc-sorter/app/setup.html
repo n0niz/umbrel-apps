@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doc Sorter · Setup</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#2a2f3a; --tx:#e5e7eb; --mut:#9ca3af; --acc:#3b82f6; --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--tx); font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:28px 18px 60px; }
+  h1 { font-size:24px; margin:0 0 4px; } h2 { font-size:17px; margin:0 0 12px; }
+  .sub { color:var(--mut); margin:0 0 22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .pills { display:flex; gap:8px; flex-wrap:wrap; }
+  .pill { border:1px solid var(--line); border-radius:999px; padding:4px 12px; font-size:13px; }
+  .pill.ok { border-color:#14532d; color:#86efac; } .pill.bad { border-color:#7f1d1d; color:#fca5a5; } .pill.wait { color:var(--mut); }
+  label { display:block; font-size:13px; color:var(--mut); margin:10px 0 4px; }
+  input, select { width:100%; background:#0b0d11; color:var(--tx); border:1px solid var(--line); border-radius:8px; padding:9px 10px; font:inherit; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; } @media (max-width:640px) { .row { grid-template-columns:1fr; } }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 16px; font:600 14px system-ui; cursor:pointer; }
+  button.sec { background:transparent; border:1px solid var(--line); color:var(--tx); }
+  button:disabled { opacity:.5; cursor:default; }
+  .hint { color:var(--mut); font-size:13px; margin:6px 0 0; }
+  .modes label { display:flex; gap:10px; align-items:flex-start; color:var(--tx); font-size:14px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin:8px 0; cursor:pointer; }
+  .modes input { width:auto; margin-top:4px; }
+  .modes small { display:block; color:var(--mut); }
+  .rec { display:grid; gap:8px; margin-top:10px; }
+  .rec div { display:flex; justify-content:space-between; align-items:center; gap:10px; border:1px solid var(--line); border-radius:10px; padding:8px 12px; }
+  .rec b { font-family:ui-monospace, monospace; } .rec small { color:var(--mut); display:block; }
+  .bar { height:6px; background:#0b0d11; border-radius:6px; overflow:hidden; margin-top:8px; } .bar i { display:block; height:100%; background:var(--acc); width:0; }
+  .msg { margin-top:12px; padding:10px 12px; border-radius:8px; display:none; white-space:pre-line; }
+  .msg.ok { display:block; background:#052e16; color:#bbf7d0; } .msg.bad { display:block; background:#450a0a; color:#fecaca; }
+  details summary { cursor:pointer; color:var(--mut); margin-top:10px; }
+  ol { padding-left:20px; margin:6px 0; } li { margin:4px 0; }
+  code { background:#0b0d11; border:1px solid var(--line); border-radius:5px; padding:0 5px; font-size:13px; }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
+  a { color:#60a5fa; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div><h1>Doc Sorter</h1><p class="sub">Suggests title, tags, correspondent, type and date for your Paperless documents – you confirm. Runs on your Umbrel with Ollama.</p></div>
+    <button id="open" class="sec" onclick="location.href='/'" disabled>Open sorter →</button>
+  </div>
+
+  <div class="card"><h2>Status</h2><div class="pills" id="pills"><span class="pill wait">checking…</span></div></div>
+
+  <div class="card">
+    <h2>1 · Paperless</h2>
+    <div class="row">
+      <div><label>Paperless user</label><input id="user" value="admin" autocomplete="username"></div>
+      <div><label>Password</label><input id="pw" type="password" autocomplete="current-password" placeholder="only to create the access key"></div>
+    </div>
+    <p class="hint" id="tokinfo">The password is not stored – Doc Sorter only keeps the API key Paperless gives back. On Umbrel the Paperless login is shown on the Paperless app page.</p>
+    <details><summary>…or paste an API token instead</summary>
+      <label>API token (Paperless → your profile → API Auth Token)</label><input id="token" placeholder="leave empty to keep the current one">
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>2 · Model</h2>
+    <label>Model for the suggestions</label>
+    <select id="model"></select>
+    <p class="hint">Bigger = better suggestions but slower. Thinking models (qwen3 …) get their thinking switched off automatically.</p>
+    <div class="rec" id="rec"></div>
+    <div id="pullbox" style="display:none"><p class="hint" id="pulltxt"></p><div class="bar"><i id="pullbar"></i></div></div>
+  </div>
+
+  <div class="card">
+    <h2>3 · New documents</h2>
+    <div class="modes">
+      <label><input type="radio" name="mode" value="review" checked><span><b>Ask me</b><small>Every new document lands in the review queue. You tick or change the suggestions, then apply.</small></span></label>
+      <label><input type="radio" name="mode" value="auto"><span><b>Sort automatically</b><small>Suggestions are written straight into Paperless (you can undo them in the sorter's History).</small></span></label>
+      <label><input type="radio" name="mode" value="off"><span><b>Only when I tag them</b><small>Nothing happens by itself. Add the tag <code>sortieren</code> to a document in Paperless to put it in the queue.</small></span></label>
+    </div>
+    <details><summary>Advanced</summary>
+      <div class="row">
+        <div><label>Language of your documents</label><input id="language" value="German"></div>
+        <div><label>Context size (tokens, empty = Ollama default)</label><input id="ctx" placeholder="e.g. 4096 – smaller is faster"></div>
+      </div>
+      <div class="row">
+        <div><label>Thinking</label><select id="think"><option value="auto">automatic (off for thinking models)</option><option value="false">always off</option><option value="true">on (slow)</option></select></div>
+        <div><label>AI re-read of bad scans (vision model, optional)</label><select id="vision"></select></div>
+      </div>
+      <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="newtags" style="width:auto"> Allow new tags (otherwise only your existing tags are suggested)</label>
+    </details>
+    <div style="margin-top:16px;display:flex;gap:10px;align-items:center"><button id="save">Save</button><span class="hint" id="saving"></span></div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>How it works</h2>
+    <ol>
+      <li>Drop a document into Paperless (upload, consume folder, mail). Paperless reads it and adds the tag <code>sortieren</code>.</li>
+      <li>Open <b>Doc Sorter</b>: the document is in the queue. Generate suggestions, tick what fits, change the rest, click <b>Apply</b>.</li>
+      <li>Already-stored documents: in Paperless select them → Tags → add <code>sortieren</code>. They show up in the queue too.</li>
+      <li>Bad scan? Add <code>ki-ocr</code> – the vision model reads it again (only if set under Advanced).</li>
+    </ol>
+    <p class="hint">Tip: if you made a Paperless workflow with “Apply AI Suggestions”, switch it off, so documents aren't sorted twice. Prompts (e.g. “use only these tags …”) can be tuned in the sorter under Settings.</p>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const REC = [
+  ["gemma3:4b", "fast, fine for letters and invoices · 3.3 GB"],
+  ["qwen3:8b", "better German and tags · 5.2 GB · needs ~10 GB RAM"],
+  ["gemma3:12b", "best of these, slow on Umbrel · 8.1 GB · needs ~16 GB RAM"],
+];
+const VIS = [["", "off"], ["qwen2.5vl:3b", "qwen2.5vl:3b (small)"], ["qwen2.5vl:7b", "qwen2.5vl:7b"], ["minicpm-v", "minicpm-v"]];
+let S = null, first = true;
+
+function pill(name, v) {
+  const ok = v === "ok" || v === true;
+  return `<span class="pill ${ok ? "ok" : v === "wait" ? "wait" : "bad"}" title="${typeof v === "string" ? v.replace(/"/g, "&quot;") : ""}">${ok ? "✓" : "✕"} ${name}${ok ? "" : typeof v === "string" && v !== "wait" ? ": " + v.split(" – ")[0] : ""}</span>`;
+}
+
+async function load() {
+  S = await (await fetch("/_setup/api/status")).json();
+  $("pills").innerHTML = pill("Paperless", S.paperless) + pill("Ollama", S.ollama)
+    + (S.token ? pill("Paperless key", S.token) : `<span class="pill wait">not connected yet</span>`)
+    + (S.configured ? pill("Sorter", S.engine ? true : "starting") : "");
+  $("open").disabled = !S.configured;
+  if (S.token === "ok") $("tokinfo").textContent = "Connected" + (S.user ? " as " + S.user : "") + ". Enter the password again only to reconnect.";
+  const cur = $("model").value || S.model;
+  const opts = [...new Set([...S.models, ...(S.model ? [S.model] : [])])];
+  $("model").innerHTML = opts.length ? opts.map((m) => `<option ${m === cur ? "selected" : ""}>${m}</option>`).join("") : `<option value="">– no model installed yet, download one below –</option>`;
+  $("rec").innerHTML = REC.map(([m, d]) => {
+    const have = S.models.includes(m) || S.models.includes(m + ":latest");
+    return `<div><span><b>${m}</b><small>${d}</small></span>${have ? '<span class="hint">installed</span>' : `<button class="sec" data-pull="${m}">Download</button>`}</div>`;
+  }).join("");
+  document.querySelectorAll("[data-pull]").forEach((b) => b.onclick = () => pull(b.dataset.pull));
+  const vcur = $("vision").value || S.vision;
+  $("vision").innerHTML = VIS.map(([v, t]) => `<option value="${v}" ${v === vcur ? "selected" : ""}>${t}${v && !S.models.includes(v) ? " – download first" : ""}</option>`).join("");
+  if (first) {
+    first = false;
+    document.querySelector(`input[name=mode][value=${S.mode}]`).checked = true;
+    $("language").value = S.language; $("ctx").value = S.ctx || ""; $("think").value = S.think; $("newtags").checked = S.new_tags;
+    if (S.user) $("user").value = S.user;
+  }
+  const p = S.pull;
+  if (p.running || p.error || p.status === "success") {
+    $("pullbox").style.display = "";
+    $("pulltxt").textContent = p.error ? `Download of ${p.model} failed: ${p.error}` : p.running ? `Downloading ${p.model}: ${p.status}${p.total ? " · " + Math.round(p.done / p.total * 100) + " %" : ""}` : `${p.model} installed.`;
+    $("pullbar").style.width = p.total ? (p.done / p.total * 100) + "%" : p.running ? "5%" : "100%";
+  }
+}
+
+async function pull(m) {
+  const r = await fetch("/_setup/api/pull", { method: "POST", body: JSON.stringify({ model: m }) });
+  if (!r.ok) alert((await r.json()).error);
+  load();
+}
+
+$("save").onclick = async () => {
+  $("save").disabled = true; $("saving").textContent = "saving…"; $("msg").className = "msg";
+  const body = {
+    user: $("user").value, password: $("pw").value, token: $("token").value, model: $("model").value,
+    mode: document.querySelector("input[name=mode]:checked").value, language: $("language").value,
+    ctx: $("ctx").value, think: $("think").value, vision: $("vision").value, new_tags: $("newtags").checked,
+  };
+  try {
+    const r = await fetch("/_setup/api/save", { method: "POST", body: JSON.stringify(body) });
+    const d = await r.json();
+    $("msg").className = "msg " + (r.ok ? "ok" : "bad");
+    $("msg").textContent = r.ok ? d.messages.join("\n") : d.error;
+    if (r.ok) { $("pw").value = ""; $("token").value = ""; }
+  } catch (e) { $("msg").className = "msg bad"; $("msg").textContent = String(e); }
+  $("save").disabled = false; $("saving").textContent = "";
+  load();
+};
+
+load();
+setInterval(load, 4000);
+</script>
+</body>
+</html>
