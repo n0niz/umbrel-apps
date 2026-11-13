@@ -73,10 +73,34 @@ def http_json(url, data=None, headers=None, method=None, timeout=20, form=False)
     h.setdefault("Accept", "application/json")
     if url.startswith(PAPERLESS):
         h["Host"] = PL_HOST  # Django rejects host names with "_" (paperless_webserver_1)
+        if h["Accept"] == "application/json" and "/api/" in url:
+            h["Accept"] = "application/json; version=%d" % api_version()
     req = urllib.request.Request(url, data=body, headers=h, method=method)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
         return json.loads(raw) if raw else {}
+
+
+API_VER = {"v": 0, "t": 0}
+
+
+def api_version():
+    """Newest REST API version this Paperless accepts (3.x refuses requests without one)."""
+    if API_VER["v"] and time.time() - API_VER["t"] < 3600:
+        return API_VER["v"]
+    for v in range(12, 4, -1):
+        req = urllib.request.Request(PAPERLESS + "/api/", headers={"Host": PL_HOST, "Accept": "application/json; version=%d" % v})
+        try:
+            urllib.request.urlopen(req, timeout=6).read()
+            code = 200
+        except urllib.error.HTTPError as e:
+            code = e.code
+        except Exception:
+            return API_VER["v"] or 9
+        if code != 406:
+            API_VER.update(v=v, t=time.time())
+            return v
+    return 9
 
 
 def pl(path, token, data=None, method=None):
@@ -239,7 +263,7 @@ def status():
         http_json(PAPERLESS + "/api/", timeout=6)
         s["paperless"] = "ok"
     except urllib.error.HTTPError as e:
-        s["paperless"] = "ok" if e.code in (401, 403) else err_text(e)
+        s["paperless"] = "ok" if e.code in (401, 403, 406) else err_text(e)
     except Exception as e:
         s["paperless"] = "not reachable – is the Paperless app installed and running? (" + err_text(e) + ")"
     if c.get("token"):
@@ -369,6 +393,11 @@ class H(BaseHTTPRequestHandler):
         hdrs = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != "accept-encoding"}
         if host_header:
             hdrs["Host"] = host_header
+            acc = next((k for k in hdrs if k.lower() == "accept"), None)
+            if self.path.startswith("/api/") and (not acc or "version=" not in hdrs[acc]):
+                if acc:
+                    del hdrs[acc]
+                hdrs["Accept"] = "application/json; version=%d" % api_version()
         try:
             conn = http.client.HTTPConnection(host or ENGINE_HOST, port or ENGINE_PORT, timeout=900)
             conn.request(self.command, self.path, body=data or None, headers=hdrs)

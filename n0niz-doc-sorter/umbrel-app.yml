@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.0.1"
+version: "1.0.2"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,7 +25,8 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Fix: Paperless answered "Bad Request (400)" because of the internal host name.
+  Fixes for Paperless 3: valid host name and API version, so Paperless no longer
+  answers "Bad Request (400)" or "Not Acceptable (406)".
 dependencies:
   - paperless
   - ollama
