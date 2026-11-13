@@ -78,6 +78,32 @@
   #toast { position:fixed; left:50%; top:70px; transform:translateX(-50%); z-index:50; background:#1e293b; border:1px solid #334155; padding:8px 14px; border-radius:10px; display:none; }
   .empty { color:var(--mut); padding:60px 0; text-align:center; }
   .ghost { position:fixed; top:-100px; left:-100px; background:var(--acc); color:#fff; padding:4px 10px; border-radius:999px; font-weight:600; }
+  .tabs { display:flex; background:#0b0d11; border:1px solid var(--line); border-radius:999px; padding:3px; }
+  .tabs button { background:none; border:0; border-radius:999px; padding:5px 14px; color:var(--mut); } .tabs button.on { background:#1e293b; color:var(--tx); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:16px; margin-bottom:10px; }
+  .tile { border:1px solid var(--line); background:var(--card); border-radius:14px; padding:12px; cursor:pointer; position:relative; transition:border-color .1s, transform .1s; }
+  .tile:hover { border-color:#3b4250; transform:translateY(-1px); } .tile.drop { outline:2px dashed var(--acc); background:#172554; }
+  .tile .stack { position:relative; height:128px; margin-bottom:10px; }
+  .tile .stack img, .tile .stack .ph { position:absolute; top:6px; width:84px; height:112px; object-fit:cover; object-position:top; border-radius:6px; border:1px solid #2f3542; background:#0b0d11; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+  .tile .stack :nth-child(1) { left:calc(50% - 42px); z-index:3; } .tile .stack :nth-child(2) { left:calc(50% - 70px); transform:rotate(-8deg); z-index:2; } .tile .stack :nth-child(3) { left:calc(50% - 14px); transform:rotate(8deg); z-index:1; }
+  .tile .ph { display:grid; place-items:center; color:var(--mut); font-size:30px; left:calc(50% - 42px); }
+  .tile .nm { font-weight:700; display:flex; align-items:center; gap:7px; } .tile .nm .dot { width:10px; height:10px; border-radius:3px; }
+  .tile .sub { color:var(--mut); font-size:12px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile.newt { display:grid; place-items:center; color:var(--mut); border-style:dashed; min-height:190px; font-size:15px; }
+  h3.sec { margin:26px 0 6px; font-size:15px; display:flex; align-items:center; gap:10px; } h3.sec small { color:var(--mut); font-weight:400; }
+  .crumbs { display:flex; align-items:center; gap:6px; color:var(--mut); } .crumbs a { color:var(--mut); text-decoration:none; cursor:pointer; } .crumbs a:hover { color:var(--tx); }
+  .acts { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; } .acts button, .acts label.btn { background:#151922; border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:13px; color:var(--tx); }
+  .prop { display:flex; align-items:center; gap:10px; border:1px solid #1e3a5f; background:#0c1a2e; border-radius:12px; padding:9px 12px; margin:6px 0; }
+  .prop b { flex:1; } .prop button { border:0; border-radius:8px; padding:5px 11px; background:var(--acc); color:#fff; font-weight:600; } .prop button.sec { background:none; color:var(--mut); }
+  .card .fs { position:absolute; left:0; right:0; top:calc(100% - 76px); display:none; }
+  .fsug { display:flex; align-items:center; gap:6px; margin-top:5px; font-size:11.5px; color:#93c5fd; }
+  .fsug button { margin-left:auto; border:0; background:var(--acc); color:#fff; border-radius:6px; padding:1px 8px; font-size:11px; font-weight:700; }
+  .score { height:3px; border-radius:3px; background:#1e293b; margin-top:4px; } .score i { display:block; height:100%; border-radius:3px; background:#60a5fa; }
+  .rel { display:flex; gap:9px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); }
+  .rel img { width:36px; height:48px; object-fit:cover; object-position:top; border-radius:4px; background:#0b0d11; flex:none; cursor:pointer; }
+  .rel .tt { flex:1; min-width:0; } .rel .tt b { display:block; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .rel .tt small { color:var(--mut); }
+  .rel button { background:#151922; border:1px solid var(--line); border-radius:7px; padding:3px 8px; font-size:12px; white-space:nowrap; }
+  #drawer h5 { margin:18px 0 4px; font-size:13px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; }
   @media (max-width:760px) { .app { grid-template-columns:1fr; } aside { display:none; } #years { display:none; } main { padding:0 10px 120px; } }
 </style>
 </head>
@@ -85,6 +111,7 @@
 <div class="app">
   <header>
     <h1>Doc Sorter <span>✦</span></h1>
+    <div class="tabs"><button id="tTime" class="on">Timeline</button><button id="tFold">Folders</button></div>
     <input id="search" placeholder="Search title, sender, type, folder…">
     <button class="hbtn" id="aipill" title="AI recognition running"></button>
     <a class="hbtn" href="/" title="Review queue of the sorting engine">Review queue</a>
@@ -104,7 +131,7 @@ const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 let M = { tags: [], types: [], corrs: [] }, DOCS = [], AI = { queue: [], results: {}, errors: {}, busy: null };
-let OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
+let DRAGF = null, UNF_N = 60, VIEW = "time", FS = {}, PROPS = null, HIDEPROP = new Set(), OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
 const byId = (arr, id) => arr.find((x) => x.id === id);
 const tagName = (id) => (byId(M.tags, id) || {}).name || "?";
 
@@ -158,7 +185,11 @@ function renderSide() {
     if (el.dataset.drop) {
       el.ondragover = (e) => { e.preventDefault(); el.classList.add("drop"); };
       el.ondragleave = () => el.classList.remove("drop");
-      el.ondrop = (e) => { e.preventDefault(); el.classList.remove("drop"); dropOn(el.dataset.drop, +el.dataset.id); };
+      el.ondrop = (e) => {
+        e.preventDefault(); el.classList.remove("drop");
+        if (DRAGF) { const src = DRAGF; DRAGF = null; if (el.dataset.drop === "tag" && src !== +el.dataset.id) folderOp(src, "edit", { parent: +el.dataset.id }, `“${tagName(src)}” is now inside “${tagName(+el.dataset.id)}”`); return; }
+        dropOn(el.dataset.drop, +el.dataset.id);
+      };
     }
   });
   $$("[data-new]", $("#side")).forEach((b) => (b.onclick = () => newItem(b.dataset.new, null, b)));
@@ -243,25 +274,190 @@ function renderMain() {
   $("#years").innerHTML = years.length > 1 ? years.map((y) => `<a href="#" data-y="${y}">${y === "0000" ? "–" : y}</a>`).join("") : "";
   $$("#years a").forEach((a) => (a.onclick = (e) => { e.preventDefault(); const el = $$(".month").find((m) => m.id.startsWith("m-" + a.dataset.y)); if (el) el.scrollIntoView({ behavior: "smooth" }); }));
   $$("[data-month]").forEach((cb) => (cb.onchange = () => { groups.get(cb.dataset.month).forEach((d) => (cb.checked ? SEL.add(d.id) : SEL.delete(d.id))); refreshSel(); }));
-  $$(".card").forEach((el) => {
+  bindCards($("#main"));
+  if ($("#aiAll")) $("#aiAll").onclick = () => recognize(L.map((d) => d.id));
+  if ($("#applyAll")) $("#applyAll").onclick = () => applyMany(L.filter((d) => AI.results[d.id]).map((d) => d.id));
+  if ($("#dropAll")) $("#dropAll").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: L.map((d) => d.id) }); render(); };
+}
+function bindCards(root) {
+  $$(".card", root).forEach((el) => {
     const id = +el.dataset.id;
     el.onclick = (e) => {
       if (e.target.dataset.apply) return applyOne(+e.target.dataset.apply);
+      if (e.target.dataset.fput) return dropOn("tag", +e.target.dataset.fput, [id]);
+      if (e.target.dataset.cand) return dropOn("tag", F.id, [id]);
       if (e.target.classList.contains("ck") || SEL.size || e.shiftKey || e.ctrlKey || e.metaKey) return toggleSel(id, e.shiftKey);
       openDoc(id);
     };
     el.ondragstart = (e) => {
-      DRAG = SEL.has(id) ? [...SEL] : [id];
+      DRAG = SEL.has(id) ? [...SEL] : [id]; DRAGF = null;
       const g = document.createElement("div"); g.className = "ghost"; g.textContent = DRAG.length + " document" + (DRAG.length > 1 ? "s" : "");
       document.body.appendChild(g); e.dataTransfer.setDragImage(g, 10, 10); setTimeout(() => g.remove(), 0);
       e.dataTransfer.effectAllowed = "copy";
     };
   });
-  if ($("#aiAll")) $("#aiAll").onclick = () => recognize(L.map((d) => d.id));
-  if ($("#applyAll")) $("#applyAll").onclick = () => applyMany(L.filter((d) => AI.results[d.id]).map((d) => d.id));
-  if ($("#dropAll")) $("#dropAll").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: L.map((d) => d.id) }); render(); };
 }
-function render() { renderSide(); renderMain(); refreshSel(); refreshAI(); }
+function render() {
+  renderSide(); VIEW === "fold" ? renderFolders() : renderMain(); refreshSel(); refreshAI();
+  $("#tTime").classList.toggle("on", VIEW === "time"); $("#tFold").classList.toggle("on", VIEW === "fold");
+}
+$("#tTime").onclick = () => { VIEW = "time"; render(); };
+$("#tFold").onclick = () => { VIEW = "fold"; if (F.kind !== "tag") F = { kind: "all", id: null }; render(); };
+
+
+// ---------------------------------------------------------------- folders page
+const isFolder = (tid) => { const t = byId(M.tags, tid); return t && !t.system && !t.inbox; };
+const folders = () => M.tags.filter((t) => !t.system && !t.inbox);
+function descIds(tid) { const out = new Set([tid]); let g = true; while (g) { g = false; M.tags.forEach((t) => { if (t.parent && out.has(t.parent) && !out.has(t.id)) { out.add(t.id); g = true; } }); } return out; }
+const docsIn = (tid) => { const ids = descIds(tid); return DOCS.filter((d) => (d.tags || []).some((t) => ids.has(t))); };
+const unfiled = () => DOCS.filter((d) => !(d.tags || []).some(isFolder));
+
+function tile(t) {
+  const ds = docsIn(t.id), subs = folders().filter((x) => x.parent === t.id);
+  return `<div class="tile" data-tid="${t.id}" draggable="true" title="Open · drag onto another folder to put it inside">
+    <div class="stack">${ds.length ? ds.slice(0, 3).map((d) => `<img loading="lazy" src="/_lib/thumb/${d.id}" alt="">`).join("") : `<div class="ph">📁</div>`}</div>
+    <div class="nm"><span class="dot" style="background:${esc(t.color || "#64748b")}"></span><span>${esc(t.name)}</span><span style="margin-left:auto;color:var(--mut);font-weight:400">${ds.length}</span></div>
+    <div class="sub">${subs.length ? subs.map((x) => esc(x.name)).join(" · ") : "&nbsp;"}</div></div>`;
+}
+function bindTiles(root) {
+  $$(".tile[data-tid]", root).forEach((el) => {
+    const tid = +el.dataset.tid;
+    el.onclick = () => { F = { kind: "tag", id: tid }; render(); $("#main").scrollTop = 0; };
+    el.ondragstart = (e) => { DRAGF = tid; DRAG = null; e.dataTransfer.effectAllowed = "move"; };
+    el.ondragover = (e) => { if (DRAGF === tid) return; e.preventDefault(); el.classList.add("drop"); };
+    el.ondragleave = () => el.classList.remove("drop");
+    el.ondrop = async (e) => {
+      e.preventDefault(); el.classList.remove("drop");
+      if (DRAGF) { const src = DRAGF; DRAGF = null; return folderOp(src, "edit", { parent: tid }, `“${tagName(src)}” is now inside “${tagName(tid)}”`); }
+      dropOn("tag", tid);
+    };
+  });
+  $$(".tile.newt", root).forEach((el) => (el.onclick = () => {
+    if ($("input", el)) return;
+    el.innerHTML = `<input placeholder="Folder name – Enter" style="width:90%">`;
+    const inp = $("input", el); inp.focus();
+    inp.onkeydown = async (e) => {
+      if (e.key === "Escape") return render();
+      if (e.key !== "Enter" || !inp.value.trim()) return;
+      try { await api("/_lib/api/create/tag", { name: inp.value.trim(), parent: el.dataset.parent ? +el.dataset.parent : null }); toast("Folder created – drag documents onto it"); await reloadDocs(); } catch (err) { toast(err.message, 5000); }
+    };
+    inp.onblur = () => setTimeout(render, 200);
+  }));
+}
+async function folderOp(tid, op, body, msg) {
+  try { const r = await api(`/_lib/api/folder/${tid}/${op}`, body || {}); toast(msg || "Done"); await reloadDocs(); return r; } catch (e) { toast(e.message, 6000); }
+}
+function fsugHtml(d) {
+  const s = FS[d.id];
+  if (s === undefined) return `<div class="fsug" style="color:var(--mut)">📁 …</div>`;
+  if (!s) return "";
+  return `<div class="fsug" title="Similar documents are in this folder">📁 ${esc(s.name)}<button data-fput="${s.id}">✓</button></div><div class="score"><i style="width:${Math.round(s.score * 100)}%"></i></div>`;
+}
+let fsBusy = false;
+async function loadFS(ids) {
+  const todo = ids.filter((i) => !(i in FS));
+  if (!todo.length || fsBusy) return;
+  fsBusy = true;
+  try { for (let i = 0; i < todo.length; i += 30) { Object.assign(FS, await api("/_lib/api/suggest_folders", { ids: todo.slice(i, i + 30) })); if (VIEW === "fold" && F.kind !== "tag") paintFS(); } } catch (e) { /* ignore */ }
+  fsBusy = false;
+}
+function paintFS() {
+  $$("#unf .card").forEach((el) => { const d = DOCS.find((x) => x.id === +el.dataset.id); const cap = $(".cap", el); $$(".fsug, .score", cap).forEach((x) => x.remove()); cap.insertAdjacentHTML("beforeend", fsugHtml(d)); });
+  const sure = unfiled().filter((d) => FS[d.id] && FS[d.id].score >= 0.6), b = $("#putAll");
+  if (b) { b.style.display = sure.length ? "" : "none"; b.textContent = `✓ File ${sure.length} confident suggestion${sure.length > 1 ? "s" : ""}`; b.onclick = () => fileMany(sure); }
+}
+async function fileMany(list) {
+  const by = {}; list.forEach((d) => (by[FS[d.id].id] = by[FS[d.id].id] || []).push(d.id));
+  try { for (const [tid, ids] of Object.entries(by)) await api("/_lib/api/bulk", { ids, add_tags: [+tid] }); toast(`✓ ${list.length} documents filed`); await reloadDocs(); } catch (e) { toast(e.message, 5000); }
+}
+async function loadProps() {
+  if (PROPS === null) { try { PROPS = (await api("/_lib/api/proposals")).groups; } catch (e) { PROPS = []; } }
+  const L = PROPS.filter((g) => !HIDEPROP.has(g.name)).slice(0, 3), box = $("#props");
+  if (!box) return;
+  box.innerHTML = L.map((g, i) => `<div class="prop">💡 <b>Make a folder “${esc(g.name)}”?</b><span style="color:var(--mut)">${g.ids.length} documents from this sender aren't in any folder</span><button data-pc="${i}">Create & file</button><button class="sec" data-ph="${i}">✕</button></div>`).join("");
+  $$("[data-pc]", box).forEach((b) => (b.onclick = async () => {
+    const g = L[+b.dataset.pc];
+    try { const t = await api("/_lib/api/create/tag", { name: g.name }); await api("/_lib/api/bulk", { ids: g.ids, add_tags: [t.id] }); toast(`Folder “${g.name}” with ${g.ids.length} documents`); PROPS = null; await reloadDocs(); } catch (e) { toast(e.message, 5000); }
+  }));
+  $$("[data-ph]", box).forEach((b) => (b.onclick = () => { HIDEPROP.add(L[+b.dataset.ph].name); loadProps(); }));
+}
+function renderFolders() {
+  $("#years").innerHTML = "";
+  if (F.kind === "tag" && byId(M.tags, F.id)) return renderFolder(F.id);
+  const all = folders(), top = all.filter((t) => !t.parent || !isFolder(t.parent)), unf = unfiled();
+  let h = `<div class="bar"><h2>Folders</h2><span class="cnt">${all.length} folders · ${unf.length} documents not in a folder</span></div><div id="props"></div>`;
+  h += `<div class="tiles">${top.sort((a, b) => a.name.localeCompare(b.name)).map(tile).join("")}<div class="tile newt">+ New folder</div></div>`;
+  h += `<h3 class="sec">Not in a folder <small>${unf.length} · 📁 = folder of the most similar documents</small><button class="btn sec" id="putAll" style="display:none;margin-left:auto"></button></h3>`;
+  h += unf.length ? `<div class="grid" id="unf">${unf.slice(0, UNF_N).map((d) => card(d, fsugHtml(d))).join("")}</div>${unf.length > UNF_N ? `<p><button class="btn sec" id="moreUnf">Show more</button></p>` : ""}` : `<div class="empty">Every document is in a folder 🎉</div>`;
+  $("#main").innerHTML = h;
+  bindTiles($("#main")); bindCards($("#main")); loadProps(); paintFS();
+  if ($("#moreUnf")) $("#moreUnf").onclick = () => { UNF_N += 60; renderFolders(); };
+  loadFS(unf.slice(0, UNF_N).map((d) => d.id));
+}
+function renderFolder(tid) {
+  const t = byId(M.tags, tid), chain = [];
+  for (let x = t; x; x = x.parent ? byId(M.tags, x.parent) : null) { chain.unshift(x); if (chain.length > 10) break; }
+  const subs = folders().filter((x) => x.parent === tid).sort((a, b) => a.name.localeCompare(b.name)), ds = docsIn(tid);
+  let h = `<div class="bar"><div class="crumbs"><a data-go="">Folders</a>${chain.map((c) => ` › <a data-go="${c.id}">${esc(c.name)}</a>`).join("")}</div>
+    <div class="acts"><button id="fRen">✎ Rename</button><label class="btn" title="Colour">🎨<input type="color" id="fCol" value="${esc(t.color || "#64748b")}" style="width:0;height:0;opacity:0;padding:0;border:0"></label>
+    <button id="fMove">↳ Move into…</button>${t.parent ? `<button id="fTop">↑ Top level</button>` : ""}<button id="fMerge">⇢ Merge into…</button><button id="fDel">🗑</button></div></div>`;
+  h += `<div class="tiles">${subs.map(tile).join("")}<div class="tile newt" data-parent="${tid}" style="min-height:120px">+ Subfolder</div></div>`;
+  h += `<h3 class="sec">${esc(t.name)} <small>${ds.length} document${ds.length === 1 ? "" : "s"}${subs.length ? " incl. subfolders" : ""}</small></h3>`;
+  h += ds.length ? `<div class="grid">${ds.map((d) => card(d)).join("")}</div>` : `<div class="empty" style="padding:20px">Empty – drag documents onto this folder in the sidebar, or add them from below.</div>`;
+  h += `<h3 class="sec">Probably belongs here <small>similar to the documents in this folder</small><button class="btn sec" id="candAll" style="display:none;margin-left:auto"></button></h3><div id="cand"><div class="empty" style="padding:20px">${ds.length ? "Looking for similar documents…" : "Put a first document in, then similar ones show up here."}</div></div>`;
+  $("#main").innerHTML = h;
+  $$("[data-go]").forEach((a) => (a.onclick = () => { F = a.dataset.go ? { kind: "tag", id: +a.dataset.go } : { kind: "all", id: null }; render(); }));
+  bindTiles($("#main")); bindCards($("#main"));
+  $("#fRen").onclick = () => { const n = prompt("New name", t.name); if (n && n.trim() && n.trim() !== t.name) folderOp(tid, "edit", { name: n.trim() }, "Renamed"); };
+  $("#fCol").onchange = (e) => folderOp(tid, "edit", { color: e.target.value }, "Colour changed");
+  $("#fMove").onclick = (e) => pickMenu(e.target, "tag", (pid) => folderOp(tid, "edit", { parent: pid }, `Moved into “${tagName(pid)}”`));
+  if ($("#fTop")) $("#fTop").onclick = () => folderOp(tid, "edit", { parent: null }, "Moved to top level");
+  $("#fMerge").onclick = (e) => pickMenu(e.target, "tag", async (into) => { if (into !== tid && confirm(`Move all documents of “${t.name}” into “${tagName(into)}” and remove “${t.name}”?`)) { await folderOp(tid, "merge", { into }, "Merged"); F = { kind: "tag", id: into }; render(); } });
+  $("#fDel").onclick = async () => { if (confirm(`Delete the folder “${t.name}”? The documents stay in Paperless.`)) { await folderOp(tid, "delete", {}, "Folder deleted"); F = { kind: "all", id: null }; render(); } };
+  if (ds.length) loadCand(tid);
+}
+async function loadCand(tid) {
+  let L = [];
+  try { L = (await api(`/_lib/api/folder/${tid}/candidates`)).docs; } catch (e) { /* ignore */ }
+  if (F.kind !== "tag" || F.id !== tid || !$("#cand")) return;
+  const inside = descIds(tid);
+  L = L.filter((r) => { const d = DOCS.find((x) => x.id === r.id); return d && !(d.tags || []).some((x) => inside.has(x)); }).map((r) => DOCS.find((x) => x.id === r.id) && Object.assign({}, DOCS.find((x) => x.id === r.id), { score: r.score }));
+  $("#cand").innerHTML = L.length ? `<div class="grid">${L.map((d) => card(d, `<div class="fsug">${Math.round(d.score * 100)}% match<button data-cand="1">+ Add</button></div><div class="score"><i style="width:${Math.round(d.score * 100)}%"></i></div>`)).join("")}</div>` : `<div class="empty" style="padding:20px">Nothing similar outside this folder.</div>`;
+  bindCards($("#cand"));
+  const b = $("#candAll"), good = L.filter((d) => d.score >= 0.5);
+  if (good.length) { b.style.display = ""; b.textContent = `+ Add ${good.length} best matches`; b.onclick = () => dropOn("tag", tid, good.map((d) => d.id)); }
+}
+
+// ---------------------------------------------------------------- belongs together (drawer)
+async function loadRelated(id, getTags) {
+  let r;
+  try { r = await api(`/_lib/api/related/${id}`); } catch (e) { $("#dRel").textContent = e.message; return; }
+  if (OPEN !== id) return;
+  const doc = (x) => DOCS.find((d) => d.id === x) || { id: x, title: "#" + x };
+  const row = (d, btns) => `<div class="rel"><img src="/_lib/thumb/${d.id}" data-open="${d.id}" alt=""><div class="tt"><b>${esc(d.title)}</b><small>${esc((d.created || "").split("-").reverse().join("."))}${d.document_type ? " · " + esc((byId(M.types, d.document_type) || {}).name || "") : ""}${(d.tags || []).filter(isFolder).length ? " · 📁 " + esc((d.tags || []).filter(isFolder).map(tagName).join(", ")) : ""}</small></div>${btns}</div>`;
+  $("#dLinks").innerHTML = r.links.length ? r.links.map((x) => row(doc(x), `<button data-unlink="${x}" title="Remove link">✕</button>`)).join("") : `<p style="color:var(--mut);font-size:12px;margin:4px 0">Nothing linked yet – use 🔗 below.</p>`;
+  const rel = r.related.filter((x) => !r.links.includes(x.id)).map((x) => DOCS.find((d) => d.id === x.id) || x);
+  $("#dRel").innerHTML = rel.length ? rel.map((d) => row(d, `<button data-link="${d.id}" title="Connect these two documents">🔗 Link</button><button data-tog="${d.id}" title="Put both into the same folder">📁 Together</button>`)).join("") : `<p style="color:var(--mut);font-size:12px">No similar documents found.</p>`;
+  $$("[data-open]", $("#drawer")).forEach((im) => (im.onclick = () => openDoc(+im.dataset.open)));
+  $$("[data-link]", $("#drawer")).forEach((b) => (b.onclick = async () => { b.disabled = true; try { await api("/_lib/api/link", { a: id, b: +b.dataset.link }); toast("🔗 Linked – shows up in Paperless as “Gehört zu”"); loadRelated(id); } catch (e) { toast(e.message, 5000); } }));
+  $$("[data-unlink]", $("#drawer")).forEach((b) => (b.onclick = async () => { try { await api("/_lib/api/link", { a: id, b: +b.dataset.unlink, on: false }); loadRelated(id); } catch (e) { toast(e.message, 5000); } }));
+  $$("[data-tog]", $("#drawer")).forEach((b) => (b.onclick = async () => {
+    const other = DOCS.find((d) => d.id === +b.dataset.tog), me = DOCS.find((d) => d.id === id);
+    const mine = (me.tags || []).filter(isFolder), theirs = (other.tags || []).filter(isFolder);
+    try {
+      if (mine.length) await dropOn("tag", mine[0], [other.id]);
+      else if (theirs.length) await dropOn("tag", theirs[0], [id]);
+      else {
+        const corr = (byId(M.corrs, me.correspondent) || {}).name;
+        const name = prompt("Neither is in a folder yet. Name for a new folder:", corr || me.title);
+        if (!name || !name.trim()) return;
+        const t = await api("/_lib/api/create/tag", { name: name.trim() });
+        await api("/_lib/api/bulk", { ids: [id, other.id], add_tags: [t.id] }); toast(`📁 “${name.trim()}” created with both documents`); await reloadDocs();
+      }
+      openDoc(id);
+    } catch (e) { toast(e.message, 5000); }
+  }));
+}
 
 // ---------------------------------------------------------------- selection
 function toggleSel(id, range) {
@@ -402,11 +598,14 @@ async function openDoc(id) {
         <div><label>Type</label><select id="fType">${opt(M.types, d.document_type)}</select></div></div>
       <label>From</label><select id="fCorr">${opt(M.corrs, d.correspondent)}</select>
       <label>Folders</label><div class="tags" id="fTags">${tagsHtml(tags)}</div>
+      <h5>🔗 Belongs together</h5><div id="dLinks"><p style="color:var(--mut);font-size:12px">…</p></div>
+      <h5>Similar documents</h5><div id="dRel"><p style="color:var(--mut);font-size:12px">Looking…</p></div>
       <div style="display:flex;gap:8px;margin-top:16px"><button class="btn" id="dSave">Save</button>
         ${s ? "" : `<button class="btn ai" id="dAI">${AI.queue.includes(id) || AI.busy === id ? "✨ AI is reading…" : "✨ Recognize with AI"}</button>`}</div>
       <p style="color:var(--mut);font-size:12px">${esc(d.original_file_name || "")}${d.page_count ? " · " + d.page_count + " pages" : ""}</p>
     </div>`;
   $("#dx").onclick = closeDoc;
+  loadRelated(id);
   const bindTags = () => {
     $$("[data-rm]", D).forEach((b) => (b.onclick = () => { tags = tags.filter((t) => t !== +b.dataset.rm); $("#fTags").innerHTML = tagsHtml(tags); bindTags(); }));
     $("#addTag").onclick = (e) => pickMenu(e.target, "tag", (tid) => { if (!tags.includes(tid)) tags.push(tid); $("#fTags").innerHTML = tagsHtml(tags); bindTags(); });

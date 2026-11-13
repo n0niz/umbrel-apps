@@ -309,6 +309,154 @@ def apply_ai(did, body):
     return {"ok": True, "changed": list(data)}
 
 
+# ---------------------------------------------------------------- folders, similarity, links
+
+REL_CACHE = {}
+LINK_FIELD = "Gehört zu"
+DOC_FIELDS = "id,title,created,tags,document_type,correspondent,original_file_name"
+
+
+def related(did, n=8):
+    key = (int(did), n)
+    hit = REL_CACHE.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    try:
+        rows = pget(f"/api/documents/?more_like_id={int(did)}&page_size={n}&fields={DOC_FIELDS}").get("results", [])
+    except urllib.error.HTTPError:
+        rows = []
+    out = [dict(r, created=(r.get("created") or "")[:10]) for r in rows if r.get("id") != int(did)]
+    REL_CACHE[key] = (time.time(), out)
+    return out
+
+
+def folder_tags():
+    hidden = {n.lower() for n in S.TAGS.values()}
+    return {t["id"]: t for t in all_pages("/api/tags/?page_size=500") if t["name"].lower() not in hidden and not t.get("is_inbox_tag")}
+
+
+def suggest_folders(ids):
+    """For documents without folder: vote over the folders of their most similar documents."""
+    tags = folder_tags()
+    out = {}
+    for did in ids[:30]:
+        votes = {}
+        rel = related(did, 8)
+        for rank, r in enumerate(rel):
+            for t in r.get("tags") or []:
+                if t in tags:
+                    votes[t] = votes.get(t, 0) + 1.0 / (1 + rank * 0.5)
+        if votes:
+            best = max(votes, key=votes.get)
+            total = sum(1.0 / (1 + i * 0.5) for i in range(len(rel))) or 1
+            out[str(did)] = {"id": best, "name": tags[best]["name"], "score": round(min(1, votes[best] / total * 1.6), 2)}
+        else:
+            out[str(did)] = None
+    return out
+
+
+def folder_candidates(tag_id, limit=24):
+    """Documents not in the folder that resemble the ones inside."""
+    ids = descendants(int(tag_id))
+    inside = all_pages(f"/api/documents/?page_size=100&tags__id__in={','.join(map(str, ids))}&fields=id,tags")
+    have = {d["id"] for d in inside}
+    score = {}
+    rows = {}
+    for d in inside[:12]:
+        for rank, r in enumerate(related(d["id"], 10)):
+            if r["id"] in have:
+                continue
+            score[r["id"]] = score.get(r["id"], 0) + 1.0 / (1 + rank * 0.4)
+            rows[r["id"]] = r
+    best = sorted(score, key=score.get, reverse=True)[:limit]
+    top = max(score.values()) if score else 1
+    return [dict(rows[i], score=round(score[i] / top, 2)) for i in best]
+
+
+def descendants(tid):
+    tags = all_pages("/api/tags/?page_size=500")
+    out, grew = {tid}, True
+    while grew:
+        grew = False
+        for t in tags:
+            if t.get("parent") in out and t["id"] not in out:
+                out.add(t["id"])
+                grew = True
+    return out
+
+
+def folder_edit(tid, body):
+    data = {k: body[k] for k in ("name", "color", "parent") if k in body}
+    if "parent" in data and data["parent"] in descendants(int(tid)):
+        raise ValueError("a folder can't go inside itself")
+    return psend(f"/api/tags/{int(tid)}/", data, "PATCH")
+
+
+def folder_delete(tid):
+    S.http_json(S.PAPERLESS + f"/api/tags/{int(tid)}/", None, {"Authorization": "Token " + token()}, "DELETE")
+    return {"ok": True}
+
+
+def folder_merge(src, dst):
+    docs = all_pages(f"/api/documents/?page_size=250&tags__id__all={int(src)}&fields=id")
+    if docs:
+        psend("/api/documents/bulk_edit/", {"documents": [d["id"] for d in docs], "method": "modify_tags",
+                                             "parameters": {"add_tags": [int(dst)], "remove_tags": [int(src)]}})
+    for t in all_pages("/api/tags/?page_size=500"):
+        if t.get("parent") == int(src):
+            psend(f"/api/tags/{t['id']}/", {"parent": int(dst)}, "PATCH")
+    folder_delete(src)
+    return {"ok": True, "moved": len(docs)}
+
+
+def proposals():
+    """Unfiled documents from the same sender -> 'make a folder?'"""
+    tags = folder_tags()
+    corrs = {c["id"]: c["name"] for c in all_pages("/api/correspondents/?page_size=500")}
+    groups = {}
+    for d in docs():
+        if d.get("correspondent") and not any(t in tags for t in d.get("tags") or []):
+            groups.setdefault(d["correspondent"], []).append(d["id"])
+    names = {t["name"].lower() for t in tags.values()}
+    out = [{"name": corrs.get(c, "?"), "ids": ids} for c, ids in groups.items()
+           if len(ids) >= 3 and corrs.get(c, "").lower() not in names]
+    return sorted(out, key=lambda g: -len(g["ids"]))[:8]
+
+
+def link_field():
+    for f in all_pages("/api/custom_fields/?page_size=200"):
+        if f["name"] == LINK_FIELD:
+            return f["id"]
+    return psend("/api/custom_fields/", {"name": LINK_FIELD, "data_type": "documentlink"})["id"]
+
+
+def links_of(did):
+    fid = link_field()
+    d = pget(f"/api/documents/{int(did)}/?fields=id,custom_fields")
+    for cf in d.get("custom_fields") or []:
+        if cf.get("field") == fid:
+            return [int(x) for x in (cf.get("value") or [])]
+    return []
+
+
+def set_links(did, ids):
+    fid = link_field()
+    d = pget(f"/api/documents/{int(did)}/?fields=id,custom_fields")
+    cfs = [cf for cf in (d.get("custom_fields") or []) if cf.get("field") != fid]
+    cfs.append({"field": fid, "value": sorted(set(int(i) for i in ids if int(i) != int(did)))})
+    psend(f"/api/documents/{int(did)}/", {"custom_fields": cfs}, "PATCH")
+
+
+def link(a, b, on=True):
+    """Connect two documents both ways (Paperless shows the link field on each)."""
+    for x, y in ((a, b), (b, a)):
+        cur = links_of(x)
+        new = (cur + [y]) if on and y not in cur else [i for i in cur if i != y] if not on else cur
+        if new != cur:
+            set_links(x, new)
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- HTTP
 
 def stream_file(h, path, ctype_default):
@@ -349,6 +497,26 @@ def handle(h, path):
             return h.send(200, meta())
         if path == "/_lib/api/docs":
             return h.send(200, {"docs": docs()})
+        m = re.fullmatch(r"/_lib/api/related/(\d+)", path)
+        if m:
+            d = pget(f"/api/documents/{m.group(1)}/?fields=id")
+            return h.send(200, {"related": related(d["id"], 10), "links": links_of(d["id"])})
+        if path == "/_lib/api/suggest_folders":
+            return h.send(200, suggest_folders([int(i) for i in body.get("ids", [])]))
+        m = re.fullmatch(r"/_lib/api/folder/(\d+)/(candidates|edit|delete|merge)", path)
+        if m:
+            tid, op = int(m.group(1)), m.group(2)
+            if op == "candidates":
+                return h.send(200, {"docs": folder_candidates(tid)})
+            if op == "edit":
+                return h.send(200, folder_edit(tid, body))
+            if op == "delete":
+                return h.send(200, folder_delete(tid))
+            return h.send(200, folder_merge(tid, int(body["into"])))
+        if path == "/_lib/api/proposals":
+            return h.send(200, {"groups": proposals()})
+        if path == "/_lib/api/link":
+            return h.send(200, link(int(body["a"]), int(body["b"]), body.get("on", True)))
         if path == "/_lib/api/bulk":
             return h.send(200, bulk(body))
         m = re.fullmatch(r"/_lib/api/create/(tag|type|corr)", path)
