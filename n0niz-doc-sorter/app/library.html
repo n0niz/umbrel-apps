@@ -104,6 +104,37 @@
   .rel .tt { flex:1; min-width:0; } .rel .tt b { display:block; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .rel .tt small { color:var(--mut); }
   .rel button { background:#151922; border:1px solid var(--line); border-radius:7px; padding:3px 8px; font-size:12px; white-space:nowrap; }
   #drawer h5 { margin:18px 0 4px; font-size:13px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; }
+  body.treeview main { padding:0; overflow:hidden; grid-column:1 / -1; } body.treeview aside { display:none; }
+  .tree { display:grid; grid-template-columns:minmax(420px, 1fr) minmax(340px, 440px); height:calc(100vh - 56px); }
+  .tleft { display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--line); }
+  .thead { display:flex; align-items:baseline; gap:12px; padding:12px 16px 8px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .thint { color:var(--mut); font-size:12px; }
+  #tlist { overflow:auto; flex:1; padding:6px 0 80px; outline:none; }
+  .trow { position:relative; display:flex; align-items:center; gap:8px; height:34px; padding-right:12px; cursor:default; user-select:none; white-space:nowrap; }
+  .trow:hover { background:#161a22; } .trow.tsel { background:#1e293b; } #tlist:focus .trow.tsel { box-shadow:inset 2px 0 0 var(--acc); }
+  .trow.tmulti { background:#172554; } .trow.tmulti .tl::before { content:"✓ "; color:#93c5fd; }
+  .trow.tdrop { background:#172554; outline:2px dashed var(--acc); outline-offset:-2px; }
+  .tcar { width:14px; color:var(--mut); cursor:pointer; text-align:center; flex:none; }
+  .trow .dot { width:10px; height:10px; border-radius:3px; flex:none; }
+  .tl { overflow:hidden; text-overflow:ellipsis; min-width:0; } .tfold .tl { font-weight:600; } .troot { height:38px; margin-top:6px; }
+  .tn { margin-left:auto; color:var(--mut); font-size:12px; } .tm { color:var(--mut); font-size:12px; margin-left:auto; flex:none; }
+  .tdoc .tm { margin-left:auto; } .tth { width:22px; height:29px; object-fit:cover; object-position:top; border-radius:3px; background:#0b0d11; flex:none; }
+  .tic { flex:none; } .tcase .tl { font-weight:600; color:#c4b5fd; }
+  .tb { font-size:11px; color:var(--mut); border:1px solid var(--line); border-radius:999px; padding:0 6px; flex:none; } .tb.ai { color:var(--ai); border-color:#715c0b; }
+  .tadd, .tact { opacity:0; background:none; border:1px solid var(--line); border-radius:7px; color:var(--mut); font-size:12px; padding:1px 7px; flex:none; }
+  .trow:hover .tadd, .trow:hover .tact, .trow.tsel .tact { opacity:1; }
+  .tline { position:absolute; top:0; bottom:0; width:9px; border-left:2px solid #3b4250; }
+  .tline.f { top:50%; } .tline.l { bottom:50%; } .tline::after { content:""; position:absolute; top:50%; left:0; width:8px; border-top:2px solid #3b4250; }
+  .tline.f::after { top:0; } .tline.l { } .tline.l::after { top:auto; bottom:0; } .tline.f.l { border-left:0; }
+  .tright { overflow:auto; padding:16px 18px 60px; background:var(--side); }
+  .tright h3 { margin:0 0 4px; font-size:16px; display:flex; gap:8px; align-items:center; } .tright h4 { margin:20px 0 6px; font-size:13px; color:var(--mut); text-transform:uppercase; letter-spacing:.05em; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; } .stats div { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; color:var(--mut); font-size:12px; } .stats b { display:block; font-size:22px; color:var(--tx); }
+  .minis { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; } .minis img { width:54px; height:72px; object-fit:cover; object-position:top; border-radius:5px; background:#0b0d11; cursor:pointer; border:1px solid var(--line); }
+  .pdoc { display:flex; gap:14px; } .pth { width:110px; height:146px; object-fit:cover; object-position:top; border-radius:8px; background:#0b0d11; border:1px solid var(--line); cursor:pointer; flex:none; }
+  .graph { width:100%; height:auto; background:#0b0d11; border:1px solid var(--line); border-radius:12px; }
+  .graph text { fill:#cbd5e1; font-size:10px; } .graph text.gd { fill:#64748b; font-size:9px; } .graph .gn { cursor:pointer; }
+  .rel[draggable="true"] { cursor:grab; }
+  @media (max-width:1000px) { .tree { grid-template-columns:1fr; } .tright { display:none; } }
   @media (max-width:760px) { .app { grid-template-columns:1fr; } aside { display:none; } #years { display:none; } main { padding:0 10px 120px; } }
 </style>
 </head>
@@ -111,7 +142,7 @@
 <div class="app">
   <header>
     <h1>Doc Sorter <span>✦</span></h1>
-    <div class="tabs"><button id="tTime" class="on">Timeline</button><button id="tFold">Folders</button></div>
+    <div class="tabs"><button id="tTree">Tree</button><button id="tTime">Timeline</button><button id="tFold">Folders</button></div>
     <input id="search" placeholder="Search title, sender, type, folder…">
     <button class="hbtn" id="aipill" title="AI recognition running"></button>
     <a class="hbtn" href="/" title="Review queue of the sorting engine">Review queue</a>
@@ -131,7 +162,7 @@ const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 let M = { tags: [], types: [], corrs: [] }, DOCS = [], AI = { queue: [], results: {}, errors: {}, busy: null };
-let DRAGF = null, UNF_N = 60, VIEW = "time", FS = {}, PROPS = null, HIDEPROP = new Set(), OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
+let DRAGF = null, UNF_N = 60, VIEW = (() => { try { return localStorage.getItem("docsorter.view") || "tree"; } catch (e) { return "tree"; } })(), FS = {}, PROPS = null, HIDEPROP = new Set(), OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
 const byId = (arr, id) => arr.find((x) => x.id === id);
 const tagName = (id) => (byId(M.tags, id) || {}).name || "?";
 
@@ -298,9 +329,14 @@ function bindCards(root) {
   });
 }
 function render() {
-  renderSide(); VIEW === "fold" ? renderFolders() : renderMain(); refreshSel(); refreshAI();
-  $("#tTime").classList.toggle("on", VIEW === "time"); $("#tFold").classList.toggle("on", VIEW === "fold");
+  renderSide();
+  if (VIEW === "tree" && window.renderTree) window.renderTree(); else if (VIEW === "fold") renderFolders(); else renderMain();
+  refreshSel(); refreshAI();
+  ["tTree", "tTime", "tFold"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["tree", "time", "fold"][i]));
+  document.body.classList.toggle("treeview", VIEW === "tree");
+  try { localStorage.setItem("docsorter.view", VIEW); } catch (e) { /* ignore */ }
 }
+$("#tTree").onclick = () => { VIEW = "tree"; render(); };
 $("#tTime").onclick = () => { VIEW = "time"; render(); };
 $("#tFold").onclick = () => { VIEW = "fold"; if (F.kind !== "tag") F = { kind: "all", id: null }; render(); };
 
@@ -622,9 +658,11 @@ async function openDoc(id) {
   if ($("#dDrop")) $("#dDrop").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: [id] }); render(); openDoc(id); };
 }
 function closeDoc() { OPEN = null; $("#drawer").classList.remove("open"); }
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("#drawer").classList.contains("open")) closeDoc(); else { SEL.clear(); refreshSel(); } } });
-let qT; $("#search").oninput = (e) => { clearTimeout(qT); qT = setTimeout(() => { Q = e.target.value.trim(); renderMain(); refreshSel(); }, 150); };
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("#drawer").classList.contains("open")) closeDoc(); else { SEL.clear(); refreshSel(); $$(".tmulti").forEach((x) => x.classList.remove("tmulti")); } } });
+let qT; $("#search").oninput = (e) => { clearTimeout(qT); qT = setTimeout(() => { Q = e.target.value.trim(); if (VIEW === "tree") window.renderTree(); else if (VIEW === "fold") renderFolders(); else renderMain(); refreshSel(); }, 150); };
 loadAll();
 </script>
+<script src="/library/tree.js"></script>
+<script>if (DOCS.length && VIEW === "tree") render();</script>
 </body>
 </html>

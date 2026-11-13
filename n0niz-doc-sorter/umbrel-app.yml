@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.2.0"
+version: "1.3.0"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,11 +25,12 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  New Folders page: folder tiles with document stacks, drag documents or folders
-  onto a folder, rename/colour/move/merge folders. Documents without a folder get
-  the folder of their most similar documents as a one-click suggestion, each
-  folder shows what probably belongs in it, and documents can be linked
-  ("Gehört zu", visible in Paperless) or put together with one click.
+  New document tree (start page): folders > case files > documents. Drag a
+  document onto another to connect them into a case file (contract, invoices,
+  termination, sorted by date), onto a folder to move it (Ctrl/Alt = also),
+  folders onto folders to nest them. Side panel with case-file graph, folder
+  suggestion ("Classify") and similar documents. Undo, multi-select, keyboard
+  (arrows, Enter, C = classify, U = undo) and search.
 dependencies:
   - paperless
   - ollama

@@ -393,6 +393,9 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True})
         if path.startswith("/_setup"):
             return self.send(404, {"error": "not found"})
+        if path == "/library/tree.js":
+            with open(os.path.join(HERE, "tree.js"), "rb") as f:
+                return self.send(200, f.read(), "text/javascript; charset=utf-8")
         if path in ("/library", "/library/"):
             if not load_cfg().get("token"):
                 return self.redirect("/_setup")

@@ -56,11 +56,30 @@ def meta():
 
 def docs():
     rows = all_pages("/api/documents/?page_size=250&ordering=-created"
-                     "&fields=id,title,created,added,tags,document_type,correspondent,page_count,original_file_name")
+                     "&fields=id,title,created,added,tags,document_type,correspondent,page_count,original_file_name,custom_fields")
+    lf = find_link_field()
     for r in rows:
         r["created"] = (r.get("created") or "")[:10]
         r["added"] = (r.get("added") or "")[:10]
+        cfs = r.pop("custom_fields", None) or []
+        r["links"] = next(([int(x) for x in (cf.get("value") or [])] for cf in cfs if lf and cf.get("field") == lf), [])
     return rows
+
+
+LF = {"id": None, "t": 0}
+
+
+def find_link_field():
+    if LF["id"] and time.time() - LF["t"] < 600:
+        return LF["id"]
+    try:
+        for f in all_pages("/api/custom_fields/?page_size=200"):
+            if f["name"] == LINK_FIELD:
+                LF.update(id=f["id"], t=time.time())
+                return f["id"]
+    except Exception:
+        pass
+    return None
 
 
 def bulk(body):
@@ -424,10 +443,12 @@ def proposals():
 
 
 def link_field():
-    for f in all_pages("/api/custom_fields/?page_size=200"):
-        if f["name"] == LINK_FIELD:
-            return f["id"]
-    return psend("/api/custom_fields/", {"name": LINK_FIELD, "data_type": "documentlink"})["id"]
+    fid = find_link_field()
+    if fid:
+        return fid
+    fid = psend("/api/custom_fields/", {"name": LINK_FIELD, "data_type": "documentlink"})["id"]
+    LF.update(id=fid, t=time.time())
+    return fid
 
 
 def links_of(did):
@@ -552,7 +573,7 @@ def auto_scan():
             if not token() or not S.load_cfg().get("model") or S.load_cfg().get("lib_auto") is False:
                 continue
             since = time.strftime("%Y-%m-%d", time.localtime(time.time() - 3 * 86400))
-            new = all_pages(f"/api/documents/?page_size=100&added__date__gte={since}&document_type__isnull=1&fields=id")
+            new = all_pages(f"/api/documents/?page_size=100&added__date__gte={since}&document_type__isnull=true&fields=id")
             ids = [d["id"] for d in new if d["id"] not in seen and str(d["id"]) not in AI["results"]]
             if ids:
                 seen.update(ids)
