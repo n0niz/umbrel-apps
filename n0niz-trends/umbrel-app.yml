@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.21.4"
+version: "2.21.5"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -26,9 +26,8 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  New Insights page: cash-flow forecast until payday or month by month for the
-  next 12 months (yearly bills, loan, debt-free date), your personal inflation
-  from what you actually paid, and a money-flow diagram.
+  Reports: new period "Last 12 months (incl. this month)", so bookings from
+  the running month show up right away.
 dependencies:
   - firefly-iii
 path: ""

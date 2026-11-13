@@ -351,7 +351,7 @@
 
   <section class="view" id="v-bitcoin"></section>
   <section class="view" id="v-agent"></section>
-  <footer class="appver">Spending Trends v2.21.4</footer>
+  <footer class="appver">Spending Trends v2.21.5</footer>
 </div>
 
 <dialog id="settings">
@@ -522,7 +522,7 @@
     return out;
   }
   const PERIODS = [["thismonth", "This month"], ["lastmonth", "Last month"], ["30d", "Last 30 days"], ["90d", "Last 90 days"], ["3m", "Last 3 full months"], ["6m", "Last 6 full months"],
-    ["12m", "Last 12 full months"], ["24m", "Last 24 full months"], ["36m", "Last 36 full months"], ["ytd", "This year"], ["lastyear", "Last year"],
+    ["12mc", "Last 12 months (incl. this month)"], ["12m", "Last 12 full months"], ["24m", "Last 24 full months"], ["36m", "Last 36 full months"], ["ytd", "This year"], ["lastyear", "Last year"],
     ["all", "All history"], ["custom", "Custom dates"]];
   const PERIOD_NAME = Object.fromEntries(PERIODS);
   function periodRange(spec) {
@@ -535,6 +535,7 @@
       case "90d": return { from: iso(new Date(y, m, now.getDate() - 90)), to: TODAY };
       case "lastmonth": return { from: first(y, m - 1), to: last(y, m - 1) };
       case "3m": return N(3); case "6m": return N(6); case "24m": return N(24); case "36m": return N(36);
+      case "12mc": return { from: first(y, m - 11), to: TODAY };
       case "ytd": return { from: `${y}-01-01`, to: TODAY };
       case "lastyear": return { from: `${y - 1}-01-01`, to: `${y - 1}-12-31` };
       case "all": return { from: (D.cfg && D.cfg.history_start) || `${y - 5}-01-01`, to: TODAY };
