@@ -24,6 +24,10 @@ OLLAMA = os.environ.get("OLLAMA_URL", "http://ollama_ollama_1:11434").rstrip("/"
 ENGINE_HOST = os.environ.get("ENGINE_HOST", "n0niz-doc-sorter_engine_1")
 ENGINE_PORT = int(os.environ.get("ENGINE_PORT", "8080"))
 PAPERLESS_PORT = os.environ.get("PAPERLESS_PUBLIC_PORT", "2349")
+PL_HOST = "localhost"
+# the engine reaches Paperless through this relay, which fixes the Host header
+RELAY_PORT = int(os.environ.get("RELAY_PORT", "8001"))
+RELAY_URL = os.environ.get("RELAY_URL", "http://n0niz-doc-sorter_web_1:%d" % RELAY_PORT)
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 TAGS = {
@@ -67,6 +71,8 @@ def http_json(url, data=None, headers=None, method=None, timeout=20, form=False)
             body = json.dumps(data).encode()
             h["Content-Type"] = "application/json"
     h.setdefault("Accept", "application/json")
+    if url.startswith(PAPERLESS):
+        h["Host"] = PL_HOST  # Django rejects host names with "_" (paperless_webserver_1)
     req = urllib.request.Request(url, data=body, headers=h, method=method)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
@@ -90,7 +96,9 @@ def pl_all(path, token):
 def err_text(e):
     if isinstance(e, urllib.error.HTTPError):
         try:
-            return f"HTTP {e.code}: {e.read().decode()[:300]}"
+            import re
+            txt = re.sub(r"<[^>]+>", " ", e.read().decode(errors="replace"))
+            return f"HTTP {e.code}: " + " ".join(txt.split())[:160]
         except Exception:
             return f"HTTP {e.code}"
     return str(getattr(e, "reason", e))
@@ -147,7 +155,7 @@ def write_env(c, public_url):
     if think == "auto":
         think = "false" if model.split(":")[0].lower().startswith(THINKING) else ""
     env = {
-        "PAPERLESS_BASE_URL": PAPERLESS,
+        "PAPERLESS_BASE_URL": RELAY_URL,
         "PAPERLESS_API_TOKEN": c["token"],
         "PAPERLESS_PUBLIC_URL": public_url,
         "LLM_PROVIDER": "ollama",
@@ -352,11 +360,13 @@ class H(BaseHTTPRequestHandler):
             return
         return self.proxy()
 
-    def proxy(self):
+    def proxy(self, host=None, port=None, host_header=None, rewrite=None):
         data = self.body()
         hdrs = {k: v for k, v in self.headers.items() if k.lower() not in HOP and k.lower() != "accept-encoding"}
+        if host_header:
+            hdrs["Host"] = host_header
         try:
-            conn = http.client.HTTPConnection(ENGINE_HOST, ENGINE_PORT, timeout=900)
+            conn = http.client.HTTPConnection(host or ENGINE_HOST, port or ENGINE_PORT, timeout=900)
             conn.request(self.command, self.path, body=data or None, headers=hdrs)
             r = conn.getresponse()
         except Exception:
@@ -367,8 +377,15 @@ class H(BaseHTTPRequestHandler):
         self.send_response(r.status, r.reason)
         for k, v in r.getheaders():
             if k.lower() not in HOP:
+                if rewrite and k.lower() == "location":
+                    v = v.replace(rewrite[0].decode(), rewrite[1].decode())
                 self.send_header(k, v)
-        if ctype.startswith("text/html") and self.command == "GET":
+        if rewrite and "json" in ctype:
+            body = r.read().replace(rewrite[0], rewrite[1])
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif rewrite is None and ctype.startswith("text/html") and self.command == "GET":
             body = r.read()
             i = body.lower().rfind(b"</body>")
             body = body[:i] + SETUP_LINK + body[i:] if i >= 0 else body + SETUP_LINK
@@ -401,8 +418,18 @@ class H(BaseHTTPRequestHandler):
     do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_HEAD = do_OPTIONS = handle_one
 
 
+class Relay(H):
+    """Engine -> Paperless, with a Host header Django accepts; absolute links point back here."""
+
+    def route(self):
+        u = urllib.parse.urlsplit(PAPERLESS)
+        return self.proxy(u.hostname, u.port or 80, PL_HOST,
+                          (b"http://" + PL_HOST.encode() + b"/", RELAY_URL.encode() + b"/"))
+
+
 def main():
     os.makedirs(CFG_DIR, exist_ok=True)
+    threading.Thread(target=ThreadingHTTPServer(("0.0.0.0", RELAY_PORT), Relay).serve_forever, daemon=True).start()
     port = int(os.environ.get("PORT", "8080"))
     print(f"Doc Sorter gateway on :{port}, engine {ENGINE_HOST}:{ENGINE_PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
