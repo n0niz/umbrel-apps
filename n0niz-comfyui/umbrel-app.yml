@@ -2,9 +2,9 @@ manifestVersion: 1
 id: n0niz-comfyui
 name: ComfyUI
 tagline: Node-based image generation (CPU)
-icon: https://svgur.com/i/mvA.svg
+icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-comfyui/icon.svg
 category: ai
-version: "1.0.0"
+version: "1.0.1"
 port: 8188
 description: >-
   ComfyUI running on CPU for Stable Diffusion and SDXL image generation.
@@ -15,7 +15,7 @@ submission: https://github.com/n0niz/umbrel-apps
 repo: https://github.com/comfyanonymous/ComfyUI
 support: https://github.com/comfyanonymous/ComfyUI/issues
 gallery: []
-releaseNotes: ""
+releaseNotes: "New app icon (the old icon link was broken)."
 dependencies: []
 path: ""
 defaultUsername: ""
