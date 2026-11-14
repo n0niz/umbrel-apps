@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.7.0"
+version: "1.7.1"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,16 +25,9 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  The Tree is now a zoomable node graph: glass cards on an infinite canvas,
-  Archive > folders > case files > documents with curved connectors and dashed
-  "connected" lines between documents that belong together. Scroll or pinch to
-  zoom, drag the background to pan, double-click a folder to zoom into it
-  (breadcrumb to zoom back out), drag a document onto another to connect them,
-  onto a folder to move it, folders onto folders to nest them – with a live
-  preview line, auto-scroll at the edges and undo. The list tree is still there
-  ("List"). New tabs: Tags (tag cloud, manage tags, drop documents onto a tag)
-  and Category (document types as tiles with sums and deadlines, drop documents
-  onto a category).
+  Calmer, more modern colours: graphite background with soft blue and teal
+  light instead of purple and pink, blue accent, teal for connections and case
+  files.
 dependencies:
   - paperless
   - ollama
