@@ -13,10 +13,15 @@
   const DS = window.DS;
   const { fmt, money, dueHtml, amtHtml } = DS;
   const COLW = 330, GAPY = 12, LIMIT = 30;
-  const DIM = { root: [230, 66], folder: [252, 66], group: [252, 66], case: [264, 68], doc: [264, 76], more: [200, 40] };
+  const DIM = { root: [230, 66], folder: [252, 66], cat: [252, 66], group: [252, 66], case: [264, 68], doc: [264, 76], more: [200, 40] };
   const store = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
   const G = { x: 60, y: 60, k: 1, sel: null, focus: "root", open: new Set(store("docsorter.graph.open", ["root"])), limit: {},
-    els: new Map(), edges: new Map(), labels: new Map(), nodes: new Map(), parent: new Map(), pos: new Map(), first: true, tween: null, drag: null };
+    els: new Map(), edges: new Map(), labels: new Map(), nodes: new Map(), parent: new Map(), pos: new Map(), first: true, tween: null, drag: null,
+    mode: store("docsorter.graph.mode", "tags") };
+  const MODES = { tags: { label: "Tags" }, cats: { label: "Category", field: "document_type", none: "Without category", pre: "k:", list: () => M.types, verb: "set category", unverb: "remove category" },
+    corrs: { label: "Sender", field: "correspondent", none: "Unknown sender", pre: "r:", list: () => M.corrs, verb: "set sender", unverb: "remove sender" } };
+  const HUES = [212, 186, 150, 38, 262, 0, 330, 96, 24, 200, 276, 168];
+  const hueOf = (s) => { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return HUES[h % HUES.length]; };
   const saveOpen = () => { try { localStorage.setItem("docsorter.graph.open", JSON.stringify([...G.open])); } catch (e) { /* ignore */ } };
   let VP = null, WORLD = null, SVG = null, LBL = null;
   const docById = (id) => DOCS.find((d) => d.id === id);
@@ -33,14 +38,16 @@
     fold.forEach((t) => { const p = t.parent && isFolder(t.parent) ? t.parent : 0; (kidsOf[p] = kidsOf[p] || []).push(t); });
     Object.values(kidsOf).forEach((l) => l.sort((a, b) => a.name.localeCompare(b.name)));
     const words = (Q || "").toLowerCase().split(/\s+/).filter(Boolean), match = (d) => !words.length || words.every((w) => docText(d).includes(w));
+    const MD = MODES[G.mode] || MODES.tags, tags = G.mode === "tags";
+    const groupOf = (d) => (tags ? primaryFolder(d) : d[MD.field] || null);
     const items = {}, seen = new Set();
     DOCS.forEach((d) => {
       const c = COMP.get(d.id);
       if (c) {
         if (seen.has(c)) return; seen.add(c);
-        const home = primaryFolder(c.docs[0]) ?? c.docs.map(primaryFolder).find((x) => x != null) ?? "u";
+        const home = groupOf(c.docs[0]) ?? (tags ? c.docs.map(groupOf).find((x) => x != null) : null) ?? "u";
         (items[home] = items[home] || []).push({ c, date: c.docs[c.docs.length - 1].created || "", hit: c.docs.some(match) });
-      } else (items[primaryFolder(d) ?? "u"] = items[primaryFolder(d) ?? "u"] || []).push({ d, date: d.created || "", hit: match(d) });
+      } else (items[groupOf(d) ?? "u"] = items[groupOf(d) ?? "u"] || []).push({ d, date: d.created || "", hit: match(d) });
     });
     Object.values(items).forEach((l) => l.sort((a, b) => b.date.localeCompare(a.date)));
     const searching = words.length > 0;
@@ -60,6 +67,18 @@
       return { key, type: "folder", id: t.id, color: t.color, label: t.name, count: ds.length, hit,
         sub: `${ds.length} doc${ds.length === 1 ? "" : "s"}${nCase ? ` · ${nCase} case file${nCase > 1 ? "s" : ""}` : ""}${subs.length ? ` · ${subs.length} sub` : ""}`, extra: sumNext(ds), kids: [...subs, ...its] };
     };
+    if (!tags) {
+      const groups = MD.list().slice().sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
+        const key = MD.pre + t.id, its = itemNodes(t.id, key), ds = DOCS.filter((d) => d[MD.field] === t.id);
+        if (searching && !its.some((x) => x.type !== "more") && !t.name.toLowerCase().includes(words.join(" "))) return null;
+        return { key, type: "cat", id: t.id, label: t.name, hue: hueOf(t.name), count: ds.length, hit: searching, kids: its,
+          sub: ds.length ? `${ds.length} doc${ds.length === 1 ? "" : "s"}` : "empty – drop documents here", extra: sumNext(ds) };
+      }).filter(Boolean);
+      const unf = itemNodes("u", "g:u"), nd = DOCS.filter((d) => !d[MD.field]);
+      const root = { key: "root", type: "root", label: "Archive", sub: `${DOCS.length} documents · by ${MD.label.toLowerCase()}`, kids: groups };
+      if (unf.length || !searching) root.kids.push({ key: "g:u", type: "group", label: MD.none, count: nd.length, sub: nd.length ? "drag onto a " + MD.label.toLowerCase() : "all assigned", kids: unf, hit: searching && unf.length > 0 });
+      return { root, searching };
+    }
     const top = (kidsOf[0] || []).map(folderNode).filter(Boolean);
     const unf = itemNodes("u", "g:u"), unfDocs = DOCS.filter((d) => !(d.tags || []).some(isFolder));
     const root = { key: "root", type: "root", label: "Archive", sub: `${DOCS.length} documents · ${fold.length} folders`, kids: [...top] };
@@ -105,7 +124,8 @@
     let ic;
     if (n.type === "root") ic = `<div class="gic groot">✦</div>`;
     else if (n.type === "folder") ic = `<div class="gic" style="--c:${esc(n.color || "#64748b")}">${ICON_FOLDER(n.color)}</div>`;
-    else if (n.type === "group") ic = `<div class="gic">📂</div>`;
+    else if (n.type === "cat") ic = `<div class="gic gcat" style="--h:${n.hue}">${G.mode === "corrs" ? esc((n.label || "?").trim().charAt(0).toUpperCase()) : "🏷"}</div>`;
+    else if (n.type === "group") ic = `<div class="gic">${G.mode === "tags" ? "📂" : "∅"}</div>`;
     else if (n.type === "case") ic = `<div class="gic gcase">🗂</div>`;
     else if (n.type === "doc") ic = `<img class="gth" src="/_lib/thumb/${n.id}" alt="" draggable="false">`;
     else ic = "";
@@ -245,12 +265,24 @@
   }
 
   // ================================================================ selection + actions
-  function select(key, scroll) {
+  function catPane(n) {
+    const pane = $("#tpane"); if (!pane) return;
+    const MD = MODES[G.mode], ds = DOCS.filter((d) => (n.type === "group" ? !d[MD.field] : d[MD.field] === n.id));
+    pane.innerHTML = `<h3><span class="dot" style="background:hsl(${n.hue || 210} 70% 60%)"></span> ${esc(n.label)}</h3><p class="thint">${ds.length} documents ${sumNext(ds)}</p>
+      <div class="minis">${ds.slice(0, 12).map((d) => `<img src="/_lib/thumb/${d.id}" data-open="${d.id}" title="${esc(d.title)}">`).join("")}</div>
+      <p class="thint" style="margin-top:12px">Drag documents onto “${esc(n.label)}” in the tree – or from the Documents list – to ${n.type === "group" ? MD.unverb : MD.verb}.</p>
+      ${n.type === "cat" && G.mode === "cats" ? `<button class="btn sec" id="pCatOpen">Open in Category</button>` : ""}`;
+    $$("[data-open]", pane).forEach((im) => (im.onclick = () => openDoc(+im.dataset.open)));
+    if ($("#pCatOpen")) $("#pCatOpen").onclick = () => { CATSEL = n.id; VIEW = "cats"; render(); };
+  }
+  function select(key, scroll, keepTab) {
     G.sel = key;
     $$(".gn.sel, .gn.anc", WORLD).forEach((x) => x.classList.remove("sel", "anc"));
     draw();
     if (scroll) centerOn(key);
     const n = G.nodes.get(key);
+    if (!keepTab && window.DocPanel && n && n.type !== "root") window.DocPanel.tab("info");
+    if (n && (n.type === "cat" || (n.type === "group" && G.mode !== "tags"))) return catPane(n);
     if (DS.paintPane) DS.paintPane(n ? (n.type === "doc" ? { type: "doc", id: n.id, key, ctx: typeof n.home === "number" ? n.home : null } : n.type === "case" ? { type: "case", root: n.root, key, ctx: typeof n.home === "number" ? n.home : null } : n.type === "folder" ? { type: "folder", id: n.id, key } : null) : null);
   }
   function toggle(key, force) {
@@ -259,13 +291,22 @@
     open ? G.open.add(key) : G.open.delete(key); saveOpen(); draw();
     if (open) setTimeout(() => { const b = bounds(key), r = VP.getBoundingClientRect(); if (b && (G.x + b.x2 * G.k > r.width || G.y + b.y2 * G.k > r.height)) centerOn(n.kids[Math.min(2, n.kids.length - 1)].key); }, 40);
   }
-  function homeOf(n) { return typeof n.home === "number" ? n.home : null; }
+  function homeOf(n) { return G.mode === "tags" && typeof n.home === "number" ? n.home : null; }
+  function setField(ids, value, name) {
+    const MD = MODES[G.mode], f = MD.field, by = {};
+    ids.forEach((i) => { const d = docById(i); const old = d ? d[f] || null : null; (by[old] = by[old] || []).push(i); });
+    const inv = Object.entries(by).map(([old, L]) => ["/_lib/api/bulk", { ids: L, [f]: old === "null" ? null : +old }]);
+    const nm = ids.length > 1 ? ids.length + " documents" : "“" + ((docById(ids[0]) || {}).title || "") + "”";
+    return DS.run(value ? `${nm} → ${MD.label.toLowerCase()} “${name}”` : `${nm}: ${MD.unverb}`, [["/_lib/api/bulk", { ids, [f]: value }]], inv);
+  }
   function dropKind(drag, t) {
     if (!t || t.key === drag.key) return null;
     if (drag.kind === "doc") {
       if (t.type === "doc" && !drag.ids.includes(t.id)) return { label: "connect", run: (also) => DS.connect({ kind: "doc", ids: drag.ids, from: drag.from }, docById(t.id), homeOf(t), also) };
       if (t.type === "case") return { label: "add to case file", run: (also) => DS.connect({ kind: "doc", ids: drag.ids, from: drag.from }, docById(t.root), homeOf(t), also) };
       if (t.type === "folder") return { label: "move into", run: (also) => DS.moveTo({ kind: "doc", ids: drag.ids, from: drag.from }, t.id, also) };
+      if (t.type === "cat") return { label: MODES[G.mode].verb, run: () => setField(drag.ids, t.id, t.label) };
+      if (t.type === "group" && G.mode !== "tags") return { label: MODES[G.mode].unverb, run: () => setField(drag.ids, null) };
       if (t.type === "group" && drag.from) return { label: "take out", run: () => DS.run(`Taken out of “${tagName(drag.from)}”`, [["/_lib/api/bulk", { ids: drag.ids, remove_tags: [drag.from] }]], [["/_lib/api/bulk", { ids: drag.ids, add_tags: [drag.from] }]]) };
     }
     if (drag.kind === "folder") {
@@ -379,6 +420,69 @@
     } else draw();
   }
 
+  // ---- dragging in from the documents list
+  function extDrag(e, ids, label) {
+    if (!VP || !VP.isConnected) return;
+    const ghost = document.createElement("div"); ghost.className = "gghost"; ghost.textContent = label; document.body.appendChild(ghost);
+    G.drag = { kind: "doc", ids, from: null, ext: true, ghost };
+    VP.classList.add("isdrag"); document.body.classList.add("extdrag");
+    const mv = (ev) => extMove(ev), up = (ev) => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); removeEventListener("pointercancel", up); extEnd(ev); };
+    addEventListener("pointermove", mv); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+    extMove(e);
+  }
+  function extMove(e) {
+    const D = G.drag; if (!D || !D.ext) return;
+    D.ghost.style.transform = `translate(${e.clientX + 14}px,${e.clientY + 10}px)`;
+    const r = VP.getBoundingClientRect(), inside = e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom;
+    const under = inside && document.elementFromPoint(e.clientX, e.clientY), tel = under && under.closest(".gn"), t = tel && G.nodes.get(tel.dataset.k);
+    const k = dropKind(D, t), pv = $("#gPrev"), pl = $("#gPrevL");
+    $$(".gn.tgt", WORLD).forEach((x) => x !== tel && x.classList.remove("tgt"));
+    if (k) {
+      tel.classList.add("tgt"); D.target = { t, k };
+      const w = world(e), tx = t.x + (t.type === "doc" || t.type === "case" ? t.w : 0), ty = t.y + t.h / 2;
+      pv.setAttribute("d", t.type === "doc" || t.type === "case" ? arcPath(Math.max(w.x, tx), w.y, tx, ty) : ePath(t.x + t.w, ty, w.x, w.y)); pv.style.opacity = 1;
+      pl.textContent = k.label + (D.ids.length > 1 ? ` (${D.ids.length})` : ""); pl.style.opacity = 1;
+      pl.style.transform = `translate(${(w.x + tx) / 2 + 30}px,${(w.y + ty) / 2}px) translate(-50%,-50%)`;
+      D.ghost.classList.add("ok");
+    } else { D.target = null; pv.style.opacity = 0; pl.style.opacity = 0; D.ghost.classList.remove("ok"); }
+    cancelAnimationFrame(autoPan);
+    if (inside) {
+      const ex = e.clientX - r.left, ey = e.clientY - r.top, edge = 46, vx = ex < edge ? 12 : ex > r.width - edge ? -12 : 0, vy = ey < edge ? 12 : ey > r.height - edge ? -12 : 0;
+      if (vx || vy) { const last = { clientX: e.clientX, clientY: e.clientY }; autoPan = requestAnimationFrame(() => { if (!G.drag) return; G.x += vx; G.y += vy; apply(); extMove(last); }); }
+    }
+  }
+  async function extEnd(e) {
+    cancelAnimationFrame(autoPan);
+    const D = G.drag; G.drag = null; if (!D) return;
+    D.ghost.remove(); VP.classList.remove("isdrag"); document.body.classList.remove("extdrag");
+    $$(".gn.tgt", WORLD).forEach((x) => x.classList.remove("tgt")); $("#gPrev").style.opacity = 0; $("#gPrevL").style.opacity = 0;
+    if (!D.target) return;
+    const t = D.target.t;
+    if (t.type === "folder" || t.type === "cat" || t.type === "case") G.open.add(t.key);
+    if ((t.type === "doc" || t.type === "case") && homeOf(t) != null) G.open.add("f:" + homeOf(t));
+    saveOpen();
+    const ok = await D.target.k.run(e.ctrlKey || e.altKey);
+    if (ok === false) return;
+    reveal(D.ids[0], true);
+  }
+  // open the path to a document and select it
+  function reveal(id, keepTab) {
+    const d = docById(id); if (!d || !VP) return;
+    const c = DS.components().get(id), MD = MODES[G.mode], root = c ? c.docs[0] : d;
+    if (G.mode === "tags") {
+      let f = primaryFolder(root) ?? (c ? c.docs.map(primaryFolder).find((x) => x != null) : null);
+      if (f == null) G.open.add("g:u");
+      for (let t = f; t; t = (byId(M.tags, t) || {}).parent) if (isFolder(t)) G.open.add("f:" + t);
+    } else G.open.add(root[MD.field] ? MD.pre + root[MD.field] : "g:u");
+    if (c) G.open.add("c:" + c.root);
+    saveOpen(); draw();
+    if (!G.nodes.has("d:" + id)) {
+      // beyond the first entries of a big group: show more until it is visible
+      const p = [...G.nodes.values()].find((n) => n.type === "more"); if (p) { G.limit[p.parentKey] = 100000; draw(); }
+    }
+    if (G.nodes.has("d:" + id)) select("d:" + id, true, keepTab);
+  }
+
   // keyboard
   function keys(e) {
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
@@ -403,10 +507,11 @@
     if (!VP || !VP.isConnected) {
       $("#main").innerHTML = `<div class="tree"><div class="tleft gwrap">
           <div class="gview" id="gview" tabindex="0"><div class="gworld" id="gworld"><svg class="gsvg" id="gsvg" width="1" height="1"><path id="gPrev" class="gprev"/></svg><div class="glbls" id="glbls"><div class="glabel prev" id="gPrevL"></div></div></div></div>
-          <div class="gtool gtl"><div class="tabs small" id="gMode"><button data-m="graph" class="on">Graph</button><button data-m="list">List</button></div><div class="gcrumbs" id="gCrumbs"></div></div>
+          <div class="gtool gtl"><div class="tabs small" id="gMode"><button data-m="graph" class="on">Graph</button><button data-m="list">List</button></div>
+            <div class="tabs small" id="gGroup">${Object.entries(MODES).map(([k, m]) => `<button data-g="${k}"${G.mode === k ? ' class="on"' : ""}>${m.label}</button>`).join("")}</div><div class="gcrumbs" id="gCrumbs"></div></div>
           <div class="gtool gtr"><button class="ib" id="gOut" title="Zoom out (−)">−</button><span id="gZoom">100%</span><button class="ib" id="gIn" title="Zoom in (+)">+</button><button class="ib" id="gFit" title="Show everything (0)">Fit</button><button class="ib" id="gColl" title="Close all">Collapse</button></div>
           <div class="gtool gbl thint">drag a document onto a document to <b>connect</b> · onto a folder to <b>move</b> (Ctrl/⌥ = also) · double-click to zoom in · scroll to zoom · drag the background to pan</div>
-        </div><div class="tright" id="tpane"></div></div>`;
+        </div><div class="tright tside" id="tside"></div></div>`;
       VP = $("#gview"); WORLD = $("#gworld"); SVG = $("#gsvg"); LBL = $("#glbls");
       G.els.clear(); G.edges.clear(); G.labels.clear(); G.first = true;
       bind();
@@ -415,12 +520,91 @@
       $("#gFit").onclick = () => fit("root");
       $("#gColl").onclick = () => { G.open = new Set(["root"]); saveOpen(); G.sel = null; draw(); setTimeout(() => fit("root"), 40); };
       $$("#gMode button").forEach((b) => (b.onclick = () => { try { localStorage.setItem("docsorter.treemode", b.dataset.m); } catch (e) { /* ignore */ } VP = null; render(); }));
+      $$("#gGroup button").forEach((b) => (b.onclick = () => {
+        if (G.mode === b.dataset.g) return;
+        G.mode = b.dataset.g; try { localStorage.setItem("docsorter.graph.mode", JSON.stringify(G.mode)); } catch (e) { /* ignore */ }
+        $$("#gGroup button").forEach((x) => x.classList.toggle("on", x === b)); segThumb();
+        G.sel = null; G.focus = "root"; draw(); setTimeout(() => fit("root", false, true), 40); DS.paintPane && DS.paintPane(null); window.DocPanel.refresh();
+      }));
+      window.DocPanel.mount(false);
       requestAnimationFrame(() => segThumb && segThumb());
       VP.focus({ preventScroll: true });
     }
     draw(); apply();
+    window.DocPanel.refresh();
     if (!G.sel) DS.paintPane && DS.paintPane(null);
   }
   window.renderGraph = renderGraph;
-  window.Graph = { fit, select, zoomInto, G };
+  window.Graph = { fit, select, zoomInto, G, extDrag, reveal };
+
+  // ================================================================ documents panel (right side): find documents and drag them onto the tree
+  const DP = { tab: store("docsorter.side", "docs"), q: "", f: "all", limit: 120, list: false };
+  const FILTERS = [["all", "All"], ["unfiled", "Not in a folder"], ["new", "New"], ["notype", "No category"], ["due", "Deadline"]];
+  function dpFiltered() {
+    const words = DP.q.toLowerCase().split(/\s+/).filter(Boolean), since = DS.iso(new Date(DS.today() - 14 * 864e5));
+    return DOCS.filter((d) => {
+      if (DP.f === "unfiled" && (d.tags || []).some(isFolder)) return false;
+      if (DP.f === "new" && (d.added || "") < since) return false;
+      if (DP.f === "notype" && d.document_type) return false;
+      if (DP.f === "due" && !d.due) return false;
+      return !words.length || words.every((w) => docText(d).includes(w));
+    }).sort((a, b) => (DP.f === "new" ? (b.added || "").localeCompare(a.added || "") : DP.f === "due" ? (a.due.d || "").localeCompare(b.due.d || "") : (b.created || "").localeCompare(a.created || "")));
+  }
+  function dpRows() {
+    const L = dpFiltered(), box = $("#dpList"); if (!box) return;
+    const what = DP.list || G.mode === "tags" ? "a folder to <b>file</b> it" : G.mode === "cats" ? "a category to <b>set</b> it" : "a sender to <b>set</b> it";
+    $("#dpHint").innerHTML = `Drag a document onto the tree: onto a document to <b>connect</b>, onto ${what}. ${DP.list ? "" : "Click = show in tree · "}double-click = open · Ctrl-click = select several.`;
+    $("#dpCount").textContent = `${L.length} document${L.length === 1 ? "" : "s"}`;
+    box.innerHTML = L.slice(0, DP.limit).map((d) => {
+      const fol = (d.tags || []).filter(isFolder).map(tagName);
+      return `<div class="dprow${SEL.has(d.id) ? " multi" : ""}" data-id="${d.id}"${DP.list ? ' draggable="true"' : ""}><img class="th" loading="lazy" src="/_lib/thumb/${d.id}" alt="" draggable="false">
+        <div class="dptx"><b>${esc(d.title || "#" + d.id)}</b><span>${fmt(d.created)}${d.document_type ? " · " + esc(typeName(d.document_type)) : ""}${fol.length ? " · 📁 " + esc(fol.join(", ")) : ""}</span>${d.amount || d.due ? `<em>${d.amount ? amtHtml(d.amount) : ""} ${d.due ? dueHtml(d.due) : ""}</em>` : ""}</div><i class="grip">⋮⋮</i></div>`;
+    }).join("") + (L.length > DP.limit ? `<button class="mini" id="dpMore">Show ${Math.min(200, L.length - DP.limit)} more</button>` : "") + (!L.length ? `<p class="thint" style="padding:12px">No documents.</p>` : "");
+    if ($("#dpMore")) $("#dpMore").onclick = () => { DP.limit += 200; dpRows(); };
+    $$(".dprow", box).forEach((row) => {
+      const id = +row.dataset.id, ids = () => (SEL.has(id) ? [...SEL] : [id]), d = docById(id);
+      if (DP.list) {
+        row.ondragstart = (e) => { const L = ids(); window.DS.drag = { kind: "doc", ids: L, from: null, label: L.length > 1 ? L.length + " documents" : d.title }; e.dataTransfer.effectAllowed = "copyMove"; try { e.dataTransfer.setData("text/plain", String(id)); } catch (err) { /* ignore */ } };
+        row.ondragend = () => (window.DS.drag = null);
+      } else {
+        row.onpointerdown = (e) => {
+          if (e.button !== 0) return;
+          const sx = e.clientX, sy = e.clientY;
+          const mv = (ev) => { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 5) { cleanup(); const L = ids(); extDrag(ev, L, L.length > 1 ? L.length + " documents" : d.title); } };
+          const up = () => cleanup();
+          const cleanup = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); };
+          addEventListener("pointermove", mv); addEventListener("pointerup", up);
+        };
+      }
+      let last = 0;
+      row.onclick = (e) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey) { SEL.has(id) ? SEL.delete(id) : SEL.add(id); row.classList.toggle("multi", SEL.has(id)); refreshSel(); return; }
+        const now = Date.now(); if (now - last < 380) return openDoc(id); last = now;
+        if (!DP.list && window.Graph) reveal(id, true);
+      };
+    });
+  }
+  function dpTab(t) {
+    DP.tab = t; try { localStorage.setItem("docsorter.side", JSON.stringify(t)); } catch (e) { /* ignore */ }
+    if (!$("#tdocs")) return;
+    $("#tdocs").hidden = t !== "docs"; $("#tpane").hidden = t !== "info";
+    $$("#pTabs button").forEach((b) => b.classList.toggle("on", b.dataset.p === t)); segThumb();
+  }
+  window.DocPanel = {
+    mount(list) {
+      DP.list = !!list;
+      const side = $("#tside"); if (!side) return;
+      side.innerHTML = `<div class="tabs small ptabs" id="pTabs"><button data-p="docs">Documents</button><button data-p="info">Details</button></div>
+        <div class="tdocs" id="tdocs"><div class="dphead"><input id="dpQ" placeholder="Find a document…" value="${esc(DP.q)}"><span class="thint" id="dpCount"></span></div>
+          <div class="dpchips">${FILTERS.map(([k, l]) => `<button class="chip${DP.f === k ? " on" : ""}" data-f="${k}">${l}</button>`).join("")}</div>
+          <p class="thint dphint" id="dpHint"></p>
+          <div class="dplist" id="dpList"></div></div><div class="tpane" id="tpane"></div>`;
+      $$("#pTabs button").forEach((b) => (b.onclick = () => dpTab(b.dataset.p)));
+      let qt; $("#dpQ").oninput = (e) => { clearTimeout(qt); qt = setTimeout(() => { DP.q = e.target.value.trim(); DP.limit = 120; dpRows(); }, 120); };
+      $$(".dpchips .chip").forEach((c) => (c.onclick = () => { DP.f = c.dataset.f; DP.limit = 120; $$(".dpchips .chip").forEach((x) => x.classList.toggle("on", x === c)); dpRows(); }));
+      dpTab(DP.tab); dpRows();
+    },
+    refresh() { if ($("#dpList") && document.activeElement !== $("#dpQ")) dpRows(); else if ($("#dpList")) dpRows(); },
+    tab: dpTab,
+  };
 })();

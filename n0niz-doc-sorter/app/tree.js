@@ -374,10 +374,13 @@
   function renderTree() {
     $("#years").innerHTML = "";
     if (!TREE || !$("#tlist")) {
-      $("#main").innerHTML = `<div class="tree"><div class="tleft"><div class="thead"><b>Document tree</b><span class="thint">drag a document onto a document to connect · onto a folder to move (Ctrl/⌥ = also) · ↑↓←→ Space Enter · C = suggest folder · U = undo</span></div><div id="tlist"></div></div><div class="tright" id="tpane"></div></div>`;
+      $("#main").innerHTML = `<div class="tree"><div class="tleft"><div class="thead"><div class="tabs small" id="lMode"><button data-m="graph">Graph</button><button data-m="list" class="on">List</button></div><span class="thint">drag a document onto a document to connect · onto a folder to move (Ctrl/⌥ = also) · ↑↓←→ Space Enter · C = suggest folder · U = undo</span></div><div id="tlist"></div></div><div class="tright tside" id="tside"></div></div>`;
+      $$("#lMode button").forEach((b) => (b.onclick = () => { try { localStorage.setItem("docsorter.treemode", b.dataset.m); } catch (e) { /* ignore */ } TREE = null; render(); }));
+      if (window.DocPanel) window.DocPanel.mount(true);
+      requestAnimationFrame(() => window.segThumb && segThumb());
       TREE = TreeUI($("#tlist"), {
         onToggle: (n, open) => { open ? OPEN.add(n.key) : OPEN.delete(n.key); saveOpen(); },
-        onSelect: (n) => paintPane(n),
+        onSelect: (n) => { if (window.DocPanel && n && n.type !== "group") window.DocPanel.tab("info"); paintPane(n); },
         onOpen: (n) => (n.type === "doc" ? openDoc(n.id) : TREE.toggle(n.key)),
         onClick: (n, e) => {
           if (n.type !== "doc" || !(e.ctrlKey || e.metaKey || e.shiftKey)) { if (SEL.size) { SEL.clear(); paintMulti(); refreshSel(); } return false; }
@@ -404,6 +407,7 @@
     }
     const keep = TREE.sel;
     TREE.render(model());
+    if (window.DocPanel) window.DocPanel.refresh();
     if (keep && TREE.nodes.has(keep)) TREE.select(keep); else { TREE.sel = null; paintPane(null); }
     if (document.activeElement === document.body) $("#tlist").focus({ preventScroll: true });
   }
