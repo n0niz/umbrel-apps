@@ -37,8 +37,32 @@
   .top { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
   a { color:#60a5fa; }
 </style>
+<link rel="stylesheet" href="/library/theme.css">
+<style>
+  body.setup main { max-width:880px; margin:24px auto 40px; border-radius:32px; padding:30px 30px 36px; }
+  body.setup h1 { font-size:26px; font-weight:650; letter-spacing:-.03em; display:flex; align-items:center; gap:10px; }
+  body.setup h1::before { content:"✦"; width:30px; height:30px; border-radius:10px; display:grid; place-items:center; font-size:15px; color:#fff;
+    background:linear-gradient(145deg, hsl(var(--brand-lighter)), hsl(var(--brand))); box-shadow:0 1px 0 rgb(255 255 255 / .35) inset, 0 4px 12px hsl(var(--brand) / .45); }
+  body.setup h2 { font-weight:650; letter-spacing:-.02em; }
+  body.setup .card { background:rgb(255 255 255 / .04); border:0; box-shadow:var(--cell); border-radius:24px; padding:20px 22px; }
+  body.setup button { height:34px; padding:0 16px; border-radius:999px; font:550 13px/1 "Inter", sans-serif; letter-spacing:-.02em; background:hsl(var(--brand)); color:#fff;
+    border:0; box-shadow:0 .5px 0 rgb(255 255 255 / .3) inset; transition:background-color .3s, scale .15s var(--ease-out); cursor:default; }
+  body.setup button:hover { background:hsl(var(--brand-lighter)); } body.setup button:active { scale:.97; }
+  body.setup button.sec { background:rgb(255 255 255 / .1); border:.5px solid rgb(255 255 255 / .2); box-shadow:var(--btn-hl); }
+  body.setup button.sec:hover { background:rgb(255 255 255 / .15); }
+  body.setup .pill { background:rgb(255 255 255 / .06); border:.5px solid rgb(255 255 255 / .1); padding:5px 12px; font-weight:500; }
+  body.setup .pill.ok { color:#86efac; border-color:rgb(134 239 172 / .3); } body.setup .pill.bad { color:#fca5a5; border-color:rgb(252 165 165 / .3); }
+  body.setup .modes label { border-radius:18px; border:.5px solid rgb(255 255 255 / .08); background:rgb(255 255 255 / .03); padding:12px 14px; transition:background-color .25s, border-color .25s; }
+  body.setup .modes label:hover { background:rgb(255 255 255 / .06); }
+  body.setup .modes label:has(input:checked) { border-color:hsl(var(--brand) / .7); background:hsl(var(--brand) / .12); }
+  body.setup .rec div { border-radius:16px; border:.5px solid rgb(255 255 255 / .08); background:rgb(255 255 255 / .03); }
+  body.setup .bar { background:rgb(255 255 255 / .08); box-shadow:0 1px 1.5px rgb(0 0 0 / .22) inset; } body.setup .bar i { background:hsl(var(--brand-lighter)); transition:width .4s var(--ease-out); }
+  body.setup .msg { border-radius:16px; } body.setup code { background:rgb(255 255 255 / .06); border:.5px solid rgb(255 255 255 / .1); border-radius:6px; }
+  body.setup label { color:rgb(255 255 255 / .5); font-weight:500; }
+  body.setup .card { animation:viewin .45s var(--ease-out) both; } body.setup .card:nth-of-type(2) { animation-delay:.04s; } body.setup .card:nth-of-type(3) { animation-delay:.08s; } body.setup .card:nth-of-type(4) { animation-delay:.12s; } body.setup .card:nth-of-type(5) { animation-delay:.16s; }
+</style>
 </head>
-<body>
+<body class="setup">
 <main>
   <div class="top">
     <div><h1>Doc Sorter <span id="ver" style="font-size:13px;color:var(--mut);font-weight:400"></span></h1><p class="sub">Suggests title, tags, correspondent, type and date for your Paperless documents – you confirm. Runs on your Umbrel with Ollama.</p></div>

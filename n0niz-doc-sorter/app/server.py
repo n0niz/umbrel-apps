@@ -393,6 +393,18 @@ class H(BaseHTTPRequestHandler):
             return self.send(200, {"ok": True})
         if path.startswith("/_setup"):
             return self.send(404, {"error": "not found"})
+        if path == "/library/theme.css":
+            with open(os.path.join(HERE, "theme.css"), "rb") as f:
+                return self.send(200, f.read(), "text/css; charset=utf-8")
+        if path == "/library/fonts/InterVariable.woff2":
+            with open(os.path.join(HERE, "fonts", "InterVariable.woff2"), "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "font/woff2")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            return self.wfile.write(body)
         if path in ("/library/tree.js", "/library/docview.js"):
             with open(os.path.join(HERE, path.rsplit("/", 1)[1]), "rb") as f:
                 return self.send(200, f.read(), "text/javascript; charset=utf-8")

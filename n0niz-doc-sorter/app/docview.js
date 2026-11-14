@@ -31,9 +31,11 @@
     OPEN = id;
     let el = $("#dv");
     if (!el) { el = document.createElement("div"); el.id = "dv"; document.body.appendChild(el); }
-    el.className = "dv open";
+    clearTimeout(el._ct);
+    const was = el.classList.contains("open");
+    el.className = "dv open" + (was ? " stay" : "");
     const pos = list.ids.indexOf(id);
-    el.innerHTML = `<div class="dvtop"><button class="ib" id="dvX" title="Close (Esc)">←</button>
+    el.innerHTML = `<div class="dvsheet"><div class="dvtop"><button class="ib" id="dvX" title="Close (Esc)">←</button>
         <input id="dvTitle" class="dvtitle" value="${esc((docById(id) || {}).title || "")}" placeholder="Title">
         <span class="dvpos">${pos >= 0 ? `${pos + 1} / ${list.ids.length}${list.name === "new" ? " new" : ""}` : ""}</span>
         <button class="ib" id="dvPrev" title="Previous (←)" ${pos <= 0 ? "disabled" : ""}>‹</button><button class="ib" id="dvNext" title="Next (→)" ${pos < 0 || pos >= list.ids.length - 1 ? "disabled" : ""}>›</button>
@@ -42,7 +44,8 @@
         <button class="btn sec" id="dvDiscard" disabled>Discard</button><button class="btn" id="dvSave" disabled title="Ctrl+S">Save</button></div>
       <div class="dvbody"><section class="dvl"><div class="dvtabs"><button data-t="details" class="on">Details</button><button data-t="content">Content</button><button data-t="meta">Metadata</button><button data-t="notes">Notes</button></div><div class="dvpanel" id="dvPanel"><p class="thint">Loading…</p></div></section>
         <section class="dvc"><iframe id="dvFrame" title="Preview" src="/_lib/preview/${id}"></iframe></section>
-        <section class="dvr" id="dvSide"><p class="thint">Loading…</p></section></div>`;
+        <section class="dvr" id="dvSide"><p class="thint">Loading…</p></section></div></div>`;
+    el.onmousedown = (e) => { if (e.target === el) close(); };
     el.tabIndex = -1;
     const fr = $("#dvFrame");
     // the PDF viewer grabs the keyboard focus when it loads – give it back so Esc and ←/→ keep working
@@ -71,7 +74,8 @@
   function close() {
     if (ST && ST.dirty && !confirm("Discard unsaved changes?")) return;
     ST = null; OPEN = null;
-    const el = $("#dv"); if (el) { el.className = "dv"; setTimeout(() => { if (!ST && el.parentNode) el.innerHTML = ""; }, 200); }
+    const el = $("#dv");
+    if (el) { el.className = "dv closing"; clearTimeout(el._ct); el._ct = setTimeout(() => { if (!ST) { el.className = "dv"; el.innerHTML = ""; } }, 230); }
     document.body.classList.remove("dvopen");
   }
   function step(d) {

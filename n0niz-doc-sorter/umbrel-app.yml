@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.5.0"
+version: "1.6.0"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,15 +25,11 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  New document view like Paperless: all fields incl. custom fields, ASN, storage
-  path, content with search, metadata, notes, download, previous/next and a
-  "New" button to step through freshly added documents. Amounts and deadlines
-  are read from the text (invoices, assessments, contracts) and can be saved as
-  the fields "Betrag" and "Frist" or exported to your calendar. Suggested
-  connections as an expandable tree. The document tree was rebuilt: smooth
-  animated expanding, a small detail line under every entry (date, type,
-  sender, amount, deadline), expandable documents with a text preview, groups
-  "New" and "Deadlines", sums per folder, auto-open while dragging.
+  New look in the style of umbrelOS: frosted-glass panels over a soft colour
+  background, Inter font, pill buttons and inputs, a sliding Tree/Timeline/Folders
+  switch, the document view opens as a sheet that rises and sinks like Umbrel's,
+  menus and toasts pop in, tree rows fade in one after another, thumbnails fade
+  in once loaded. Respects "reduce motion" and "reduce transparency".
 dependencies:
   - paperless
   - ollama

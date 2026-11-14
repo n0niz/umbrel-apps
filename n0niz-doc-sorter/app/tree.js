@@ -79,6 +79,8 @@
       const inner = el.querySelector(":scope > .tk > .tki");
       if (open) {
         if (!inner.dataset.built) { inner.innerHTML = kidsHtml(n, +el.style.getPropertyValue("--d") + 1); inner.dataset.built = "1"; after(inner); }
+        inner.classList.remove("stag"); void inner.offsetWidth; inner.classList.add("stag");
+        clearTimeout(inner._st); inner._st = setTimeout(() => inner.classList.remove("stag"), 700);
         requestAnimationFrame(() => { el.classList.add("open"); el.setAttribute("aria-expanded", "true"); });
       } else { el.classList.remove("open"); el.setAttribute("aria-expanded", "false"); }
     };

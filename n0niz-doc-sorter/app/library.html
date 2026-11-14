@@ -207,6 +207,13 @@
   @media (max-width:1000px) { .tree { grid-template-columns:1fr; } .tright { display:none; } }
   @media (max-width:760px) { .app { grid-template-columns:1fr; } aside { display:none; } #years { display:none; } main { padding:0 10px 120px; } }
 </style>
+<link rel="stylesheet" href="/library/theme.css">
+<link rel="preload" href="/library/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+  // fade images in once loaded (like umbrelOS) – capture phase, so it also sees images added later
+  document.addEventListener("load", (e) => { if (e.target.tagName === "IMG") e.target.classList.add("ld"); }, true);
+  document.addEventListener("error", (e) => { if (e.target.tagName === "IMG") e.target.classList.add("ld"); }, true);
+</script>
 </head>
 <body>
 <div class="app">
@@ -399,12 +406,25 @@ function bindCards(root) {
     };
   });
 }
+let LASTVIEW = null;
+function segThumb() {
+  $$(".tabs").forEach((t) => {
+    let th = $(".thumb", t);
+    if (!th) { th = document.createElement("i"); th.className = "thumb"; t.prepend(th); }
+    const on = $("button.on", t);
+    if (!on) { th.style.opacity = 0; return; }
+    th.style.opacity = 1; th.style.width = on.offsetWidth + "px"; th.style.transform = `translateX(${on.offsetLeft - 3}px)`;
+  });
+}
+addEventListener("resize", () => segThumb());
 function render() {
   renderSide();
   if (VIEW === "tree" && window.renderTree) window.renderTree(); else if (VIEW === "fold") renderFolders(); else renderMain();
   refreshSel(); refreshAI();
   ["tTree", "tTime", "tFold"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["tree", "time", "fold"][i]));
   document.body.classList.toggle("treeview", VIEW === "tree");
+  segThumb();
+  if (LASTVIEW !== VIEW) { const m = $("#main"); m.classList.remove("vin"); void m.offsetWidth; m.classList.add("vin"); LASTVIEW = VIEW; }
   try { localStorage.setItem("docsorter.view", VIEW); } catch (e) { /* ignore */ }
 }
 $("#tTree").onclick = () => { VIEW = "tree"; render(); };
