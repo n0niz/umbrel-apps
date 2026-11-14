@@ -405,7 +405,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
             self.end_headers()
             return self.wfile.write(body)
-        if path in ("/library/tree.js", "/library/docview.js"):
+        if path in ("/library/tree.js", "/library/docview.js", "/library/graph.js"):
             with open(os.path.join(HERE, path.rsplit("/", 1)[1]), "rb") as f:
                 return self.send(200, f.read(), "text/javascript; charset=utf-8")
         if path in ("/library", "/library/"):

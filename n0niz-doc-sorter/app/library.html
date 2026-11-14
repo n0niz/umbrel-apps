@@ -219,7 +219,7 @@
 <div class="app">
   <header>
     <h1>Doc Sorter <span>✦</span></h1>
-    <div class="tabs"><button id="tTree">Tree</button><button id="tTime">Timeline</button><button id="tFold">Folders</button></div>
+    <div class="tabs"><button id="tTree">Tree</button><button id="tTime">Timeline</button><button id="tFold">Folders</button><button id="tTags">Tags</button><button id="tCats">Category</button></div>
     <input id="search" placeholder="Search title, sender, type, folder…">
     <button class="hbtn" id="aipill" title="AI recognition running"></button>
     <button class="hbtn" id="newBtn" title="Step through newly added documents">📥 New</button>
@@ -290,7 +290,7 @@ function renderSide() {
   if (corrs.length > 12) h += `<div class="more" id="moreCorr">${showAllCorr ? "show less" : `show all ${corrs.length}`}</div>`;
   $("#side").innerHTML = h;
   $$(".nav", $("#side")).forEach((el) => {
-    el.onclick = (e) => { if (e.target.dataset.sub) return; F = { kind: el.dataset.k, id: el.dataset.id ? +el.dataset.id : null }; render(); $("#main").scrollTop = 0; };
+    el.onclick = (e) => { if (e.target.dataset.sub) return; F = { kind: el.dataset.k, id: el.dataset.id ? +el.dataset.id : null }; if (VIEW === "tags" || VIEW === "cats") VIEW = "time"; render(); $("#main").scrollTop = 0; };
     if (el.dataset.drop) {
       el.ondragover = (e) => { e.preventDefault(); el.classList.add("drop"); };
       el.ondragleave = () => el.classList.remove("drop");
@@ -419,9 +419,11 @@ function segThumb() {
 addEventListener("resize", () => segThumb());
 function render() {
   renderSide();
-  if (VIEW === "tree" && window.renderTree) window.renderTree(); else if (VIEW === "fold") renderFolders(); else renderMain();
+  const tmode = (() => { try { return localStorage.getItem("docsorter.treemode") || "graph"; } catch (e) { return "graph"; } })();
+  if (VIEW === "tree") (tmode === "list" || !window.renderGraph ? window.renderTree : window.renderGraph)();
+  else if (VIEW === "fold") renderFolders(); else if (VIEW === "tags") renderTags(); else if (VIEW === "cats") renderCats(); else renderMain();
   refreshSel(); refreshAI();
-  ["tTree", "tTime", "tFold"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["tree", "time", "fold"][i]));
+  ["tTree", "tTime", "tFold", "tTags", "tCats"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["tree", "time", "fold", "tags", "cats"][i]));
   document.body.classList.toggle("treeview", VIEW === "tree");
   segThumb();
   if (LASTVIEW !== VIEW) { const m = $("#main"); m.classList.remove("vin"); void m.offsetWidth; m.classList.add("vin"); LASTVIEW = VIEW; }
@@ -430,6 +432,8 @@ function render() {
 $("#tTree").onclick = () => { VIEW = "tree"; render(); };
 $("#tTime").onclick = () => { VIEW = "time"; render(); };
 $("#tFold").onclick = () => { VIEW = "fold"; if (F.kind !== "tag") F = { kind: "all", id: null }; render(); };
+$("#tTags").onclick = () => { VIEW = "tags"; render(); };
+$("#tCats").onclick = () => { VIEW = "cats"; render(); };
 
 
 // ---------------------------------------------------------------- folders page
@@ -586,6 +590,70 @@ async function loadRelated(id, getTags) {
   }));
 }
 
+
+// ---------------------------------------------------------------- tags page
+let TAGSEL = null, CATSEL;
+function dropTarget(el, kind, id) {
+  el.ondragover = (e) => { if (!DRAG) return; e.preventDefault(); el.classList.add("drop"); };
+  el.ondragleave = () => el.classList.remove("drop");
+  el.ondrop = (e) => { e.preventDefault(); el.classList.remove("drop"); dropOn(kind, id); };
+}
+function renderTags() {
+  const all = M.tags.slice().sort((a, b) => (b.count || 0) - (a.count || 0) || a.name.localeCompare(b.name));
+  if (TAGSEL && !byId(M.tags, TAGSEL)) TAGSEL = null;
+  F = TAGSEL ? { kind: "tag", id: TAGSEL } : { kind: "all", id: null };
+  renderMain();
+  const max = Math.max(1, ...all.map((t) => t.count || 0)), t = TAGSEL && byId(M.tags, TAGSEL);
+  const cloud = `<div class="tcloud">${all.map((x) => {
+    const sz = 12.5 + Math.round(((x.count || 0) / max) * 5), kind = x.inbox ? "inbox" : x.system ? "sorter" : x.parent ? "in " + tagName(x.parent) : "";
+    return `<button class="tchip${x.id === TAGSEL ? " on" : ""}" data-tag="${x.id}" style="font-size:${sz}px;--c:${esc(x.color || "#64748b")}" title="${esc(kind)}"><i></i>${esc(x.name)}<span>${x.count || 0}</span></button>`; }).join("")}
+    <button class="tchip add" id="tagNew">+ New tag</button></div>
+    ${t ? `<div class="tagbar"><b><i style="background:${esc(t.color || "#64748b")}"></i>${esc(t.name)}</b><span class="thint">${t.inbox ? "inbox tag · " : ""}${t.system ? "used by Doc Sorter · " : ""}drag documents onto a tag to add it</span>
+      <span class="acts"><button id="tgRen">✎ Rename</button><label class="btn">🎨<input type="color" id="tgCol" value="${esc(t.color || "#64748b")}" style="width:0;height:0;opacity:0;padding:0;border:0;min-height:0"></label><button id="tgMerge">⇢ Merge into…</button><button id="tgDel">🗑</button><button id="tgAll">Show all</button></span></div>` : `<p class="thint" style="margin:6px 2px 0">Click a tag to see its documents · drag documents onto a tag to add it.</p>`}`;
+  const bar = $("#main .bar"); bar.querySelector("h2").textContent = t ? "Tags › " + t.name : "Tags";
+  bar.insertAdjacentHTML("afterend", cloud);
+  $$(".tchip[data-tag]").forEach((b) => { b.onclick = () => { TAGSEL = TAGSEL === +b.dataset.tag ? null : +b.dataset.tag; renderTags(); }; dropTarget(b, "tag", +b.dataset.tag); });
+  $("#tagNew").onclick = async () => { const n = prompt("New tag"); if (!n || !n.trim()) return; try { const r = await api("/_lib/api/create/tag", { name: n.trim() }); TAGSEL = r.id; await reloadDocs(); } catch (e) { toast(e.message, 5000); } };
+  if (t) {
+    $("#tgRen").onclick = () => { const n = prompt("New name", t.name); if (n && n.trim() && n.trim() !== t.name) folderOp(t.id, "edit", { name: n.trim() }, "Renamed"); };
+    $("#tgCol").onchange = (e) => folderOp(t.id, "edit", { color: e.target.value }, "Colour changed");
+    $("#tgMerge").onclick = (e) => pickMenu(e.target, "tag", async (into) => { if (into !== t.id && confirm(`Move all documents of “${t.name}” to “${tagName(into)}” and remove “${t.name}”?`)) { await folderOp(t.id, "merge", { into }, "Merged"); TAGSEL = into; render(); } });
+    $("#tgDel").onclick = async () => { if (confirm(`Delete the tag “${t.name}”? The documents stay.`)) { await folderOp(t.id, "delete", {}, "Tag deleted"); TAGSEL = null; render(); } };
+    $("#tgAll").onclick = () => { TAGSEL = null; renderTags(); };
+  }
+}
+
+// ---------------------------------------------------------------- category page (document types)
+function catTile(id, name, docs, extraCls = "") {
+  const one = docs.filter((d) => d.amount && !d.amount.p && d.amount.k !== "refund"), t = DS.iso(DS.today());
+  const nd = docs.filter((d) => d.due && d.due.d >= t).sort((a, b) => a.due.d.localeCompare(b.due.d))[0];
+  return `<div class="tile ctile${extraCls}${CATSEL === id ? " on" : ""}" data-cat="${id}">
+    <div class="stack">${docs.length ? docs.slice(0, 3).map((d) => `<img loading="lazy" src="/_lib/thumb/${d.id}" alt="">`).join("") : `<div class="ph">🏷</div>`}</div>
+    <div class="nm"><span>${esc(name)}</span><span style="margin-left:auto;color:var(--mut);font-weight:500">${docs.length}</span></div>
+    <div class="sub">${one.length ? DS.amtHtml({ v: one.reduce((a, d) => a + d.amount.v, 0), c: "EUR" }) + " " : ""}${nd ? DS.dueHtml(nd.due) : "&nbsp;"}</div></div>`;
+}
+function renderCats() {
+  if (CATSEL !== undefined && CATSEL !== null && CATSEL !== 0 && !byId(M.types, CATSEL)) CATSEL = undefined;
+  F = CATSEL === 0 ? { kind: "unsorted", id: null } : CATSEL ? { kind: "type", id: CATSEL } : { kind: "all", id: null };
+  renderMain();
+  const types = M.types.slice().map((t) => ({ t, docs: DOCS.filter((d) => d.document_type === t.id) })).sort((a, b) => b.docs.length - a.docs.length || a.t.name.localeCompare(b.t.name));
+  const none = DOCS.filter((d) => !d.document_type);
+  const html = `<div class="tiles ctiles">${types.map((x) => catTile(x.t.id, x.t.name, x.docs)).join("")}${catTile(0, "Without category", none, " cnone")}<div class="tile newt" id="catNew">+ New category</div></div>
+    <p class="thint" style="margin:0 2px 8px">Drag documents onto a category to set it · click a category to see its documents${CATSEL !== undefined ? ` · <a href="#" id="catAll">show all</a>` : ""}</p>`;
+  const bar = $("#main .bar"), cur = CATSEL === 0 ? "Without category" : CATSEL ? (byId(M.types, CATSEL) || {}).name : "";
+  bar.querySelector("h2").textContent = cur ? "Category › " + cur : "Category";
+  bar.insertAdjacentHTML("afterend", html);
+  $$(".ctile").forEach((el) => {
+    const id = +el.dataset.cat;
+    el.onclick = () => { CATSEL = CATSEL === id ? undefined : id; renderCats(); };
+    el.ondragover = (e) => { if (!DRAG) return; e.preventDefault(); el.classList.add("drop"); };
+    el.ondragleave = () => el.classList.remove("drop");
+    el.ondrop = (e) => { e.preventDefault(); el.classList.remove("drop"); dropOn("type", id || null); };
+  });
+  $("#catNew").onclick = async () => { const n = prompt("New category (document type), e.g. Vertrag"); if (!n || !n.trim()) return; try { const r = await api("/_lib/api/create/type", { name: n.trim() }); CATSEL = r.id; await reloadDocs(); } catch (e) { toast(e.message, 5000); } };
+  if ($("#catAll")) $("#catAll").onclick = (e) => { e.preventDefault(); CATSEL = undefined; renderCats(); };
+}
+
 // ---------------------------------------------------------------- selection
 function toggleSel(id, range) {
   if (range && lastClick !== null) {
@@ -619,7 +687,7 @@ async function dropOn(kind, id, ids) {
   try {
     await api("/_lib/api/bulk", body);
     const name = kind === "tag" ? tagName(id) : (byId(kind === "type" ? M.types : M.corrs, id) || {}).name;
-    toast(`${ids.length} document${ids.length > 1 ? "s" : ""} → ${name}`);
+    toast(`${ids.length} document${ids.length > 1 ? "s" : ""} → ${name || "no category"}`);
     SEL.clear(); await reloadDocs();
   } catch (e) { toast(e.message, 5000); }
 }
@@ -750,11 +818,12 @@ async function openDoc(id) {
 }
 function closeDoc() { OPEN = null; $("#drawer").classList.remove("open"); }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { if ($("#drawer").classList.contains("open")) closeDoc(); else { SEL.clear(); refreshSel(); $$(".tmulti").forEach((x) => x.classList.remove("tmulti")); } } });
-let qT; $("#search").oninput = (e) => { clearTimeout(qT); qT = setTimeout(() => { Q = e.target.value.trim(); if (VIEW === "tree") window.renderTree(); else if (VIEW === "fold") renderFolders(); else renderMain(); refreshSel(); }, 150); };
+let qT; $("#search").oninput = (e) => { clearTimeout(qT); qT = setTimeout(() => { Q = e.target.value.trim(); render(); }, 150); };
 loadAll();
 </script>
 <script src="/library/tree.js"></script>
 <script src="/library/docview.js"></script>
+<script src="/library/graph.js"></script>
 <script>
 $("#newBtn").onclick = () => window.DocView.openNew();
 if (DOCS.length && VIEW === "tree") render();

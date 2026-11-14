@@ -426,8 +426,10 @@
   }
 
   // ================================================================ right pane
+  let PANE_KEY = null;
   async function paintPane(n) {
     const pane = $("#tpane"); if (!pane) return;
+    PANE_KEY = n && n.type !== "group" ? n.key : null;
     if (!n || n.type === "group") return overview(pane);
     if (n.type === "folder") {
       const t = byId(M.tags, n.id), ds = docsIn(n.id);
@@ -439,7 +441,7 @@
       $$("[data-open]", pane).forEach((im) => (im.onclick = () => openDoc(+im.dataset.open)));
       let L = [];
       try { L = (await api(`/_lib/api/folder/${n.id}/candidates`)).docs; } catch (e) { /* ignore */ }
-      if (!TREE || TREE.sel !== n.key) return;
+      if (PANE_KEY !== n.key) return;
       const inside = descIds(n.id);
       L = L.map((x) => docById(x.id) && Object.assign({}, docById(x.id), { score: x.score })).filter((d) => d && !(d.tags || []).some((t) => inside.has(t))).slice(0, 8);
       $("#pCand").innerHTML = L.length ? L.map((d) => `<div class="rel" draggable="true" data-rel="${d.id}"><img src="/_lib/thumb/${d.id}" data-open="${d.id}" alt=""><div class="tt"><b>${esc(d.title)}</b><small>${fmt(d.created)} · ${Math.round(d.score * 100)}% similar</small></div><button data-addto="${d.id}">+ Add</button></div>`).join("") : `<p class="thint">Nothing similar outside this folder.</p>`;
@@ -463,7 +465,7 @@
     $$("[data-open]", pane).forEach((el) => (el.onclick = () => openDoc(+el.dataset.open)));
     let G = [];
     try { G = (await api("/_lib/api/cases")).groups; } catch (e) { /* ignore */ }
-    if (!$("#pCases") || (TREE && TREE.sel && TREE.nodes.get(TREE.sel) && TREE.nodes.get(TREE.sel).type !== "group")) return;
+    if (!$("#pCases") || PANE_KEY) return;
     let hide; try { hide = new Set(JSON.parse(localStorage.getItem("docsorter.hidecase") || "[]")); } catch (e) { hide = new Set(); }
     G = G.filter((g) => !hide.has(g.ids.join(",")));
     $("#pCases").innerHTML = G.length ? G.map((g, i) => `<div class="cprop"><div class="minis">${g.ids.map((id) => `<img src="/_lib/thumb/${id}" data-g="${i}" data-x="${id}" title="${esc((docById(id) || {}).title || "")} – click to leave out, double-click to open">`).join("")}</div>
@@ -480,5 +482,5 @@
 
   window.renderTree = () => { if (!$("#tlist")) TREE = null; renderTree(); };
   window.treeUndo = undo;
-  Object.assign(window.DS, { run, connect, moveTo, saveFact, classOf, components, docById, SNIP });
+  Object.assign(window.DS, { run, connect, moveTo, saveFact, classOf, components, docById, SNIP, nest, paintPane, takeOut });
 })();
