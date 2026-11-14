@@ -9,6 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+import facts as FX
 import server as S
 
 AI_FILE = os.path.join(S.DATA, "ai_results.json")
@@ -50,20 +51,198 @@ def meta():
                   for t in all_pages("/api/document_types/?page_size=500")],
         "corrs": [{"id": t["id"], "name": t["name"], "count": t.get("document_count", 0)}
                   for t in all_pages("/api/correspondents/?page_size=500")],
+        "paths": [{"id": t["id"], "name": t["name"]} for t in safe_pages("/api/storage_paths/?page_size=500")],
+        "fields": [{"id": f["id"], "name": f["name"], "type": f.get("data_type"), "extra": f.get("extra_data") or {}}
+                   for f in safe_pages("/api/custom_fields/?page_size=500")],
+        "fact_fields": find_fact_fields(),
         "paperless": S.load_cfg().get("public_url", ""),
     }
+
+
+def safe_pages(path):
+    try:
+        return all_pages(path)
+    except Exception:
+        return []
 
 
 def docs():
     rows = all_pages("/api/documents/?page_size=250&ordering=-created"
                      "&fields=id,title,created,added,tags,document_type,correspondent,page_count,original_file_name,custom_fields")
     lf = find_link_field()
+    ff = find_fact_fields()
     for r in rows:
         r["created"] = (r.get("created") or "")[:10]
         r["added"] = (r.get("added") or "")[:10]
         cfs = r.pop("custom_fields", None) or []
         r["links"] = next(([int(x) for x in (cf.get("value") or [])] for cf in cfs if lf and cf.get("field") == lf), [])
+        cfm = {cf.get("field"): cf.get("value") for cf in cfs}
+        amt = money(cfm.get(ff.get("amount")))
+        due = cfm.get(ff.get("due"))
+        sug = FACTS.get(str(r["id"])) or {}
+        if amt:
+            r["amount"] = amt
+        elif sug.get("a"):
+            r["amount"] = dict(sug["a"], s=1)
+        if due:
+            r["due"] = {"d": str(due)[:10]}
+        elif sug.get("d"):
+            r["due"] = dict(sug["d"], s=1)
     return rows
+
+
+def money(v):
+    """Paperless monetary value ('EUR123.45' or 123.45) -> {"v": 123.45, "c": "EUR"}"""
+    if v in (None, ""):
+        return None
+    m = re.fullmatch(r"([A-Z]{3})?(-?\d+(?:\.\d+)?)", str(v))
+    if not m:
+        return None
+    return {"v": float(m.group(2)), "c": m.group(1) or "EUR"}
+
+
+AMOUNT_FIELD, DUE_FIELD = "Betrag", "Frist"
+FF = {"v": {}, "t": 0}
+
+
+def find_fact_fields(fresh=False):
+    if not fresh and FF["v"] and time.time() - FF["t"] < 600:
+        return FF["v"]
+    out = {}
+    for f in safe_pages("/api/custom_fields/?page_size=500"):
+        if f["name"] == AMOUNT_FIELD and f.get("data_type") == "monetary":
+            out["amount"] = f["id"]
+        if f["name"] == DUE_FIELD and f.get("data_type") == "date":
+            out["due"] = f["id"]
+    FF.update(v=out, t=time.time())
+    return out
+
+
+def fact_field(kind):
+    ff = find_fact_fields(fresh=True)
+    if ff.get(kind):
+        return ff[kind]
+    name, typ = (AMOUNT_FIELD, "monetary") if kind == "amount" else (DUE_FIELD, "date")
+    fid = psend("/api/custom_fields/", {"name": name, "data_type": typ, "extra_data": {"default_currency": "EUR"} if typ == "monetary" else {}})["id"]
+    FF["v"][kind] = fid
+    return fid
+
+
+def set_fields(did, values):
+    """values: {field_id: value or None (= remove)} – keeps all other custom fields of the document."""
+    d = pget(f"/api/documents/{int(did)}/?fields=id,custom_fields")
+    cfs = {cf["field"]: cf.get("value") for cf in (d.get("custom_fields") or [])}
+    for fid, v in values.items():
+        if v is None:
+            cfs.pop(fid, None)
+        else:
+            cfs[fid] = v
+    psend(f"/api/documents/{int(did)}/", {"custom_fields": [{"field": k, "value": v} for k, v in cfs.items()]}, "PATCH")
+
+
+def save_facts(did, body):
+    vals = {}
+    if "amount" in body:
+        a = body["amount"]
+        vals[fact_field("amount")] = None if not a else "%s%.2f" % ((a.get("c") or "EUR").upper()[:3], float(a["v"]))
+    if "due" in body:
+        vals[fact_field("due")] = body["due"] or None
+    if vals:
+        set_fields(did, vals)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- facts: background scan of all documents
+
+FACTS_FILE = os.path.join(S.DATA, "facts.json")
+FACTS = {}
+FACTS_STATE = {"running": False, "done": 0, "total": 0, "last": 0}
+
+
+def load_facts():
+    global FACTS
+    try:
+        with open(FACTS_FILE) as f:
+            FACTS = json.load(f)
+    except (OSError, ValueError):
+        FACTS = {}
+
+
+def save_facts_cache():
+    try:
+        with open(FACTS_FILE + ".tmp", "w") as f:
+            json.dump(FACTS, f)
+        os.replace(FACTS_FILE + ".tmp", FACTS_FILE)
+    except OSError:
+        pass
+
+
+def slim(r):
+    a, d = r.get("amount"), r.get("deadline")
+    return {"a": {"v": a["v"], "c": a["c"], "p": a.get("p"), "k": a.get("kind")} if a else None,
+            "d": {"d": d["d"], "k": d["kind"]} if d else None}
+
+
+def scan_facts():
+    if FACTS_STATE["running"] or not token():
+        return
+    FACTS_STATE["running"] = True
+    try:
+        rows = all_pages("/api/documents/?page_size=250&fields=id,modified")
+        todo = [r["id"] for r in rows if (FACTS.get(str(r["id"])) or {}).get("m") != r.get("modified")]
+        FACTS_STATE.update(total=len(todo), done=0)
+        mods = {r["id"]: r.get("modified") for r in rows}
+        for i in range(0, len(todo), 40):
+            part = todo[i:i + 40]
+            for d in all_pages(f"/api/documents/?page_size=40&id__in={','.join(map(str, part))}&fields=id,content,created"):
+                r = FX.extract(d.get("content") or "", (d.get("created") or "")[:10])
+                FACTS[str(d["id"])] = dict(slim(r), m=mods.get(d["id"]))
+            FACTS_STATE["done"] = min(len(todo), i + 40)
+        live = {str(r["id"]) for r in rows}
+        for k in list(FACTS):
+            if k not in live:
+                FACTS.pop(k)
+        save_facts_cache()
+        FACTS_STATE["last"] = time.time()
+    finally:
+        FACTS_STATE["running"] = False
+
+
+def facts_loop():
+    time.sleep(15)
+    while True:
+        try:
+            scan_facts()
+        except Exception as e:
+            print("facts scan:", e, flush=True)
+        time.sleep(600)
+
+
+# ---------------------------------------------------------------- full document (like the Paperless detail page)
+
+def full_doc(did):
+    did = int(did)
+    d = pget(f"/api/documents/{did}/?full_perms=true")
+    try:
+        md = pget(f"/api/documents/{did}/metadata/")
+    except Exception:
+        md = None
+    r = FX.extract(d.get("content") or "", (d.get("created") or d.get("created_date") or "")[:10])
+    FACTS[str(did)] = dict(slim(r), m=d.get("modified"))
+    with AI_LOCK:
+        ai = AI["results"].get(str(did))
+        err = AI["errors"].get(str(did))
+    return {"doc": d, "meta": md, "facts": r, "fact_fields": find_fact_fields(), "ai": ai, "ai_error": err,
+            "link_field": find_link_field()}
+
+
+def notes(did, body=None, delete=None):
+    if delete:
+        S.http_json(S.PAPERLESS + f"/api/documents/{int(did)}/notes/?id={int(delete)}", None,
+                    {"Authorization": "Token " + token()}, "DELETE")
+    elif body and (body.get("note") or "").strip():
+        psend(f"/api/documents/{int(did)}/notes/", {"note": body["note"].strip()})
+    return pget(f"/api/documents/{int(did)}/notes/")
 
 
 LF = {"id": None, "t": 0}
@@ -123,7 +302,7 @@ def create(kind, body):
 
 def update_doc(did, body):
     data = {}
-    for k in ("title", "document_type", "correspondent", "tags", "created"):
+    for k in ("title", "document_type", "correspondent", "tags", "created", "storage_path", "archive_serial_number", "custom_fields"):
         if k in body:
             data[k] = body[k]
     r = psend(f"/api/documents/{int(did)}/", data, "PATCH")
@@ -208,7 +387,10 @@ Answer with JSON only:
  "folders": ["0 to 3 existing folders that fit, written exactly as listed"],
  "new_folder": "only if no existing folder fits: one short new folder name, else empty",
  "correspondent": "sender or company/authority the document is from (existing name if it matches)",
- "date": "YYYY-MM-DD date the document was issued, not today's date"}}
+ "date": "YYYY-MM-DD date the document was issued, not today's date",
+ "amount": "the main amount of money the document is about (total to pay, refund, monthly price) as a number like 123.45, or null",
+ "deadline": "YYYY-MM-DD of the most important deadline (payment due, objection, contract end, appointment), or null",
+ "deadline_reason": "a few words what the deadline is for, or empty"}}
 
 <document>
 {content}
@@ -245,6 +427,13 @@ Answer with JSON only:
     res["folders"] = folders
     dt = str(out.get("date") or "")
     res["date"] = dt if re.fullmatch(r"(19|20)\d\d-[01]\d-[0-3]\d", dt) else None
+    try:
+        av = float(str(out.get("amount")).replace(",", ".")) if out.get("amount") not in (None, "", "null") else None
+    except ValueError:
+        av = None
+    res["amount"] = {"v": round(av, 2), "c": "EUR"} if av else None
+    dl = str(out.get("deadline") or "")
+    res["due"] = {"d": dl, "why": (out.get("deadline_reason") or "")[:60]} if re.fullmatch(r"(19|20)\d\d-[01]\d-[0-3]\d", dl) else None
     return res
 
 
@@ -322,6 +511,13 @@ def apply_ai(did, body):
         data["created"] = res["date"]
     if data:
         psend(f"/api/documents/{int(did)}/", data, "PATCH")
+    fx = {}
+    if "amount" in pick and res.get("amount"):
+        fx["amount"] = res["amount"]
+    if "due" in pick and res.get("due"):
+        fx["due"] = res["due"]["d"]
+    if fx:
+        save_facts(did, fx)
     with AI_LOCK:
         AI["results"].pop(str(did), None)
         save_ai()
@@ -535,7 +731,7 @@ def link(a, b, on=True):
 
 # ---------------------------------------------------------------- HTTP
 
-def stream_file(h, path, ctype_default):
+def stream_file(h, path, ctype_default, attach=False):
     import http.client
     u = urllib.parse.urlsplit(S.PAPERLESS)
     conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=120)
@@ -547,7 +743,8 @@ def stream_file(h, path, ctype_default):
     if r.getheader("Content-Length"):
         h.send_header("Content-Length", r.getheader("Content-Length"))
     if r.getheader("Content-Disposition"):
-        h.send_header("Content-Disposition", r.getheader("Content-Disposition").replace("attachment", "inline"))
+        cd = r.getheader("Content-Disposition")
+        h.send_header("Content-Disposition", cd if attach else cd.replace("attachment", "inline"))
     h.send_header("Cache-Control", "private, max-age=86400")
     h.end_headers()
     while True:
@@ -562,11 +759,12 @@ def handle(h, path):
     q = urllib.parse.parse_qs(urllib.parse.urlsplit(h.path).query)
     if not token():
         return h.send(409, {"error": "Doc Sorter is not connected to Paperless yet – open the setup."})
-    m = re.fullmatch(r"/_lib/(thumb|preview)/(\d+)", path)
+    m = re.fullmatch(r"/_lib/(thumb|preview|download)/(\d+)", path)
     if m:
         kind, did = m.groups()
-        return stream_file(h, f"/api/documents/{did}/{'thumb' if kind == 'thumb' else 'preview'}/",
-                           "image/webp" if kind == "thumb" else "application/pdf")
+        if kind == "download":
+            return stream_file(h, f"/api/documents/{did}/download/?original=true", "application/octet-stream", attach=True)
+        return stream_file(h, f"/api/documents/{did}/{kind}/", "image/webp" if kind == "thumb" else "application/pdf")
     body = json.loads(h.body() or b"{}") if h.command in ("POST", "PATCH") else {}
     try:
         if path == "/_lib/api/meta":
@@ -602,6 +800,24 @@ def handle(h, path):
         m = re.fullmatch(r"/_lib/api/create/(tag|type|corr)", path)
         if m:
             return h.send(200, create(m.group(1), body))
+        m = re.fullmatch(r"/_lib/api/doc/(\d+)/(full|facts|notes|notes/delete|fields)", path)
+        if m:
+            did, op = m.group(1), m.group(2)
+            if op == "full":
+                return h.send(200, full_doc(did))
+            if op == "facts":
+                return h.send(200, save_facts(did, body))
+            if op == "fields":
+                set_fields(did, {int(k): v for k, v in (body.get("values") or {}).items()})
+                return h.send(200, {"ok": True})
+            if op == "notes/delete":
+                return h.send(200, notes(did, delete=body.get("id")))
+            return h.send(200, notes(did, body if h.command == "POST" else None))
+        if path == "/_lib/api/facts/scan":
+            threading.Thread(target=scan_facts, daemon=True).start()
+            return h.send(200, FACTS_STATE)
+        if path == "/_lib/api/facts/state":
+            return h.send(200, FACTS_STATE)
         m = re.fullmatch(r"/_lib/api/doc/(\d+)", path)
         if m and h.command == "PATCH":
             return h.send(200, update_doc(m.group(1), body))
@@ -643,5 +859,7 @@ def auto_scan():
 
 
 load_ai()
+load_facts()
 threading.Thread(target=ai_worker, daemon=True).start()
+threading.Thread(target=facts_loop, daemon=True).start()
 threading.Thread(target=auto_scan, daemon=True).start()
