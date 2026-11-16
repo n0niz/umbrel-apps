@@ -1,5 +1,6 @@
 """Library view: timeline of all Paperless documents, folders (tags), document types and
 one-request AI recognition with Ollama."""
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
@@ -30,33 +31,129 @@ def psend(path, data, method="POST"):
     return S.http_json(S.PAPERLESS + path, data, {"Authorization": "Token " + token()}, method, timeout=60)
 
 
+POOL = ThreadPoolExecutor(max_workers=6)
+
+
 def all_pages(path):
-    out, url = [], S.PAPERLESS + path
-    while url:
-        d = S.http_json(url, None, {"Authorization": "Token " + token()}, timeout=60)
+    """All pages of a list endpoint. After the first page the rest are loaded in parallel."""
+    auth = {"Authorization": "Token " + token()}
+    first = S.http_json(S.PAPERLESS + path, None, auth, timeout=60)
+    out = list(first.get("results", []))
+    if not first.get("next"):
+        return out
+    per = max(len(out), 1)
+    pages = -(-int(first.get("count") or 0) // per)
+    if pages <= 1:  # count missing: fall back to following "next"
+        url = first.get("next")
+        while url:
+            d = S.http_json(S.PAPERLESS + "/api/" + url.split("/api/", 1)[1], None, auth, timeout=60)
+            out += d.get("results", [])
+            url = d.get("next")
+        return out
+    sep = "&" if "?" in path else "?"
+    urls = [f"{S.PAPERLESS}{path}{sep}page={n}" for n in range(2, pages + 1)]
+    for d in POOL.map(lambda u: S.http_json(u, None, auth, timeout=60), urls):
         out += d.get("results", [])
-        nxt = d.get("next")
-        url = (S.PAPERLESS + "/api/" + nxt.split("/api/", 1)[1]) if nxt else None
-    return out
+    seen, uniq = set(), []
+    for r in out:  # a document added meanwhile can shift pages – drop duplicates
+        if r.get("id") not in seen:
+            seen.add(r.get("id"))
+            uniq.append(r)
+    return uniq
 
 
-def meta():
-    tags = all_pages("/api/tags/?page_size=500")
+META = {"v": None, "t": 0}
+
+
+def meta(fresh=False):
+    """Tags, types, senders, paths, fields – fetched in parallel and kept for 60 s
+    (any change made through Doc Sorter clears it)."""
+    if not fresh and META["v"] and time.time() - META["t"] < 60:
+        return META["v"]
+    f_tags = POOL.submit(all_pages, "/api/tags/?page_size=500")
+    f_types = POOL.submit(all_pages, "/api/document_types/?page_size=500")
+    f_corrs = POOL.submit(all_pages, "/api/correspondents/?page_size=500")
+    f_paths = POOL.submit(safe_pages, "/api/storage_paths/?page_size=500")
+    f_fields = POOL.submit(safe_pages, "/api/custom_fields/?page_size=500")
     hidden = {n.lower() for n in S.TAGS.values()}
-    return {
+    v = {
         "tags": [{"id": t["id"], "name": t["name"], "parent": t.get("parent"), "color": t.get("color"),
                   "count": t.get("document_count", 0), "system": t["name"].lower() in hidden,
-                  "inbox": bool(t.get("is_inbox_tag"))} for t in tags],
-        "types": [{"id": t["id"], "name": t["name"], "count": t.get("document_count", 0)}
-                  for t in all_pages("/api/document_types/?page_size=500")],
-        "corrs": [{"id": t["id"], "name": t["name"], "count": t.get("document_count", 0)}
-                  for t in all_pages("/api/correspondents/?page_size=500")],
-        "paths": [{"id": t["id"], "name": t["name"]} for t in safe_pages("/api/storage_paths/?page_size=500")],
+                  "inbox": bool(t.get("is_inbox_tag"))} for t in f_tags.result()],
+        "types": [{"id": t["id"], "name": t["name"], "count": t.get("document_count", 0)} for t in f_types.result()],
+        "corrs": [{"id": t["id"], "name": t["name"], "count": t.get("document_count", 0)} for t in f_corrs.result()],
+        "paths": [{"id": t["id"], "name": t["name"]} for t in f_paths.result()],
         "fields": [{"id": f["id"], "name": f["name"], "type": f.get("data_type"), "extra": f.get("extra_data") or {}}
-                   for f in safe_pages("/api/custom_fields/?page_size=500")],
+                   for f in f_fields.result()],
         "fact_fields": find_fact_fields(),
         "paperless": S.load_cfg().get("public_url", ""),
     }
+    META.update(v=v, t=time.time())
+    return v
+
+
+# ---------------------------------------------------------------- document cache
+# The full list is loaded once; afterwards only what changed is fetched again:
+# documents touched through Doc Sorter (marked dirty), documents edited elsewhere
+# (modified__gt) and new or deleted ones (count check). Full reload every 5 minutes, because
+# bulk edits made in Paperless itself do not change "modified".
+DOC_FIELDS_LIST = "id,title,created,added,modified,tags,document_type,correspondent,page_count,original_file_name,custom_fields"
+DOCC = {"rows": {}, "full": 0, "chk": 0, "mod": "", "dirty": set(), "lock": threading.Lock()}
+
+
+def _doc_query(extra=""):
+    return all_pages(f"/api/documents/?page_size=250&ordering=-created&fields={DOC_FIELDS_LIST}{extra}")
+
+
+def _note_mod(rows):
+    for r in rows:
+        if (r.get("modified") or "") > DOCC["mod"]:
+            DOCC["mod"] = r.get("modified") or ""
+
+
+def mark_dirty(ids=None, full=False):
+    with DOCC["lock"]:
+        if full:
+            DOCC["full"] = 0
+        DOCC["dirty"].update(int(i) for i in (ids or []) if str(i).isdigit())
+    META["t"] = 0 if full else META["t"]
+
+
+def doc_rows():
+    with DOCC["lock"]:
+        now = time.time()
+        if not DOCC["rows"] or now - DOCC["full"] > 300:
+            rows = _doc_query()
+            DOCC.update(rows={r["id"]: r for r in rows}, full=now, chk=now, mod="")
+            DOCC["dirty"].clear()
+            _note_mod(rows)
+        else:
+            if DOCC["dirty"]:
+                ids = sorted(DOCC["dirty"])
+                DOCC["dirty"].clear()
+                for i in range(0, len(ids), 100):
+                    part = ids[i:i + 100]
+                    got = _doc_query("&id__in=" + ",".join(map(str, part)))
+                    for r in got:
+                        DOCC["rows"][r["id"]] = r
+                    for gone in set(part) - {r["id"] for r in got}:
+                        DOCC["rows"].pop(gone, None)
+            if now - DOCC["chk"] > 15:
+                DOCC["chk"] = now
+                try:
+                    n = int(pget("/api/documents/?page_size=1&fields=id").get("count") or 0)
+                    if n != len(DOCC["rows"]):
+                        rows = _doc_query()
+                        DOCC.update(rows={r["id"]: r for r in rows}, full=now)
+                        _note_mod(rows)
+                    elif DOCC["mod"]:
+                        got = _doc_query("&modified__gt=" + urllib.parse.quote(DOCC["mod"]))
+                        for r in got:
+                            DOCC["rows"][r["id"]] = r
+                        _note_mod(got)
+                except Exception:
+                    pass
+        return sorted((dict(r) for r in DOCC["rows"].values()), key=lambda r: (r.get("created") or "", r["id"]), reverse=True)
 
 
 def safe_pages(path):
@@ -67,13 +164,13 @@ def safe_pages(path):
 
 
 def docs():
-    rows = all_pages("/api/documents/?page_size=250&ordering=-created"
-                     "&fields=id,title,created,added,tags,document_type,correspondent,page_count,original_file_name,custom_fields")
+    rows = doc_rows()
     lf = find_link_field()
     ff = find_fact_fields()
     for r in rows:
         r["created"] = (r.get("created") or "")[:10]
         r["added"] = (r.get("added") or "")[:10]
+        r.pop("modified", None)
         cfs = r.pop("custom_fields", None) or []
         r["links"] = next(([int(x) for x in (cf.get("value") or [])] for cf in cfs if lf and cf.get("field") == lf), [])
         cfm = {cf.get("field"): cf.get("value") for cf in cfs}
@@ -222,9 +319,10 @@ def facts_loop():
 
 def full_doc(did):
     did = int(did)
+    f_md = POOL.submit(pget, f"/api/documents/{did}/metadata/")
     d = pget(f"/api/documents/{did}/?full_perms=true")
     try:
-        md = pget(f"/api/documents/{did}/metadata/")
+        md = f_md.result(timeout=30)
     except Exception:
         md = None
     r = FX.extract(d.get("content") or "", (d.get("created") or d.get("created_date") or "")[:10])
@@ -755,6 +853,48 @@ def stream_file(h, path, ctype_default, attach=False):
     conn.close()
 
 
+READ_ONLY = ("/_lib/api/meta", "/_lib/api/docs", "/_lib/api/suggest_folders", "/_lib/api/proposals", "/_lib/api/facts/state", "/_lib/api/ai")
+
+
+def touch(path, body, method):
+    """Before a change: remember which documents it affects, so the next list only refetches those."""
+    if method not in ("POST", "PATCH") or path in READ_ONLY or path.endswith("/candidates"):
+        return
+    ids = list(body.get("ids") or [])
+    for k in ("a", "b"):
+        if k in body:
+            ids.append(body[k])
+    m = re.search(r"/_lib/api/(?:doc|ai/apply)/(\d+)", path)
+    if m:
+        ids.append(m.group(1))
+    # document links set through fields reflect onto the linked documents
+    vals = list((body.get("values") or {}).values()) + [cf.get("value") for cf in (body.get("custom_fields") or []) if isinstance(cf, dict)]
+    for v in vals:
+        if isinstance(v, list):
+            ids += [x for x in v if isinstance(x, int)]
+    if "/folder/" in path or "/create/" in path:
+        META["t"] = 0
+    if re.search(r"/folder/\d+/(delete|merge)", path):
+        return mark_dirty(full=True)
+    if path in ("/_lib/api/cases", "/_lib/api/link") or (m and path.endswith(("/fields", "/facts"))) or "custom_fields" in body:
+        mark_dirty(ids)
+        return mark_dirty_links(ids)
+    mark_dirty(ids)
+
+
+def mark_dirty_links(ids):
+    """Linking reflects onto the other documents – mark those too."""
+    rows = DOCC["rows"]
+    lf = LF.get("id")
+    more = set()
+    for i in ids:
+        r = rows.get(int(i)) if str(i).isdigit() else None
+        for cf in (r or {}).get("custom_fields") or []:
+            if lf and cf.get("field") == lf:
+                more.update(cf.get("value") or [])
+    mark_dirty(more)
+
+
 def handle(h, path):
     q = urllib.parse.parse_qs(urllib.parse.urlsplit(h.path).query)
     if not token():
@@ -767,14 +907,16 @@ def handle(h, path):
         return stream_file(h, f"/api/documents/{did}/{kind}/", "image/webp" if kind == "thumb" else "application/pdf")
     body = json.loads(h.body() or b"{}") if h.command in ("POST", "PATCH") else {}
     try:
+        touch(path, body, h.command)
         if path == "/_lib/api/meta":
             return h.send(200, meta())
         if path == "/_lib/api/docs":
             return h.send(200, {"docs": docs()})
         m = re.fullmatch(r"/_lib/api/related/(\d+)", path)
         if m:
-            d = pget(f"/api/documents/{m.group(1)}/?fields=id")
-            return h.send(200, {"related": related(d["id"], 10), "links": links_of(d["id"])})
+            did = int(m.group(1))
+            f_links = POOL.submit(links_of, did)
+            return h.send(200, {"related": related(did, 10), "links": f_links.result(timeout=60)})
         if path == "/_lib/api/suggest_folders":
             return h.send(200, suggest_folders([int(i) for i in body.get("ids", [])]))
         m = re.fullmatch(r"/_lib/api/folder/(\d+)/(candidates|edit|delete|merge)", path)
@@ -858,8 +1000,22 @@ def auto_scan():
         time.sleep(270)
 
 
+def cache_loop():
+    """Keep the document list warm, so opening Doc Sorter never waits for the full Paperless list."""
+    time.sleep(3)
+    while True:
+        try:
+            if token():
+                doc_rows()
+                meta()
+        except Exception:
+            pass
+        time.sleep(45)
+
+
 load_ai()
 load_facts()
+threading.Thread(target=cache_loop, daemon=True).start()
 threading.Thread(target=ai_worker, daemon=True).start()
 threading.Thread(target=facts_loop, daemon=True).start()
 threading.Thread(target=auto_scan, daemon=True).start()

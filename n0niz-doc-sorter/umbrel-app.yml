@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.10.0"
+version: "1.11.0"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,12 +25,12 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Calmer start: Doc Sorter now opens on Spaces with a short overview (deadlines
-  in the next two weeks, documents to sort, new this week – each one click away).
-  Only three main tabs (Spaces, Timeline, Tree); Folders, Tags, Category and the
-  review queue moved under "More". The filter sidebar is hidden until you click
-  ☰, and an active filter shows as a chip you can remove. Less text in Spaces
-  and the timeline.
+  Faster: the document list is kept in a cache and only changed documents are
+  fetched again, so switching views and every move, connect or save no longer
+  reloads all documents from Paperless. Pages load in parallel, documents open
+  faster (prepared while you hover), and long grids draw in steps. Fix: Esc
+  closes the document view again, and the "More" menu no longer disappears
+  after using a picker.
 dependencies:
   - paperless
   - ollama

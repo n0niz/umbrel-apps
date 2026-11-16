@@ -560,7 +560,7 @@ body.extdrag, body.extdrag * { cursor:grabbing !important; -webkit-user-select:n
 body.noside .app { grid-template-columns:1fr; }
 body.noside aside { display:none; }
 #sideBtn.on { background:rgb(255 255 255 / .14); }
-.moremenu { position:fixed; z-index:40; width:200px; display:flex; flex-direction:column; gap:2px; padding:6px; background-color:rgb(16 20 27 / .92); }
+.moremenu { position:fixed; z-index:40; width:200px; display:flex; flex-direction:column; gap:2px; padding:6px; border-radius:20px; background-color:rgb(16 20 27 / .92) !important; box-shadow:var(--shine), var(--material-shadow); animation:pop .22s var(--ease-out) both; transform-origin:top left; }
 .moremenu[hidden] { display:none; }
 .moremenu button, .moremenu a { text-align:left; padding:9px 12px; border-radius:14px; border:0; background:none; color:var(--tx); font:500 13px/1.2 "Inter", sans-serif; text-decoration:none; cursor:pointer; }
 .moremenu button:hover, .moremenu a:hover, .moremenu button.on { background:rgb(255 255 255 / .09); }

@@ -221,7 +221,7 @@
     <h1>Doc Sorter <span>✦</span></h1>
     <button class="hbtn ib" id="sideBtn" title="Filters: types, folders, senders" aria-pressed="false">☰</button>
     <div class="tabs"><button id="tSpaces">Spaces</button><button id="tTime">Timeline</button><button id="tTree">Tree</button><button id="tMore" aria-haspopup="menu" aria-expanded="false">More ▾</button></div>
-    <div class="menu moremenu" id="moreMenu" role="menu" hidden><button id="tFold" role="menuitem">📁 Folders</button><button id="tTags" role="menuitem">🏷 Tags</button><button id="tCats" role="menuitem">🗂 Category</button><hr><a href="/" role="menuitem">Review queue ↗</a></div>
+    <div class="glass moremenu" id="moreMenu" role="menu" hidden><button id="tFold" role="menuitem">📁 Folders</button><button id="tTags" role="menuitem">🏷 Tags</button><button id="tCats" role="menuitem">🗂 Category</button><hr><a href="/" role="menuitem">Review queue ↗</a></div>
     <input id="search" placeholder="Search">
     <button class="hbtn" id="aipill" title="AI recognition running"></button>
     <button class="hbtn" id="newBtn" title="Step through newly added documents" hidden>📥 New</button>
@@ -360,13 +360,14 @@ function card(d) {
     <div class="cap"><div class="t">${esc(d.title || d.original_file_name || "#" + d.id)}</div>
     <div class="m"><span>${esc(date)}</span>${ty ? `<span class="ty">· ${esc(ty.name)}</span>` : ""}</div></div>${quick}</div>`;
 }
-let ORDER = [];
+let ORDER = [], GRID_N = 300;
 function renderMain() {
   const L = filtered();
   ORDER = L.map((d) => d.id);
   const groups = new Map();
   L.forEach((d) => { const k = (d.created || "0000-00").slice(0, 7); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); });
   const keys = [...groups.keys()].sort().reverse();
+  let budget = GRID_N;
   let h = `<div class="bar"><h2>${esc(title())}</h2><span class="cnt">${L.length} document${L.length === 1 ? "" : "s"}</span>`;
   if (F.kind === "unsorted" && L.length) h += `<button class="btn ai" id="aiAll" style="margin-left:auto">✨ Recognize all ${L.length}</button>`;
   if (F.kind === "ai" && Object.keys(AI.results).length) h += `<button class="btn ai" id="applyAll" style="margin-left:auto">✓ Apply all ${L.filter((d) => AI.results[d.id]).length} suggestions</button><button class="btn sec" id="dropAll">Discard all</button>`;
@@ -374,17 +375,21 @@ function renderMain() {
   if (!L.length) h += `<div class="empty">${F.kind === "ai" ? "No AI suggestions yet. Select documents and click ✨ Recognize." : "Nothing here."}</div>`;
   const years = [];
   for (const k of keys) {
+    if (budget <= 0) break;
     const [y, m] = k.split("-");
     if (!years.includes(y)) years.push(y);
     const ids = groups.get(k).map((d) => d.id), all = ids.every((i) => SEL.has(i));
     h += `<div class="month" id="m-${k}"><input type="checkbox" data-month="${k}" ${all ? "checked" : ""} title="Select month"><h3>${y === "0000" ? "No date" : MONTHS[+m - 1] + " " + y}</h3><span class="cnt">${ids.length}</span></div>`;
-    h += `<div class="grid">${groups.get(k).map(card).join("")}</div>`;
+    h += `<div class="grid">${groups.get(k).slice(0, Math.max(budget, 0)).map(card).join("")}</div>`;
+    budget -= groups.get(k).length;
   }
+  if (budget < 0) h += `<p style="text-align:center;margin:24px 0"><button class="btn sec" id="gridMore">Show more · ${L.length - GRID_N} left</button></p>`;
   $("#main").innerHTML = h;
   $("#years").innerHTML = years.length > 1 ? years.map((y) => `<a href="#" data-y="${y}">${y === "0000" ? "–" : y}</a>`).join("") : "";
   $$("#years a").forEach((a) => (a.onclick = (e) => { e.preventDefault(); const el = $$(".month").find((m) => m.id.startsWith("m-" + a.dataset.y)); if (el) el.scrollIntoView({ behavior: "smooth" }); }));
   $$("[data-month]").forEach((cb) => (cb.onchange = () => { groups.get(cb.dataset.month).forEach((d) => (cb.checked ? SEL.add(d.id) : SEL.delete(d.id))); refreshSel(); }));
   bindCards($("#main"));
+  if ($("#gridMore")) $("#gridMore").onclick = () => { GRID_N += 300; renderMain(); };
   if ($("#aiAll")) $("#aiAll").onclick = () => recognize(L.map((d) => d.id));
   if ($("#applyAll")) $("#applyAll").onclick = () => applyMany(L.filter((d) => AI.results[d.id]).map((d) => d.id));
   if ($("#dropAll")) $("#dropAll").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: L.map((d) => d.id) }); render(); };
@@ -419,6 +424,7 @@ function segThumb() {
 }
 addEventListener("resize", () => segThumb());
 function render() {
+  if (LASTVIEW !== VIEW) GRID_N = 300;
   renderSide();
   const tmode = (() => { try { return localStorage.getItem("docsorter.treemode") || "graph"; } catch (e) { return "graph"; } })();
   if (VIEW === "tree") (tmode === "list" || !window.renderGraph ? window.renderTree : window.renderGraph)();
@@ -458,7 +464,9 @@ $("#tCats").onclick = () => { VIEW = "cats"; render(); };
 // ---------------------------------------------------------------- folders page
 const isFolder = (tid) => { const t = byId(M.tags, tid); return t && !t.system && !t.inbox; };
 const folders = () => M.tags.filter((t) => !t.system && !t.inbox);
-function descIds(tid) { const out = new Set([tid]); let g = true; while (g) { g = false; M.tags.forEach((t) => { if (t.parent && out.has(t.parent) && !out.has(t.id)) { out.add(t.id); g = true; } }); } return out; }
+let DIDX = null, DIDXOF = null;
+function descIds(tid) { if (DIDXOF !== M.tags) { DIDX = new Map(); DIDXOF = M.tags; } if (DIDX.has(tid)) return DIDX.get(tid); const r = descIdsRaw(tid); DIDX.set(tid, r); return r; }
+function descIdsRaw(tid) { const out = new Set([tid]); let g = true; while (g) { g = false; M.tags.forEach((t) => { if (t.parent && out.has(t.parent) && !out.has(t.id)) { out.add(t.id); g = true; } }); } return out; }
 const docsIn = (tid) => { const ids = descIds(tid); return DOCS.filter((d) => (d.tags || []).some((t) => ids.has(t))); };
 const unfiled = () => DOCS.filter((d) => !(d.tags || []).some(isFolder));
 

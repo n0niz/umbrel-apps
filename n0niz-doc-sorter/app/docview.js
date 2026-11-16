@@ -64,7 +64,8 @@
     $$(".dvtabs button", el).forEach((b) => (b.onclick = () => tab(b.dataset.t)));
     document.body.classList.add("dvopen");
     try {
-      ST.data = await api(`/_lib/api/doc/${id}/full`);
+      prefetch(id);
+      ST.data = await getFull(id);
     } catch (e) { $("#dvPanel").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
     if (!ST || ST.id !== id) return;
     $("#dvTitle").value = ST.data.doc.title || "";
@@ -205,7 +206,7 @@
       await api(`/_lib/api/doc/${id}`, body, "PATCH");
       toast("✓ Saved");
       ST.dirty = false; ST.form = null;
-      ST.data = await api(`/_lib/api/doc/${id}/full`);
+      ST.data = await getFull(id, true);
       $("#dvDiscard").disabled = true;
       tab("details"); await reloadDocs(); refreshSide();
     } catch (e) { toast(e.message, 7000); $("#dvSave").disabled = false; }
@@ -234,7 +235,7 @@
     let data = o.full && ST && ST.id === id ? ST.data : null;
     if (!data) {
       box.innerHTML = `<p class="thint">Loading…</p>`;
-      try { data = await api(`/_lib/api/doc/${id}/full`); } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+      try { data = await getFull(id); } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
       if (!box.isConnected) return;
     }
     const D = data.doc, fx = data.facts || {}, ff = data.fact_fields || {}, ai = AI.results[id] || data.ai, aiErr = AI.errors[id];
@@ -289,7 +290,7 @@
     $$("[data-open]", box).forEach((el) => (el.onclick = () => open(+el.dataset.open)));
     if (q("#xAI")) q("#xAI").onclick = async () => { await recognize([id]); refreshSide(box, id, c.o); };
     if (q("#xApplyAI")) q("#xApplyAI").onclick = async () => {
-      try { await api(`/_lib/api/ai/apply/${id}`, { suggestion: c.ai, fields: $$("[data-f]:checked", box).map((x) => x.dataset.f) }); delete AI.results[id]; toast("✓ AI suggestion applied"); await reloadDocs(); if (ST && ST.id === id) { ST.form = null; ST.data = await api(`/_lib/api/doc/${id}/full`); $("#dvTitle").value = ST.data.doc.title; tab("details"); } refreshSide(box, id, c.o); } catch (e) { toast(e.message, 6000); }
+      try { await api(`/_lib/api/ai/apply/${id}`, { suggestion: c.ai, fields: $$("[data-f]:checked", box).map((x) => x.dataset.f) }); delete AI.results[id]; toast("✓ AI suggestion applied"); await reloadDocs(); if (ST && ST.id === id) { ST.form = null; ST.data = await getFull(id, true); $("#dvTitle").value = ST.data.doc.title; tab("details"); } refreshSide(box, id, c.o); } catch (e) { toast(e.message, 6000); }
     };
     if (q("#xDropAI")) q("#xDropAI").onclick = async () => { AI = await api("/_lib/api/ai/clear", { ids: [id] }); refreshSide(box, id, c.o); };
     $$('input[name="amt"]', box).forEach((r) => (r.onchange = () => { const a = r.value === "ai" ? c.ai.amount : c.fx.amounts[+r.value]; q("#xAmt").value = Math.abs(a.v).toFixed(2); q("#xCur").value = a.c || "EUR"; }));
@@ -306,7 +307,7 @@
     q("#xIcs").onclick = () => ics(c.D, q("#xDue").value, ($('input[name="due"]:checked', box) || {}).value, c);
   }
   async function afterFact(box, id, c) {
-    if (ST && ST.id === id) { ST.data = await api(`/_lib/api/doc/${id}/full`); ST.form = null; if ($(".dvtabs .on") && $(".dvtabs .on").dataset.t === "details" && !ST.dirty) tab("details"); }
+    if (ST && ST.id === id) { ST.data = await getFull(id, true); ST.form = null; if ($(".dvtabs .on") && $(".dvtabs .on").dataset.t === "details" && !ST.dirty) tab("details"); }
     refreshSide(box, id, c.o);
   }
   function ics(D, date, pick, c) {
@@ -328,6 +329,29 @@
 
   // ---------------------------------------------------------------- connections tree
   const REL = {};
+  // ---------------------------------------------------------------- prefetch (hover = data is already there on click)
+  const PF = new Map();
+  function getFull(id, fresh) {
+    const c = PF.get(id);
+    if (!fresh && c && Date.now() - c.t < 30000) return c.p;
+    const pr = api(`/_lib/api/doc/${id}/full`);
+    PF.set(id, { p: pr, t: Date.now() });
+    pr.catch(() => PF.delete(id));
+    return pr;
+  }
+  function prefetch(id) {
+    if (!id) return;
+    getFull(id);
+    if (!REL[id] && !REL["p" + id]) REL["p" + id] = api(`/_lib/api/related/${id}`).then((r) => (REL[id] = r.related)).catch(() => { delete REL["p" + id]; });
+  }
+  let hovT = null;
+  document.addEventListener("mouseover", (e) => {
+    const el = e.target.closest && e.target.closest(".sprow[data-id], .lndot[data-id], .card[data-id], .dprow[data-id], .gn[data-k^='d:']");
+    clearTimeout(hovT);
+    if (!el) return;
+    const id = +(el.dataset.id || (el.dataset.k || "").split(":").pop());
+    hovT = setTimeout(() => prefetch(id), 90);
+  });
   async function conn(el, id, D) {
     if (!el) return;
     const comp = DS.components().get(id), me = docById(id) || { id, title: D.title, tags: D.tags || [], links: [] };
@@ -387,7 +411,7 @@
     T.render(build());
     suggestedFolder(el, id, me, T);
     if (!rel) {
-      try { rel = REL[id] = (await api(`/_lib/api/related/${id}`)).related; } catch (e) { rel = REL[id] = []; }
+      try { rel = REL[id] = REL["p" + id] ? (await REL["p" + id], REL[id] || []) : (await api(`/_lib/api/related/${id}`)).related; } catch (e) { rel = REL[id] = []; }
       if (!el.isConnected) return;
       T.render(build());
       suggestedFolder(el, id, me, T);

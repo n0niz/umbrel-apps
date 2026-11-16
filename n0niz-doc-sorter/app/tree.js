@@ -163,7 +163,8 @@
   const saveOpen = () => { try { localStorage.setItem(OPENK, JSON.stringify([...OPEN])); } catch (e) { /* ignore */ } };
   let TREE = null, UNDO = [], CLS = {};
   const SNIP = {};
-  const docById = (id) => DOCS.find((d) => d.id === id);
+  let IDX = null, IDXOF = null;
+  const docById = (id) => { if (IDXOF !== DOCS) { IDX = new Map(DOCS.map((d) => [d.id, d])); IDXOF = DOCS; } return IDX.get(id); };
   const typeName = (id) => (byId(M.types, id) || {}).name || "";
   const corrName = (id) => (byId(M.corrs, id) || {}).name || "";
 
