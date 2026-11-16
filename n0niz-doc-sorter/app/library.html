@@ -219,7 +219,7 @@
 <div class="app">
   <header>
     <h1>Doc Sorter <span>✦</span></h1>
-    <div class="tabs"><button id="tTree">Tree</button><button id="tTime">Timeline</button><button id="tFold">Folders</button><button id="tTags">Tags</button><button id="tCats">Category</button></div>
+    <div class="tabs"><button id="tSpaces">Spaces</button><button id="tTree">Tree</button><button id="tTime">Timeline</button><button id="tFold">Folders</button><button id="tTags">Tags</button><button id="tCats">Category</button></div>
     <input id="search" placeholder="Search title, sender, type, folder…">
     <button class="hbtn" id="aipill" title="AI recognition running"></button>
     <button class="hbtn" id="newBtn" title="Step through newly added documents">📥 New</button>
@@ -421,14 +421,17 @@ function render() {
   renderSide();
   const tmode = (() => { try { return localStorage.getItem("docsorter.treemode") || "graph"; } catch (e) { return "graph"; } })();
   if (VIEW === "tree") (tmode === "list" || !window.renderGraph ? window.renderTree : window.renderGraph)();
-  else if (VIEW === "fold") renderFolders(); else if (VIEW === "tags") renderTags(); else if (VIEW === "cats") renderCats(); else renderMain();
+  else if (VIEW === "spaces" && window.renderSpaces) window.renderSpaces();
+  else if (VIEW === "fold") renderFolders(); else if (VIEW === "tags") renderTags(); else if (VIEW === "cats") renderCats();
+  else if (window.renderLanes) window.renderLanes(); else renderMain();
   refreshSel(); refreshAI();
-  ["tTree", "tTime", "tFold", "tTags", "tCats"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["tree", "time", "fold", "tags", "cats"][i]));
+  ["tSpaces", "tTree", "tTime", "tFold", "tTags", "tCats"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["spaces", "tree", "time", "fold", "tags", "cats"][i]));
   document.body.classList.toggle("treeview", VIEW === "tree");
   segThumb();
   if (LASTVIEW !== VIEW) { const m = $("#main"); m.classList.remove("vin"); void m.offsetWidth; m.classList.add("vin"); LASTVIEW = VIEW; }
   try { localStorage.setItem("docsorter.view", VIEW); } catch (e) { /* ignore */ }
 }
+$("#tSpaces").onclick = () => { VIEW = "spaces"; render(); };
 $("#tTree").onclick = () => { VIEW = "tree"; render(); };
 $("#tTime").onclick = () => { VIEW = "time"; render(); };
 $("#tFold").onclick = () => { VIEW = "fold"; if (F.kind !== "tag") F = { kind: "all", id: null }; render(); };
@@ -824,9 +827,11 @@ loadAll();
 <script src="/library/tree.js"></script>
 <script src="/library/docview.js"></script>
 <script src="/library/graph.js"></script>
+<script src="/library/spaces.js"></script>
+<script src="/library/lanes.js"></script>
 <script>
 $("#newBtn").onclick = () => window.DocView.openNew();
-if (DOCS.length && VIEW === "tree") render();
+if (DOCS.length && ["tree", "spaces", "time"].includes(VIEW)) render();
 </script>
 </body>
 </html>
