@@ -145,15 +145,15 @@
 
     $("#main").innerHTML = `<div class="bar"><h2>Timeline</h2><span class="cnt">${total} lane${total === 1 ? "" : "s"} · ${docs.length} documents${missing ? ` · <span class="lnmiss">${missing} expected document${missing > 1 ? "s" : ""} missing</span>` : ""}</span>
         <div class="lntools">${seg("lnMode", { lanes: "Lanes", grid: "Grid" }, "lanes")}${seg("lnGroup", GROUPS, L.group)}${seg("lnZoom", ZOOM, L.zoom)}
-        <button class="hbtn lnpred${L.pred ? " on" : ""}" id="lnPred" aria-pressed="${L.pred}" title="Show documents that usually arrive at a regular rhythm">◌ Expected</button></div></div>
-      <div class="lnlegend"><span><i class="lg lg-bar"></i>contract running</span><span><i class="lg lg-mk"></i>deadline</span><span><i class="lg lg-exp"></i>expected</span><span><i class="lg lg-miss"></i>expected, not arrived</span><span><i class="lg lg-big"></i>bigger dot = has an amount</span><span class="mut">dot colour = document type · drag a dot onto another lane to ${L.group === "corr" ? "change its sender" : L.group === "case" ? "connect it" : "move it"}</span></div>
+        <button class="hbtn ib lnpred${L.pred ? " on" : ""}" id="lnPred" aria-pressed="${L.pred}" title="Expected documents (regular rhythm) – on/off">◌</button></div></div>
+      <div class="lnlegend"><span><i class="lg lg-bar"></i>contract running</span><span><i class="lg lg-mk"></i>deadline</span><span><i class="lg lg-exp"></i>expected</span><span><i class="lg lg-miss"></i>expected, not arrived</span><span><i class="lg lg-big"></i>with amount</span><span class="lnhelp" title="Dot colour = document type · click a dot for details, double-click to open · drag a dot onto another lane to ${L.group === "corr" ? "change its sender" : L.group === "case" ? "connect it" : "move it"}">ⓘ</span></div>
       ${total ? `<div class="lnwrap"><div class="lngrid">
         <div class="ln lnaxis"><div class="lnl"><small>${esc(DS.fmt(isoOf(a)).slice(3))} – ${esc(DS.fmt(isoOf(b)).slice(3))}</small></div><div class="lnt">${tk.filter((t) => t.label && X(t.v) < 95).map((t) => `<span class="lntk${t.major ? " major" : ""}" style="left:${X(t.v)}%">${esc(t.label)}</span>`).join("")}<span class="lntoday" style="left:${tX}%">Today</span></div></div>
         <div class="lnov" aria-hidden="true">${tk.map((t) => `<i class="${t.major ? "major" : t.minor ? "minor" : ""}" style="left:${X(t.v)}%"></i>`).join("")}<b style="left:${tX}%"></b></div>
         ${shown.map(laneHtml).join("")}</div>
         ${total > 25 ? `<button class="btn sec lnall" id="lnAll">${L.all ? "Show fewer lanes" : `Show all ${total} lanes`}</button>` : ""}</div>`
         : `<div class="empty">${L.group === "case" ? "No case files yet – connect documents (drag one onto another in the Tree) and they show up here as lanes." : "Nothing in this time range."}</div>`}
-      <div id="lnSel">${selDoc ? selHtml(selDoc, lanes) : `<p class="thint" style="margin:14px 4px">Click a dot to see the document here · double-click opens it.</p>`}</div>`;
+      <div id="lnSel">${selDoc ? selHtml(selDoc, lanes) : ""}</div>`;
     $("#years").innerHTML = "";
     bind(lanes);
   }

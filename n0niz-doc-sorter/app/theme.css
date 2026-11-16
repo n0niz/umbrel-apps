@@ -555,3 +555,30 @@ body.extdrag, body.extdrag * { cursor:grabbing !important; -webkit-user-select:n
 .lnj { background:none; border:0; padding:0; color:var(--tx); font:inherit; text-align:left; cursor:pointer; }
 .lnj:hover { color:hsl(var(--brand-lighter)); }
 @media (prefers-reduced-motion: reduce) { .spbody, .sptile, .lndot i { transition:none; } .lnexp.miss { animation:none; } }
+
+/* ================================================================ calmer shell (1.10) */
+body.noside .app { grid-template-columns:1fr; }
+body.noside aside { display:none; }
+#sideBtn.on { background:rgb(255 255 255 / .14); }
+.moremenu { position:fixed; z-index:40; width:200px; display:flex; flex-direction:column; gap:2px; padding:6px; background-color:rgb(16 20 27 / .92); }
+.moremenu[hidden] { display:none; }
+.moremenu button, .moremenu a { text-align:left; padding:9px 12px; border-radius:14px; border:0; background:none; color:var(--tx); font:500 13px/1.2 "Inter", sans-serif; text-decoration:none; cursor:pointer; }
+.moremenu button:hover, .moremenu a:hover, .moremenu button.on { background:rgb(255 255 255 / .09); }
+.moremenu hr { border:0; border-top:.5px solid rgb(255 255 255 / .1); margin:4px 6px; }
+.fchip { margin-left:12px; cursor:pointer; color:var(--tx); }
+.welcome { display:flex; flex-wrap:wrap; gap:8px; margin:18px 0 4px; }
+.wchip { height:36px; padding:0 14px; border-radius:999px; border:.5px solid rgb(255 255 255 / .1); background:rgb(255 255 255 / .06); color:var(--tx); font:500 13px/1 "Inter", sans-serif;
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer; box-shadow:var(--btn-hl); transition:background .2s, transform .2s var(--ease-out); }
+.wchip:hover { background:rgb(255 255 255 / .1); transform:translateY(-1px); }
+.wchip.due { color:#fcd34d; background:rgb(251 191 36 / .1); border-color:rgb(251 191 36 / .25); }
+.wchip.calm { cursor:default; color:rgb(167 243 208 / .9); } .wchip.calm:hover { transform:none; background:rgb(255 255 255 / .06); }
+.sptile { min-height:112px; }
+.spacts { gap:16px; }
+.spacts .lnk { background:none; border:0; padding:0; color:var(--mut); font:500 12.5px/1 "Inter", sans-serif; cursor:pointer; box-shadow:none; height:auto; }
+.spacts .lnk:hover { color:var(--tx); }
+.sptoggle { margin:22px 0 4px; display:flex; align-items:center; gap:8px; background:none; border:0; padding:4px 2px; color:var(--tx); font:600 15px/1.2 "Inter", sans-serif; cursor:pointer; }
+.sptoggle small { color:var(--mut); font-weight:400; font-size:13px; }
+.sptoggle .chev { color:var(--mut); transition:transform .3s var(--ease-out); }
+.sptoggle.open .chev { transform:rotate(90deg); }
+.spdrop { text-align:center; padding:12px; }
+.lnhelp { color:var(--mut); cursor:help; font-size:13px; }

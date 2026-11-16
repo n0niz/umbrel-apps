@@ -219,12 +219,13 @@
 <div class="app">
   <header>
     <h1>Doc Sorter <span>✦</span></h1>
-    <div class="tabs"><button id="tSpaces">Spaces</button><button id="tTree">Tree</button><button id="tTime">Timeline</button><button id="tFold">Folders</button><button id="tTags">Tags</button><button id="tCats">Category</button></div>
-    <input id="search" placeholder="Search title, sender, type, folder…">
+    <button class="hbtn ib" id="sideBtn" title="Filters: types, folders, senders" aria-pressed="false">☰</button>
+    <div class="tabs"><button id="tSpaces">Spaces</button><button id="tTime">Timeline</button><button id="tTree">Tree</button><button id="tMore" aria-haspopup="menu" aria-expanded="false">More ▾</button></div>
+    <div class="menu moremenu" id="moreMenu" role="menu" hidden><button id="tFold" role="menuitem">📁 Folders</button><button id="tTags" role="menuitem">🏷 Tags</button><button id="tCats" role="menuitem">🗂 Category</button><hr><a href="/" role="menuitem">Review queue ↗</a></div>
+    <input id="search" placeholder="Search">
     <button class="hbtn" id="aipill" title="AI recognition running"></button>
-    <button class="hbtn" id="newBtn" title="Step through newly added documents">📥 New</button>
-    <a class="hbtn" href="/" title="Review queue of the sorting engine">Review queue</a>
-    <a class="hbtn" href="/_setup">⚙</a>
+    <button class="hbtn" id="newBtn" title="Step through newly added documents" hidden>📥 New</button>
+    <a class="hbtn ib" href="/_setup" title="Settings">⚙</a>
   </header>
   <aside id="side"></aside>
   <main id="main"><div class="empty">Loading your documents…</div></main>
@@ -240,7 +241,7 @@ const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 let M = { tags: [], types: [], corrs: [] }, DOCS = [], AI = { queue: [], results: {}, errors: {}, busy: null };
-let DRAGF = null, UNF_N = 60, VIEW = (() => { try { return localStorage.getItem("docsorter.view") || "tree"; } catch (e) { return "tree"; } })(), FS = {}, PROPS = null, HIDEPROP = new Set(), OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
+let DRAGF = null, UNF_N = 60, VIEW = (() => { try { if (!localStorage.getItem("docsorter.v110")) { localStorage.setItem("docsorter.v110", "1"); return "spaces"; } return localStorage.getItem("docsorter.view") || "spaces"; } catch (e) { return "spaces"; } })(), FS = {}, PROPS = null, HIDEPROP = new Set(), OPEN = null, F = { kind: "all", id: null }, Q = "", SEL = new Set(), lastClick = null, showAllCorr = false, DRAG = null;
 const byId = (arr, id) => arr.find((x) => x.id === id);
 const tagName = (id) => (byId(M.tags, id) || {}).name || "?";
 
@@ -426,12 +427,27 @@ function render() {
   else if (window.renderLanes) window.renderLanes(); else renderMain();
   refreshSel(); refreshAI();
   ["tSpaces", "tTree", "tTime", "tFold", "tTags", "tCats"].forEach((id, i) => $("#" + id).classList.toggle("on", VIEW === ["spaces", "tree", "time", "fold", "tags", "cats"][i]));
+  const more = { fold: "Folders", tags: "Tags", cats: "Category" }[VIEW];
+  $("#tMore").classList.toggle("on", !!more); $("#tMore").textContent = (more || "More") + " ▾";
+  const since = window.DS && window.DS.iso ? window.DS.iso(new Date(window.DS.today() - 14 * 864e5)) : "", nNew = since ? DOCS.filter((d) => (d.added || "") >= since).length : 0;
+  $("#newBtn").hidden = !nNew; $("#newBtn").textContent = `📥 ${nNew} new`;
+  if (F.kind !== "all" && document.body.classList.contains("noside") && VIEW !== "tree") {
+    const bar = $("#main .bar");
+    if (bar && !$(".fchip", bar)) { bar.insertAdjacentHTML("beforeend", `<button class="chip fchip" title="Remove filter">${esc(title() || "")} ✕</button>`); $(".fchip", bar).onclick = () => { F = { kind: "all", id: null }; render(); }; }
+  }
   document.body.classList.toggle("treeview", VIEW === "tree");
   segThumb();
   if (LASTVIEW !== VIEW) { const m = $("#main"); m.classList.remove("vin"); void m.offsetWidth; m.classList.add("vin"); LASTVIEW = VIEW; }
   try { localStorage.setItem("docsorter.view", VIEW); } catch (e) { /* ignore */ }
 }
 $("#tSpaces").onclick = () => { VIEW = "spaces"; render(); };
+const sideOn = (on) => { document.body.classList.toggle("noside", !on); $("#sideBtn").setAttribute("aria-pressed", on); $("#sideBtn").classList.toggle("on", on); try { localStorage.setItem("docsorter.side", on ? "1" : "0"); } catch (e) { /* ignore */ } };
+sideOn((() => { try { return localStorage.getItem("docsorter.side") === "1"; } catch (e) { return false; } })());
+$("#sideBtn").onclick = () => { sideOn(document.body.classList.contains("noside")); segThumb(); };
+const moreMenu = (open) => { $("#moreMenu").hidden = !open; $("#tMore").setAttribute("aria-expanded", open); if (open) { const r = $("#tMore").getBoundingClientRect(); Object.assign($("#moreMenu").style, { left: r.left + "px", top: r.bottom + 8 + "px" }); } };
+$("#tMore").onclick = (e) => { e.stopPropagation(); moreMenu($("#moreMenu").hidden); };
+document.addEventListener("click", (e) => { if (!e.target.closest("#moreMenu")) moreMenu(false); });
+$$("#moreMenu button").forEach((b) => b.addEventListener("click", () => moreMenu(false)));
 $("#tTree").onclick = () => { VIEW = "tree"; render(); };
 $("#tTime").onclick = () => { VIEW = "time"; render(); };
 $("#tFold").onclick = () => { VIEW = "fold"; if (F.kind !== "tag") F = { kind: "all", id: null }; render(); };

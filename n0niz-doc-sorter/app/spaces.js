@@ -14,7 +14,7 @@
   try { OPENC = new Set(JSON.parse(store("docsorter.spaces.open") || "[]")); } catch (e) { OPENC = new Set(); }
   const saveOpen = () => store("docsorter.spaces.open", JSON.stringify([...OPENC]));
   let SP = (() => { const v = store("docsorter.space"); return v === "u" ? "u" : v ? +v : null; })();
-  let LOOSE_ALL = false, SUG_ALL = false, FSN = -1;
+  let LOOSE_ALL = false, SUG_ALL = false, FSN = -1, LOOSE_OPEN = store("docsorter.spaces.loose") === "1";
 
   const parentFolder = (t) => t.parent && isFolder(t.parent) ? byId(M.tags, t.parent) : null;
   const spaceList = () => folders().filter((t) => !parentFolder(t));
@@ -75,20 +75,21 @@
     const mix = mixOf(S.docs), tot = mix.reduce((a, s) => a + s.w, 0) || 1;
     const chips = S.unsorted ? [`${S.docs.length} to sort`] : S.cases.slice(0, 2).map((c) => c.docs[0].title).concat(S.cases.length > 2 ? ["+" + (S.cases.length - 2)] : []);
     const nx = S.next ? `<span class="spnext due">⏰ ${esc(short(S.next.due.d))} · ${esc(DS.rel(S.next.due.d))}</span>`
-      : `<span class="spnext">${S.unsorted ? (S.docs.length ? "✨ suggestions below" : "all sorted 🎉") : "no open deadlines"}</span>`;
+      : S.unsorted && !S.docs.length ? `<span class="spnext">all sorted 🎉</span>`
+      : S.docs.length ? `<span class="spnext">latest ${esc(short(S.docs.reduce((m, d) => (d.created || "") > m ? d.created : m, "")))}</span>` : "";
     return `<button class="sptile${on ? " on" : ""}${S.unsorted ? " spun" : ""}" data-sp="${S.id}" aria-pressed="${on}" title="${S.unsorted ? "Documents that are in no folder yet" : "Drop documents here to move them into " + esc(S.name)}">
       <span class="sph"><i class="dot" style="background:${esc(S.color)}"></i><b>${esc(S.name)}</b><span class="n">${S.docs.length}</span></span>
       <span class="spmix" aria-hidden="true">${mix.map((s) => `<i style="flex:${s.w / tot};background:${s.c}" title="${esc(s.t)}"></i>`).join("")}</span>
-      <span class="spchips">${chips.length ? chips.map((c) => `<span>${esc(c)}</span>`).join("") : `<span class="mut0">${S.unsorted ? "" : "no case files yet"}</span>`}</span>
+      ${chips.length ? `<span class="spchips">${chips.map((c) => `<span>${esc(c)}</span>`).join("")}</span>` : ""}
       ${nx}</button>`;
   }
-  function rowHtml(d, from, i, n, sug) {
+  function rowHtml(d, from, i, n, sug, lite) {
     const ty = typeName(d.document_type), co = corrName(d.correspondent);
     return `<li class="sprow" data-id="${d.id}" data-from="${from || ""}" draggable="true" title="Click: open · drag: onto a space or a case file">
       <span class="node${i === 0 ? " first" : ""}${i === n - 1 ? " last" : ""}" aria-hidden="true"><i style="background:${typeColor(d.document_type)}"></i></span>
       <span class="dt">${esc(short(d.created))}</span>
       <span class="tt"><b>${esc(d.title || d.original_file_name || "#" + d.id)}</b>${ty ? `<span class="ty">${esc(ty)}</span>` : ""}${co ? `<small>${esc(co)}</small>` : ""}</span>
-      <span class="fx">${d.due ? DS.dueHtml(d.due) : ""}${d.amount ? DS.amtHtml(d.amount) : ""}${sug ? `<span class="spput" title="Similar documents are there">📁 ${esc(sug.name)} <button data-put="${d.id}" data-tid="${sug.id}">✓</button></span>` : ""}</span></li>`;
+      <span class="fx">${!lite && d.due ? DS.dueHtml(d.due) : ""}${!lite && d.amount ? DS.amtHtml(d.amount) : ""}${sug ? `<span class="spput" title="Similar documents are there">📁 ${esc(sug.name)} <button data-put="${d.id}" data-tid="${sug.id}">✓</button></span>` : ""}</span></li>`;
   }
   function caseHtml(c, S) {
     const first = c.docs[0], last = c.docs[c.docs.length - 1], key = String(c.root), open = OPENC.has(key) || !!Q;
@@ -107,20 +108,20 @@
   function paneHtml(S, un) {
     if (!S) return `<div class="empty">No spaces yet.<br><br>Spaces are your top-level folders – e.g. Wohnen, Auto, Arbeit, Steuern.<br>Create one on the left, then drag documents onto it.</div>`;
     const from = typeof S.id === "number" ? S.id : "";
-    const sug = sugFor(S, un), sugShow = SUG_ALL ? sug : sug.slice(0, 4);
+    const sug = sugFor(S, un), sugShow = SUG_ALL ? sug : sug.slice(0, 3);
     const loose = LOOSE_ALL ? S.loose : S.loose.slice(0, 12);
     let h = `<div class="sphead"><div class="spname"><h2><i class="dot" style="background:${esc(S.color)}"></i>${esc(S.name)}</h2>
       ${S.subs && S.subs.length ? `<div class="spsubs">${S.subs.map((t) => `<button class="chip" data-sub="${t.id}" title="Open folder">📁 ${esc(t.name)} <span class="mut">${docsIn(t.id).length}</span></button>`).join("")}</div>` : ""}
       ${S.unsorted ? `<p class="mut">Documents that are in no folder yet. 📁 = folder of the most similar documents.</p>` : ""}</div>
-      <dl class="spstats"><div><dt>Documents</dt><dd>${S.docs.length}</dd></div><div><dt>Case files</dt><dd>${S.cases.length}</dd></div>
-      <div><dt>Open amount</dt><dd>${S.open != null ? esc(DS.money({ v: S.open, c: "EUR" })) : "—"}</dd></div>
-      <div><dt>Next deadline</dt><dd class="${S.next ? "due" : ""}">${S.next ? esc(short(S.next.due.d)) : "—"}</dd></div></dl>
-      ${!S.unsorted ? `<div class="spacts"><button class="btn sec" id="spSub">+ Sub-folder</button><button class="btn sec" id="spFolder">Folder settings</button></div>` : ""}</div>`;
+      <dl class="spstats"><div><dt>Documents</dt><dd>${S.docs.length}</dd></div>${S.cases.length ? `<div><dt>Case files</dt><dd>${S.cases.length}</dd></div>` : ""}
+      ${S.open != null ? `<div><dt>Open amount</dt><dd>${esc(DS.money({ v: S.open, c: "EUR" }))}</dd></div>` : ""}
+      ${S.next ? `<div><dt>Next deadline</dt><dd class="due" title="${esc(S.next.title)}">${esc(short(S.next.due.d))}</dd></div>` : ""}</dl>
+      ${!S.unsorted ? `<div class="spacts"><button class="lnk" id="spSub">+ Sub-folder</button><button class="lnk" id="spFolder">Folder settings</button></div>` : ""}</div>`;
     if (sug.length) {
       h += `<div class="spsug"><div class="spsugh"><span>✨ <b>${sug.length} document${sug.length > 1 ? "s" : ""}</b> not in a folder probably belong${sug.length > 1 ? "" : "s"} here</span>
         <button class="btn" id="spSugAll">Add ${sug.length > 1 ? "all " + sug.length : "it"}</button></div>
-        <ol class="spthread">${sugShow.map((d, i) => rowHtml(d, "", i, sugShow.length).replace(`<span class="fx">`, `<span class="fx"><span class="spput">${Math.round(FS[d.id].score * 100)} % <button data-put="${d.id}" data-tid="${FS[d.id].id}" title="Put into ${esc(FS[d.id].name)}">✓ ${esc(FS[d.id].name)}</button></span>`)).join("")}</ol>
-        ${sug.length > 4 ? `<button class="lnk" id="spSugMore">${SUG_ALL ? "show less" : "show all " + sug.length}</button>` : ""}</div>`;
+        <ol class="spthread">${sugShow.map((d, i) => rowHtml(d, "", i, sugShow.length, null, true).replace(`<span class="fx">`, `<span class="fx"><span class="spput">${Math.round(FS[d.id].score * 100)} % <button data-put="${d.id}" data-tid="${FS[d.id].id}" title="Put into ${esc(FS[d.id].name)}">✓ ${esc(FS[d.id].name)}</button></span>`)).join("")}</ol>
+        ${sug.length > 3 ? `<button class="lnk" id="spSugMore">${SUG_ALL ? "show less" : "show all " + sug.length}</button>` : ""}</div>`;
     }
     if (S.unsorted) {
       const rows = (LOOSE_ALL ? S.docs : S.docs.slice(0, 40)).slice().sort((a, b) => (b.created || "").localeCompare(a.created || ""));
@@ -129,11 +130,13 @@
         ${S.docs.length > 40 ? `<button class="lnk" id="spMore">${LOOSE_ALL ? "show less" : "show all " + S.docs.length}</button>` : ""}`;
       return h;
     }
-    h += `<h3 class="sec">Case files <small>${S.cases.length ? S.cases.length + " · documents that belong together, oldest first" : "none yet – drag one document onto another to connect them"}</small></h3>`;
-    h += S.cases.length ? `<div class="spcases">${S.cases.map((c) => caseHtml(c, S)).join("")}</div>` : "";
-    h += `<h3 class="sec">Loose documents <small>${S.loose.length} · not connected to anything yet</small></h3>`;
-    h += S.loose.length ? `<ol class="spthread flat">${loose.map((d, i) => rowHtml(d, (d.tags || []).includes(from) ? from : "", i, loose.length)).join("")}</ol>${S.loose.length > 12 ? `<button class="lnk" id="spMore">${LOOSE_ALL ? "show less" : "show all " + S.loose.length}</button>` : ""}` : "";
-    h += `<div class="spdrop" data-dropsp="${S.id}">Drop documents here to add them to <b>${esc(S.name)}</b> – or onto a case file to connect them.</div>`;
+    if (S.cases.length) h += `<h3 class="sec">Case files <small>${S.cases.length}</small></h3><div class="spcases">${S.cases.map((c) => caseHtml(c, S)).join("")}</div>`;
+    if (S.loose.length) {
+      const open = LOOSE_OPEN || !S.cases.length;
+      h += `<button class="sptoggle${open ? " open" : ""}" id="spLoose" aria-expanded="${open}"><span class="chev" aria-hidden="true">›</span> Other documents <small>${S.loose.length}</small></button>`;
+      if (open) h += `<ol class="spthread flat">${loose.map((d, i) => rowHtml(d, (d.tags || []).includes(from) ? from : "", i, loose.length)).join("")}</ol>${S.loose.length > 12 ? `<button class="lnk" id="spMore">${LOOSE_ALL ? "show less" : "show all " + S.loose.length}</button>` : ""}`;
+    }
+    h += `<div class="spdrop" data-dropsp="${S.id}">Drop documents here</div>`;
     return h;
   }
 
@@ -144,8 +147,8 @@
     const S = SP === "u" ? un : list.find((s) => s.id === SP) || null;
     const total = list.reduce((a, s) => a + s.docs.length, 0);
     const main = $("#main"), keep = main.querySelector(".spr") ? main.querySelector(".spr").scrollTop : 0;
-    main.innerHTML = `<div class="bar"><h2>Spaces</h2><span class="cnt">${list.length} space${list.length === 1 ? "" : "s"} · ${un.docs.length} not in a folder</span>
-      <span class="thint" style="margin-left:auto">Drag documents onto a space to move them · onto a case file to connect them · Ctrl/⌥ = also</span></div>
+    main.innerHTML = `<div class="bar"><h2>${greeting()}</h2><span class="cnt">${DOCS.length} documents${list.length ? " in " + list.length + " space" + (list.length === 1 ? "" : "s") : ""}</span></div>
+      ${welcomeHtml(un)}
       <div class="spw"><section class="spl" aria-label="Spaces"><div class="sptiles">${list.map((s) => tileHtml(s, s.id === SP)).join("")}${tileHtml(un, SP === "u")}
         <button class="sptile spnew" id="spNew"><span>＋</span><b>New space</b></button></div></section>
         <section class="spr" aria-label="${S ? esc(S.name) : "Space"}">${paneHtml(S, un)}</section></div>`;
@@ -156,7 +159,24 @@
     void total;
   }
 
+  function greeting() { const h = new Date().getHours(); return h < 5 ? "Hello" : h < 11 ? "Good morning" : h < 17 ? "Good afternoon" : h < 22 ? "Good evening" : "Hello"; }
+  function welcomeHtml(un) {
+    const t0 = DS.iso(DS.today()), t14 = DS.iso(new Date(DS.today().getTime() + 14 * 864e5)), wk = DS.iso(new Date(DS.today() - 7 * 864e5));
+    const due = DOCS.filter((d) => d.due && d.due.d >= t0 && d.due.d <= t14).length, fresh = DOCS.filter((d) => (d.added || "") >= wk).length;
+    const ch = [];
+    if (due) ch.push(`<button class="wchip due" data-w="due">⏰ ${due} deadline${due > 1 ? "s" : ""} in the next 2 weeks</button>`);
+    if (un.docs.length) ch.push(`<button class="wchip" data-w="sort">📥 ${un.docs.length} to sort</button>`);
+    if (fresh) ch.push(`<button class="wchip" data-w="new">✨ ${fresh} new this week</button>`);
+    return `<div class="welcome">${ch.length ? ch.join("") : `<span class="wchip calm">✓ Nothing needs you right now</span>`}</div>`;
+  }
   function bind(main, S, un) {
+    $$("[data-w]", main).forEach((b) => (b.onclick = () => {
+      const w = b.dataset.w;
+      if (w === "due") { VIEW = "time"; render(); }
+      else if (w === "sort") { SP = "u"; store("docsorter.space", "u"); renderSpaces(); }
+      else if (window.DocView) window.DocView.openNew();
+    }));
+    if ($("#spLoose", main)) $("#spLoose", main).onclick = () => { LOOSE_OPEN = !LOOSE_OPEN; store("docsorter.spaces.loose", LOOSE_OPEN ? "1" : "0"); renderSpaces(); };
     $$(".sptile[data-sp]", main).forEach((b) => {
       b.onclick = () => { const v = b.dataset.sp; SP = v === "u" ? "u" : +v; store("docsorter.space", String(SP)); LOOSE_ALL = SUG_ALL = false; renderSpaces(); const p = $(".spr"); if (p) { p.classList.remove("vin"); void p.offsetWidth; p.classList.add("vin"); } };
       b.ondragover = (e) => { const d = DS.drag; if (!d || d.kind !== "doc") return; e.preventDefault(); b.classList.add("drop"); e.dataTransfer.dropEffect = e.ctrlKey || e.altKey ? "copy" : "move"; };

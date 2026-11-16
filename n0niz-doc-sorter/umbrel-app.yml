@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.9.0"
+version: "1.10.0"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,13 +25,12 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  New Spaces tab: your top-level folders as life areas (e.g. Wohnen, Auto,
-  Steuern) with type mix, case files and next deadline. Open a space to see its
-  case files as threads, loose documents and documents that probably belong
-  there. Drag documents onto a space to move them, onto a case file to connect
-  them. Timeline now shows lanes per sender, case file or space with running
-  contracts, deadlines and expected documents (red when one hasn't arrived);
-  the old grid is still there as "Grid".
+  Calmer start: Doc Sorter now opens on Spaces with a short overview (deadlines
+  in the next two weeks, documents to sort, new this week – each one click away).
+  Only three main tabs (Spaces, Timeline, Tree); Folders, Tags, Category and the
+  review queue moved under "More". The filter sidebar is hidden until you click
+  ☰, and an active filter shows as a chip you can remove. Less text in Spaces
+  and the timeline.
 dependencies:
   - paperless
   - ollama
