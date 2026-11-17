@@ -124,6 +124,9 @@
   th:first-child, td:first-child { text-align: left; }
   td.l, th.l { text-align: left; }
   td.wr { white-space: normal; min-width: 140px; }
+  table.txt { width: 100%; }
+  table.txt td.wr { width: 100%; }
+  .txd { font-size: 12px; margin-top: 2px; word-break: break-word; }
   th { color: var(--muted); font-weight: 500; }
   tr.total td { font-weight: 600; border-top: 1px solid var(--line); }
   tbody tr.click { cursor: pointer; }
@@ -850,11 +853,16 @@
   }
   const stat = (label, value, cls = "") => `<div class="stat"><span>${esc(label)}</span><b class="${cls}">${value}</b></div>`;
 
+  // newest first, and within a day in booking order like Firefly (time, then journal id)
+  const txKey = (r) => r[14] || r[9] || "";
+  const byNewest = (a, b) => (txKey(a) < txKey(b) ? 1 : txKey(a) > txKey(b) ? -1 : 0);
   function txTable(rows, limit = 200) {
-    const list = [...rows].sort((a, b) => (a[9] < b[9] ? 1 : -1)).slice(0, limit);
+    const list = [...rows].sort(byNewest).slice(0, limit);
     if (!list.length) return `<div class="empty">No bookings.</div>`;
-    return `<div class="tablewrap"><table><thead><tr><th>Date</th><th class="l">Payee</th><th class="l">Description</th><th class="l">Category</th><th class="l">Account</th><th>Amount</th></tr></thead><tbody>${list.map((r) =>
-      `<tr><td>${r[9]}</td><td class="l">${esc(r[6])}</td><td class="l wr">${esc(r[10])}</td><td class="l">${esc(r[3] || "–")}</td><td class="l">${esc(r[8])}</td><td class="${r[1] === "i" ? "pos" : ""}">${r[1] === "i" ? "+" : "−"}${eur2(r[2])}</td></tr>`).join("")}</tbody></table></div>${rows.length > limit ? `<div class="sub" style="margin-top:6px">Showing the newest ${limit} of ${rows.length}.</div>` : ""}`;
+    // the description only when it says more than the payee; amount right after it, so it is always visible
+    const desc = (r) => (r[10] && r[10].trim().toLowerCase() !== String(r[6] || "").trim().toLowerCase() ? `<div class="sub txd">${esc(r[10])}</div>` : "");
+    return `<div class="tablewrap"><table class="txt"><thead><tr><th>Date</th><th class="l">Payee</th><th>Amount</th><th class="l">Category</th><th class="l">Account</th></tr></thead><tbody>${list.map((r) =>
+      `<tr><td>${ddmm(r[9])}</td><td class="l wr">${esc(r[6] || r[10])}${r[6] ? desc(r) : ""}</td><td class="${r[1] === "i" ? "pos" : ""}">${r[1] === "i" ? "+" : "−"}${eur2(r[2])}</td><td class="l">${esc(r[3] || "–")}</td><td class="l">${esc(r[8])}</td></tr>`).join("")}</tbody></table></div>${rows.length > limit ? `<div class="sub" style="margin-top:6px">Showing the newest ${limit} of ${rows.length}.</div>` : ""}`;
   }
   function drill(host, rows, title) {
     const d = host.querySelector(".drill");
@@ -974,7 +982,7 @@
   function rRecent(host, spec, mode) {
     const rows = filterRows(spec, { from: periodRange(spec).from, to: TODAY });
     host.innerHTML = mode === "full" ? txTable(rows, 500) : (() => {
-      const list = [...rows].sort((a, b) => (a[9] < b[9] ? 1 : -1)).slice(0, 8);
+      const list = [...rows].sort(byNewest).slice(0, 8);
       if (!list.length) return `<div class="empty">No bookings.</div>`;
       return `<table style="table-layout:fixed"><colgroup><col style="width:52px"><col><col style="width:96px"></colgroup><tbody>${list.map((r) => `<tr><td>${r[9].slice(5).split("-").reverse().join(".")}</td><td class="l" style="overflow:hidden;text-overflow:ellipsis">${esc(r[6] || r[10])}</td><td class="${r[1] === "i" ? "pos" : ""}">${r[1] === "i" ? "+" : "−"}${eur2(r[2])}</td></tr>`).join("")}</tbody></table>`;
     })();

@@ -243,6 +243,8 @@ def fetch_rows(cfg, start, end):
                         1 if ((t.get("destination_type") if out else t.get("source_type")) or "").lower() in LIAB_TYPES else 0,
                         t.get("bill_name") or t.get("subscription_name") or "",
                         round(btc, 8),
+                        # sort key within a day, like Firefly: time of booking, then journal id
+                        f'{str(t.get("date") or "")[:19]}#{int(t.get("transaction_journal_id") or 0):010d}',
                     ])
             if not more_pages(res, page):
                 break

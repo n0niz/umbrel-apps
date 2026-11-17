@@ -801,8 +801,26 @@ def subscriptions(rows, bills=None, today=None, currency="EUR", savings=()):
     today = today or date.today()
     sav = set(savings or ())
     rows = [r for r in rows if r[7] == currency and r[1] == "e" and not (len(r) > 11 and r[11]) and r[3] not in sav]
+    # Firefly subscriptions per payee, to recognise their older payments from before a rule linked them
+    bill_by = {b["name"]: b for b in (bills or []) if b.get("active", True)}
+    billed = defaultdict(list)
+    for r in rows:
+        if len(r) > 12 and r[12] in bill_by:
+            billed[first_word(r[6]) or r[6]].append(bill_by[r[12]])
+
+    def of_bill(r):
+        for b in billed.get(first_word(r[6]) or r[6], ()):
+            lo, hi = float(b.get("min") or 0), float(b.get("max") or 0)
+            if lo * 0.95 <= r[2] <= max(hi, lo) * 1.05:
+                return True
+        return False
+
+    # tags and patterns only look at bookings not linked to a Firefly subscription – per booking, not per
+    # payee: one Google Play charge linked to Zattoo must not hide your other Google Play subscriptions
     by_payee = defaultdict(list)
     for r in rows:
+        if (len(r) > 12 and r[12]) or of_bill(r):
+            continue
         by_payee[first_word(r[6]) or r[6]].append(r)
     out = {}
 
@@ -842,16 +860,15 @@ def subscriptions(rows, bills=None, today=None, currency="EUR", savings=()):
         hits = [r for r in rows if len(r) > 12 and r[12] == b["name"]]
         exp = sorted(b.get("pay_dates") or [])
         entry("bill:" + b["name"], b["name"], hits, "firefly", b.get("freq") or None, exp[0] if exp else None, b)
-    linked = {first_word(r[6]) for r in rows if len(r) > 12 and r[12]}
     # 2) tagged by you
     for key, hits in by_payee.items():
         tagged = [r for r in hits if {t.lower() for t in r[5]} & SUB_TAGS]
-        if tagged and key not in linked:
+        if tagged:
             entry("tag:" + key, tagged[-1][6], tagged, "tag")
     # 3) pattern: similar amount in at least 3 of the last 6 months, or once a year twice
     six = {f"{(today.replace(day=1) - timedelta(days=31 * i)).strftime('%Y-%m')}" for i in range(0, 7)}
     for key, hits in by_payee.items():
-        if key in linked or ("tag:" + key) in out or not key:
+        if ("tag:" + key) in out or not key:
             continue
         recent = sorted([r for r in hits if r[0] in six], key=lambda r: r[9])
         if len({r[0] for r in recent}) >= 3:
