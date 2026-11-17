@@ -1469,7 +1469,12 @@ class Handler(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(url.query)
         p = url.path
         if p in ("/", "/index.html"):
-            return self._send(200, (APP_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
+            try:
+                ver = (APP_DIR / "VERSION").read_text().strip()
+            except OSError:
+                ver = ""
+            page = (APP_DIR / "index.html").read_text(encoding="utf-8").replace("__APP_VERSION__", ver or "?")
+            return self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
         if p == "/api/config":
             cfg = load_config()
             wl = []

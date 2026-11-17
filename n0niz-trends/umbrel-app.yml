@@ -4,7 +4,7 @@ name: Spending Trends
 tagline: Editable money home page, StarMoney-style reports and your Kraken Bitcoin stack
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-trends/icon.svg
 category: finance
-version: "2.21.7"
+version: "2.21.8"
 port: 4949
 description: >-
   A reporting app for your Firefly III data. An editable home page with
@@ -28,7 +28,8 @@ gallery: []
 releaseNotes: >-
   Subscriptions paid a few days early (e.g. charged on the 17th for the 18th)
   now count as paid: the subscription calendar no longer lists them as next due,
-  and the cash-flow forecast no longer subtracts them a second time.
+  and the cash-flow forecast no longer subtracts them a second time. The version
+  shown at the bottom of the page now always matches the installed version.
 dependencies:
   - firefly-iii
 path: ""
