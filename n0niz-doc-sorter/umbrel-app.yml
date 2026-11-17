@@ -4,7 +4,7 @@ name: Doc Sorter
 tagline: AI suggestions for your Paperless documents – you confirm
 icon: https://raw.githubusercontent.com/n0niz/umbrel-apps/master/n0niz-doc-sorter/icon.svg
 category: files
-version: "1.11.0"
+version: "1.12.0"
 port: 4951
 description: >-
   Sorts your Paperless-ngx documents with a local AI model from the Ollama app.
@@ -25,12 +25,12 @@ repo: https://github.com/n0niz/umbrel-apps
 support: https://github.com/n0niz/umbrel-apps/issues
 gallery: []
 releaseNotes: >-
-  Faster: the document list is kept in a cache and only changed documents are
-  fetched again, so switching views and every move, connect or save no longer
-  reloads all documents from Paperless. Pages load in parallel, documents open
-  faster (prepared while you hover), and long grids draw in steps. Fix: Esc
-  closes the document view again, and the "More" menu no longer disappears
-  after using a picker.
+  New: Windows folder sync (Setup → 4 · Windows folder). Doc Sorter checks a
+  shared folder on your PC and copies new files into Paperless, where they get
+  sorted; your Windows sub-folders become Doc Sorter folders. An edited file
+  becomes a new version of the same document, renamed or moved files keep
+  their document, and files deleted on Windows stay in Paperless as a backup
+  (tag "windows-entfernt"). The Windows folder is only read, never changed.
 dependencies:
   - paperless
   - ollama

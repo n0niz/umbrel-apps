@@ -120,6 +120,34 @@
     <div class="msg" id="msg"></div>
   </div>
 
+  <div class="card" id="sync">
+    <h2>4 · Windows folder <span class="hint" id="syState" style="font-weight:400"></span></h2>
+    <p class="hint">Doc Sorter checks a shared folder on your PC and copies new and changed files into Paperless, where they get sorted. Your Windows folder is only read, never changed. Edited file → new version of the same document. Renamed or moved → title and folder follow. Deleted on Windows → stays in Paperless as a backup with the tag <code>windows-entfernt</code>.</p>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="syOn" style="width:auto"> Sync a Windows folder</label>
+    <div class="row">
+      <div><label>Shared folder</label><input id="syUnc" placeholder="\\DESKTOP-ABC\Dokumente" autocomplete="off" spellcheck="false"></div>
+      <div><label>Check every</label><select id="syEvery"><option value="60">minute</option><option value="300">5 minutes</option><option value="900">15 minutes</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Windows user</label><input id="syUser" autocomplete="off" spellcheck="false" placeholder="e.g. paperless or you@outlook.com"></div>
+      <div><label>Windows password</label><input id="syPass" type="password" autocomplete="new-password" placeholder="Windows password"></div>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--tx)"><input type="checkbox" id="syFolders" style="width:auto" checked> Use my Windows sub-folders as folders (Wohnen\Miete → Wohnen › Miete)</label>
+    <details><summary>How to share the folder in Windows (2 minutes)</summary>
+      <ol>
+        <li>Right-click the folder → <b>Properties</b> → <b>Sharing</b> → <b>Advanced Sharing</b> → tick <b>Share this folder</b>. The share name is what comes after the PC name.</li>
+        <li><b>Permissions</b>: give your user (or better a separate one, see below) <b>Read</b>. Doc Sorter never writes.</li>
+        <li>Network set to <b>Private</b> (Settings → Network &amp; internet → your connection), otherwise Windows blocks file sharing.</li>
+        <li>PC name: Settings → System → About → <i>Device name</i>. Enter <code>\\DEVICE-NAME\ShareName</code>. If the name isn't found, use the IP: <code>\\192.168.178.20\ShareName</code> (FRITZ!Box → Home Network shows it; reserve it there so it stays the same).</li>
+        <li>User: with a Microsoft account sign-in, the e-mail address and the <b>account password</b> (not the PIN).</li>
+      </ol>
+      <p class="hint">Safer: create a local Windows user just for this (Settings → Accounts → Other users → add account without Microsoft account) and give only that one Read on the share. The password is kept in Doc Sorter's data on your Umbrel.</p>
+    </details>
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="sySave">Save folder sync</button><button class="sec" id="syTest">Test connection</button><button class="sec" id="syRun" style="display:none">Check now</button><span class="hint" id="syBusy"></span></div>
+    <div class="msg" id="syMsg"></div>
+    <div id="syInfo" class="hint" style="margin-top:10px"></div>
+  </div>
+
   <div class="card">
     <h2>How it works</h2>
     <ol>
@@ -206,8 +234,47 @@ $("save").onclick = async () => {
   load();
 };
 
-load();
+// ---------------------------------------------------------------- Windows folder sync
+let syFirst = true;
+const syBody = () => ({ on: $("syOn").checked, unc: $("syUnc").value.trim(), user: $("syUser").value.trim(), pass: $("syPass").value, folders: $("syFolders").checked, every: +$("syEvery").value });
+const ago = (t) => { const s = Math.round(Date.now() / 1000 - t); return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + " min ago" : new Date(t * 1000).toLocaleString(); };
+async function syLoad() {
+  let d;
+  try { const r = await fetch("/_lib/api/sync/status"); if (!r.ok) return; d = await r.json(); } catch (e) { return; }
+  if (syFirst) { syFirst = false; $("syOn").checked = d.on; $("syUnc").value = d.unc; $("syUser").value = d.user; $("syFolders").checked = d.folders; $("syEvery").value = String(d.every); if (d.has_pass) $("syPass").placeholder = "(saved – leave empty to keep)"; }
+  $("syRun").style.display = d.on ? "" : "none";
+  $("syState").textContent = d.on ? (d.error ? "· ⚠ problem" : d.busy ? "· working…" : "· on") : "· off";
+  if (!d.on) { $("syInfo").innerHTML = ""; return; }
+  const parts = [];
+  if (d.installing) parts.push("Installing SMB support (once, about a minute)…");
+  if (d.error) parts.push(`<span style="color:#fca5a5">⚠ ${esc(d.error)}</span>`);
+  if (d.warn) parts.push(`<span style="color:#fcd34d">${esc(d.warn)}</span>`);
+  parts.push(`<b>${d.synced}</b> in Paperless${d.pending ? ` · <b>${d.pending}</b> being imported` : ""}${d.waiting ? ` · ${d.waiting} waiting` : ""}${d.gone ? ` · ${d.gone} deleted on Windows (kept)` : ""}${d.last ? ` · checked ${ago(d.last)}` : ""}${d.busy && d.phase ? ` · ${esc(d.phase)}` : ""}`);
+  if (d.failed_n) parts.push(`<details><summary>${d.failed_n} file${d.failed_n > 1 ? "s" : ""} could not be imported</summary>${d.failed.map((f) => `<div><code>${esc(f.file)}</code> – ${esc(f.error)}</div>`).join("")}</details>`);
+  $("syInfo").innerHTML = parts.map((p) => `<div style="margin-top:4px">${p}</div>`).join("");
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+async function syCall(url, label) {
+  $("syMsg").className = "msg"; $("syBusy").textContent = label;
+  ["sySave", "syTest"].forEach((i) => ($(i).disabled = true));
+  try {
+    const r = await fetch(url, { method: "POST", body: JSON.stringify(syBody()) });
+    const d = await r.json();
+    $("syMsg").className = "msg " + (r.ok ? "ok" : "bad");
+    $("syMsg").textContent = r.ok ? (d.found !== undefined ? `✓ Connected – ${d.found} document${d.found === 1 ? "" : "s"}${d.folders ? ` in ${d.folders} sub-folder${d.folders === 1 ? "" : "s"}` : ""}${d.skipped ? ` (${d.skipped} other files are left out)` : ""}.${url.endsWith("save") ? (syBody().on ? " Saved – the first files go to Paperless within a minute." : " Saved.") : ""}${d.sample && d.sample.length ? "\nFor example: " + d.sample.join(", ") : ""}` : "✓ Saved – sync is off.") : d.error;
+    if (r.ok && url.endsWith("save")) $("syPass").value = "";
+  } catch (e) { $("syMsg").className = "msg bad"; $("syMsg").textContent = String(e); }
+  ["sySave", "syTest"].forEach((i) => ($(i).disabled = false)); $("syBusy").textContent = "";
+  syLoad();
+}
+$("syTest").onclick = () => syCall("/_lib/api/sync/test", "connecting… (the first time Doc Sorter installs SMB support, about a minute)");
+$("sySave").onclick = () => syCall("/_lib/api/sync/save", "connecting…");
+$("syRun").onclick = async () => { await fetch("/_lib/api/sync/run", { method: "POST", body: "{}" }); $("syBusy").textContent = "checking…"; setTimeout(() => { $("syBusy").textContent = ""; syLoad(); }, 3000); };
+if (location.hash === "#sync") setTimeout(() => $("sync").scrollIntoView({ behavior: "smooth" }), 300);
+
+load(); syLoad();
 setInterval(load, 4000);
+setInterval(syLoad, 4000);
 </script>
 </body>
 </html>

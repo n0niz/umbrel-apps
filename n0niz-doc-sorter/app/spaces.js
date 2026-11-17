@@ -156,9 +156,26 @@
     const pane = $(".spr", main); if (keep) pane.scrollTop = keep;
     bind(main, S, un);
     fetchFS(un);
+    pollSync();
     void total;
   }
 
+  // Windows folder sync: a chip in the overview (status fetched at most every 30 s)
+  let SYNC = null, SYNCT = 0, SYNCK = "";
+  function syncChip() {
+    if (!SYNC || !SYNC.on) return "";
+    if (SYNC.error) return `<a class="wchip warn" href="/_setup#sync" title="${esc(SYNC.error)}">⚠ Windows folder: ${esc(SYNC.error.split(" – ")[0])}</a>`;
+    return `<a class="wchip" href="/_setup#sync" title="Windows folder sync – settings">🔄 Windows folder · ${SYNC.synced} synced${SYNC.pending || SYNC.waiting ? ` · ${SYNC.pending + SYNC.waiting} to import` : ""}${SYNC.failed_n ? ` · ${SYNC.failed_n} failed` : ""}</a>`;
+  }
+  function pollSync() {
+    if (Date.now() - SYNCT < 30000) return;
+    SYNCT = Date.now();
+    api("/_lib/api/sync/status").then((d) => {
+      SYNC = d;
+      const k = syncChip();
+      if (k !== SYNCK) { SYNCK = k; if (VIEW === "spaces") renderSpaces(); }
+    }).catch(() => {});
+  }
   function greeting() { const h = new Date().getHours(); return h < 5 ? "Hello" : h < 11 ? "Good morning" : h < 17 ? "Good afternoon" : h < 22 ? "Good evening" : "Hello"; }
   function welcomeHtml(un) {
     const t0 = DS.iso(DS.today()), t14 = DS.iso(new Date(DS.today().getTime() + 14 * 864e5)), wk = DS.iso(new Date(DS.today() - 7 * 864e5));
@@ -167,7 +184,7 @@
     if (due) ch.push(`<button class="wchip due" data-w="due">⏰ ${due} deadline${due > 1 ? "s" : ""} in the next 2 weeks</button>`);
     if (un.docs.length) ch.push(`<button class="wchip" data-w="sort">📥 ${un.docs.length} to sort</button>`);
     if (fresh) ch.push(`<button class="wchip" data-w="new">✨ ${fresh} new this week</button>`);
-    return `<div class="welcome">${ch.length ? ch.join("") : `<span class="wchip calm">✓ Nothing needs you right now</span>`}</div>`;
+    return `<div class="welcome">${ch.length ? ch.join("") : `<span class="wchip calm">✓ Nothing needs you right now</span>`}${syncChip()}</div>`;
   }
   function bind(main, S, un) {
     $$("[data-w]", main).forEach((b) => (b.onclick = () => {

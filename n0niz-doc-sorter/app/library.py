@@ -75,7 +75,7 @@ def meta(fresh=False):
     f_corrs = POOL.submit(all_pages, "/api/correspondents/?page_size=500")
     f_paths = POOL.submit(safe_pages, "/api/storage_paths/?page_size=500")
     f_fields = POOL.submit(safe_pages, "/api/custom_fields/?page_size=500")
-    hidden = {n.lower() for n in S.TAGS.values()}
+    hidden = {n.lower() for n in S.TAGS.values()} | foldersync.SYS_TAGS
     v = {
         "tags": [{"id": t["id"], "name": t["name"], "parent": t.get("parent"), "color": t.get("color"),
                   "count": t.get("document_count", 0), "system": t["name"].lower() in hidden,
@@ -908,6 +908,8 @@ def handle(h, path):
     body = json.loads(h.body() or b"{}") if h.command in ("POST", "PATCH") else {}
     try:
         touch(path, body, h.command)
+        if path.startswith("/_lib/api/sync/"):
+            return foldersync.handle(h, path, body)
         if path == "/_lib/api/meta":
             return h.send(200, meta())
         if path == "/_lib/api/docs":
@@ -1016,6 +1018,7 @@ def cache_loop():
 load_ai()
 load_facts()
 threading.Thread(target=cache_loop, daemon=True).start()
+import foldersync  # noqa: E402  (Windows folder sync; starts its own loop)
 threading.Thread(target=ai_worker, daemon=True).start()
 threading.Thread(target=facts_loop, daemon=True).start()
 threading.Thread(target=auto_scan, daemon=True).start()
